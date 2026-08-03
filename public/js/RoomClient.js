@@ -10774,21 +10774,9 @@ class RoomClient {
             this._dominantSpeakerState = { prevConsumerId: null, timeout: null };
         }
 
-        // Remove focus mode from previous dominant speaker if any
-        if (this._dominantSpeakerState.prevConsumerId && this._dominantSpeakerState.prevConsumerId !== consumerId) {
-            const prevVideoContainer = this.getId(this._dominantSpeakerState.prevConsumerId + '__video');
-            const prevFocusBtn = this.getId(this._dominantSpeakerState.prevConsumerId + '__hideALL');
-            if (prevVideoContainer && prevVideoContainer.hasAttribute('focus-mode') && prevFocusBtn) {
-                prevFocusBtn.click();
-            }
-        }
-
-        // Set focus mode for the new dominant speaker
-        const videoContainer = this.getId(consumerId + '__video');
-        const focusBtn = this.getId(consumerId + '__hideALL');
-        if (videoContainer && focusBtn && !videoContainer.hasAttribute('focus-mode')) {
-            focusBtn.click();
-        }
+        // Montemeet: focus goes through the layout owner (unfocuses the previous
+        // speaker itself, idempotent, no synthetic button clicks)
+        MontemeetLayout.focusOn(consumerId);
 
         // Update the state
         this._dominantSpeakerState.prevConsumerId = consumerId;
@@ -10800,13 +10788,9 @@ class RoomClient {
 
         // Set a timeout to remove focus after 'timeout' seconds of inactivity
         this._dominantSpeakerState.timeout = setTimeout(() => {
-            // Remove focus mode if still focused
+            // Montemeet: remove focus via the layout owner if still focused
             if (this._dominantSpeakerState.prevConsumerId) {
-                const prevVideoContainer = this.getId(this._dominantSpeakerState.prevConsumerId + '__video');
-                const prevFocusBtn = this.getId(this._dominantSpeakerState.prevConsumerId + '__hideALL');
-                if (prevVideoContainer && prevVideoContainer.hasAttribute('focus-mode') && prevFocusBtn) {
-                    prevFocusBtn.click();
-                }
+                MontemeetLayout.focusOff(this._dominantSpeakerState.prevConsumerId);
                 this._dominantSpeakerState.prevConsumerId = null;
             }
         }, timeout); // 10 seconds

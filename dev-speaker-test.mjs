@@ -92,7 +92,7 @@ function delay(ms) {
     return new Promise((r) => setTimeout(r, ms));
 }
 
-async function launchPeer(name, audioFile, { audio = 1, video = 1 } = {}) {
+async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow = false } = {}) {
     const args = [
         '--use-fake-device-for-media-stream',
         '--use-fake-ui-for-media-stream',
@@ -118,7 +118,7 @@ async function launchPeer(name, audioFile, { audio = 1, video = 1 } = {}) {
         if (!msg.text().startsWith('Dominant Speaker')) return;
         try {
             const data = await msg.args()[1]?.jsonValue();
-            if (data?.peer_name) events.push({ t: Date.now(), name: data.peer_name });
+            if (data?.peer_name) events.push({ t: Date.now(), name: data.peer_name, peerId: data.peer_id });
         } catch (e) {
             /* page closing */
         }
@@ -127,6 +127,13 @@ async function launchPeer(name, audioFile, { audio = 1, video = 1 } = {}) {
         waitUntil: 'networkidle2',
         timeout: 30000,
     });
+    if (focusFollow) {
+        // enable stock auto-focus on dominant speaker (the checkbox is read live)
+        await page.evaluate(() => {
+            const el = document.getElementById('switchDominantSpeakerFocus');
+            if (el) el.checked = true;
+        });
+    }
     return { browser, page, name, events };
 }
 
@@ -173,20 +180,68 @@ async function runScenario(title, zalFile, guestFile, seconds) {
     };
 }
 
+// Focus scenario: the Observer runs the stock dominant-speaker auto-focus and
+// we assert that the [focus-mode] attribute follows whoever is speaking.
+async function runFocusScenario(seconds) {
+    const observer = await launchPeer('Observer', null, { audio: 0, video: 0 });
+    await delay(2000);
+    const zal = await launchPeer('Zal', fixtures.speechThenSilence);
+    await delay(3000);
+    const guest = await launchPeer('Guest1', fixtures.silenceThenSpeech);
+    await delay(1000);
+
+    // enable auto-focus AFTER the join flow settled — the settings restore from
+    // localStorage would otherwise overwrite the checkbox we just flipped
+    const debug = await observer.page.evaluate(() => {
+        const el = document.getElementById('switchDominantSpeakerFocus');
+        if (el) el.checked = true;
+        return {
+            checkboxFound: !!el,
+            roomDominantFlag: typeof rc !== 'undefined' ? rc.dominantSpeaker : null,
+            layoutOwner: typeof MontemeetLayout !== 'undefined',
+        };
+    });
+
+    const samples = [];
+    const started = Date.now();
+    while (Date.now() - started < seconds * 1000) {
+        await delay(2000);
+        const focusedPeerId = await observer.page.evaluate(
+            () => document.querySelector('#videoMediaContainer [focus-mode] video[name]')?.getAttribute('name') ?? null
+        );
+        samples.push(focusedPeerId);
+    }
+
+    const idToName = {};
+    for (const e of observer.events) if (e.peerId) idToName[e.peerId] = e.name;
+    const focusedNames = [...new Set(samples.filter(Boolean).map((id) => idToName[id] || id))];
+
+    const summary = summarize(observer.events);
+    await observer.browser.close();
+    await zal.browser.close();
+    await guest.browser.close();
+    return { scenario: 'focus', observerPeer: 'Observer', debug, focusedNames, ...summary };
+}
+
 const fixtures = ensureFixtures();
-const which = process.argv[2] || 'both';
+const which = process.argv[2] || 'all';
 const results = [];
 
-if (which === 'solo' || which === 'both') {
+if (which === 'solo' || which === 'both' || which === 'all') {
     const r = await runScenario('solo', fixtures.speech, fixtures.silence, 20);
     // change-only events: Zal is usually elected during warm-up and stays dominant,
     // so require: final dominant is Zal AND nobody else was elected after warm-up
     r.pass = r.lastName === 'Zal' && r.names.every((n) => n === 'Zal');
     results.push(r);
 }
-if (which === 'alternate' || which === 'both') {
+if (which === 'alternate' || which === 'both' || which === 'all') {
     const r = await runScenario('alternate', fixtures.speechThenSilence, fixtures.silenceThenSpeech, 40);
     r.pass = r.names.includes('Zal') && r.names.includes('Guest1') && r.switchSequence.length >= 2;
+    results.push(r);
+}
+if (which === 'focus' || which === 'all') {
+    const r = await runFocusScenario(40);
+    r.pass = r.focusedNames.includes('Zal') && r.focusedNames.includes('Guest1');
     results.push(r);
 }
 
