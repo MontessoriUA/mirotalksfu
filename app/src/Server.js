@@ -99,6 +99,7 @@ const ServerApi = require('./ServerApi');
 const Logger = require('./Logger');
 const Validator = require('./Validator');
 const HtmlInjector = require('./HtmlInjector');
+const montemeetProfiles = require('./MontemeetProfiles');
 const log = new Logger('Server');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
@@ -848,6 +849,11 @@ function startServer() {
     // UI themes configuration
     app.get('/themes', (req, res) => {
         res.status(200).json({ message: config?.ui?.themes ? config.ui.themes : false });
+    });
+
+    // Montemeet: room profile (audio/layout presets) for the client
+    app.get('/profile/:roomId', (req, res) => {
+        res.status(200).json(montemeetProfiles.forRoom(req.params.roomId));
     });
 
     // main page

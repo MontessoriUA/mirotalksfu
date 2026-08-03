@@ -1,0 +1,20 @@
+{
+    "_readme": "Montemeet room profile registry. Copy to montemeet-profiles.json and edit. 'rooms' maps a room name to a profile name; '*' is the fallback. audio:null means stock MiroTalk behavior.",
+    "profiles": {
+        "music": {
+            "audio": {
+                "echoCancellation": true,
+                "autoGainControl": false,
+                "noiseSuppression": false,
+                "opusDtx": false,
+                "opusMaxAverageBitrate": 128000
+            }
+        },
+        "default": {
+            "audio": null
+        }
+    },
+    "rooms": {
+        "*": "default"
+    }
+}

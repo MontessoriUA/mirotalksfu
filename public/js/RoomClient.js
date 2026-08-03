@@ -2214,7 +2214,10 @@ class RoomClient {
                 }
             }
 
-            if (audio && BUTTONS.settings.customNoiseSuppression) {
+            // Montemeet: never run RNNoise in music rooms (it suppresses and downmixes to mono)
+            const mmSkipRNNoise = typeof MontemeetProfile !== 'undefined' && MontemeetProfile.isMusic();
+
+            if (audio && BUTTONS.settings.customNoiseSuppression && !mmSkipRNNoise) {
                 /*
                  * Initialize RNNoise Suppression if enabled and supported
                  * This will only apply to audio tracks
@@ -2275,6 +2278,14 @@ class RoomClient {
                     opusFec: true,
                     opusNack: true,
                 };
+                // Montemeet: music rooms keep quiet passages (no DTX) and raise the bitrate ceiling
+                const mmOpus = typeof MontemeetProfile !== 'undefined' ? MontemeetProfile.audio() : null;
+                if (mmOpus) {
+                    params.codecOptions.opusDtx = mmOpus.opusDtx !== false;
+                    if (mmOpus.opusMaxAverageBitrate) {
+                        params.codecOptions.opusMaxAverageBitrate = mmOpus.opusMaxAverageBitrate;
+                    }
+                }
             }
 
             if (video) {
@@ -2764,6 +2775,14 @@ class RoomClient {
             autoGainControl: true,
             noiseSuppression: useBuiltInNoiseSuppression,
         };
+
+        // Montemeet: room profile overrides (music rooms capture raw sound)
+        const mmAudio = typeof MontemeetProfile !== 'undefined' ? MontemeetProfile.audio() : null;
+        if (mmAudio) {
+            audioConstraints.echoCancellation = mmAudio.echoCancellation !== false;
+            audioConstraints.autoGainControl = mmAudio.autoGainControl !== false;
+            audioConstraints.noiseSuppression = mmAudio.noiseSuppression !== false;
+        }
         /* 
         deviceId handling is platform-dependent:
             - iOS Safari: routing is OS-controlled; ignore deviceId.
