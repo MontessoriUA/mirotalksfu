@@ -853,6 +853,10 @@ function startServer() {
     // main page
     app.get('/', OIDCAuth, (req, res) => {
         //log.debug('/ - hostCfg ----->', hostCfg);
+        // Montemeet: in local development jump straight into a room on page load
+        if (process.env.DEV_DEFAULT_ROOM) {
+            return res.redirect(`/join/${process.env.DEV_DEFAULT_ROOM}`);
+        }
         if (!OIDC.enabled && hostCfg.protected) {
             hostCfg.authenticated = false;
             res.redirect('/login');
