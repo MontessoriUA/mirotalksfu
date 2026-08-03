@@ -3058,6 +3058,44 @@ function startServer() {
             }
         });
 
+        // Montemeet: a client reports its tile size class; feed the matching simulcast/SVC layer
+        socket.on('setConsumerPreferredLayers', async ({ consumer_id, spatialLayer, temporalLayer }, callback) => {
+            if (!roomExists(socket)) {
+                return callback?.({ error: 'Room not found' });
+            }
+
+            const peer = getPeer(socket);
+
+            if (!peer) {
+                return callback?.({ error: `peer with ID: "${socket.id}" for consumer "${consumer_id}" not found` });
+            }
+
+            const consumer = peer.getConsumer(consumer_id);
+
+            if (!consumer || consumer.kind !== 'video' || !['simulcast', 'svc'].includes(consumer.type)) {
+                return callback?.({ error: `no layered video consumer with id "${consumer_id}"` });
+            }
+
+            const clamp = (v, max) => Math.max(0, Math.min(Number.isInteger(v) ? v : max, max));
+            const { scalabilityMode } = consumer.rtpParameters.encodings[0];
+            const maxSpatial = parseInt(scalabilityMode.substring(1, 2)) - 1; // L3T3 -> 2
+            const maxTemporal = parseInt(scalabilityMode.substring(3, 4)) - 1;
+
+            const layers = {
+                spatialLayer: clamp(spatialLayer, maxSpatial),
+                temporalLayer: clamp(temporalLayer, maxTemporal),
+            };
+
+            try {
+                await consumer.setPreferredLayers(layers);
+                log.debug('Consumer preferred layers set', { consumer_id, ...layers });
+                callback?.(layers);
+            } catch (error) {
+                log.warn('setConsumerPreferredLayers', { error: error.message, consumer_id });
+                callback?.({ error: error.message });
+            }
+        });
+
         socket.on('getProducers', (data, callback) => {
             if (!roomExists(socket)) return callback?.({ error: 'Room not found' });
 

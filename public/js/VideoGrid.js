@@ -94,6 +94,11 @@ function resizeVideoMedia() {
     if (typeof VideoDrawingOverlay !== 'undefined') {
         VideoDrawingOverlay.resizeAll();
     }
+
+    // Montemeet: feed simulcast layers matching the new tile sizes
+    if (typeof MontemeetLayers !== 'undefined') {
+        MontemeetLayers.sync();
+    }
 }
 
 function resetZoom() {
