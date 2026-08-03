@@ -53,7 +53,7 @@ function load() {
 }
 
 function forRoom(roomId) {
-    const { profiles = {}, rooms = {} } = load() || {};
+    const { profiles = {}, rooms = {}, devicePriority = null } = load() || {};
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
     const profileName = has(rooms, roomId) ? rooms[roomId] : has(rooms, '*') ? rooms['*'] : 'default';
@@ -62,6 +62,7 @@ function forRoom(roomId) {
     return {
         name: profile ? profileName : 'default',
         audio: (profile && profile.audio) || null,
+        devicePriority, // installation-wide (e.g. SplitCam on school computers)
     };
 }
 

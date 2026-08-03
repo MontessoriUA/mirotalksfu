@@ -618,6 +618,8 @@ async function initRoom() {
         handleUsernameEmojiPicker();
         await whoAreYou();
         await setSelectsInit();
+        // Montemeet: preferred devices (e.g. SplitCam on school computers)
+        if (typeof MontemeetDevices !== 'undefined') await MontemeetDevices.applyPriority();
     }
 }
 
