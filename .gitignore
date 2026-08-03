@@ -15,6 +15,7 @@ npm-debug.log
 .env
 config.js
 montemeet-profiles.json
+dev-fixtures
 docker-compose.yml
 docker-push.sh
 data
