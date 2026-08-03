@@ -281,7 +281,10 @@ const corsOptions = {
     methods: config.server?.cors?.methods || ['GET', 'POST'],
 };
 
-const server = httpolyglot.createServer(options, app);
+// Montemeet: plain HTTP for local development (TLS terminates elsewhere or is not needed on localhost)
+const httpOnly = process.env.SERVER_HTTP_ONLY === 'true';
+
+const server = httpOnly ? http.createServer(app) : httpolyglot.createServer(options, app);
 
 const io = socketIo(server, {
     maxHttpBufferSize: 1e7,
