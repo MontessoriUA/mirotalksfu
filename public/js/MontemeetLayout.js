@@ -328,7 +328,14 @@ const MontemeetLayout = (() => {
     }
 
     async function pinByPeer(peerId) {
-        return pinByVideoEl(await resolvePeerVideo(peerId));
+        // the peer's active screen share represents them (Q2(в), Ivan 2026-08-06)
+        return pinByVideoEl(peerScreenVideo(peerId) || (await resolvePeerVideo(peerId)));
+    }
+
+    async function focusByPeerPreferScreen(peerId) {
+        const screenEl = peerScreenVideo(peerId);
+        if (screenEl) return focusOn(screenEl.id);
+        return focusByPeer(peerId);
     }
 
     function hideSelf() {
@@ -353,7 +360,7 @@ const MontemeetLayout = (() => {
         if (manualPinActive()) return; // a hand-made pin always wins
         let shownDom = false;
         if (dom && dom !== selfId()) {
-            shownDom = concertPinView() ? await pinByPeer(dom) : await focusByPeer(dom);
+            shownDom = concertPinView() ? await pinByPeer(dom) : await focusByPeerPreferScreen(dom);
         }
         if (!shownDom) {
             // silence, self is dominant, or the dominant has no video here
@@ -421,18 +428,17 @@ const MontemeetLayout = (() => {
             manualState = null;
             setSpeakerViewTo(prev);
         }
+        // the unpin button is visible only on a MANUALLY pinned big video
+        document.body.classList.toggle('montemeet-manualpin', !!manualState);
     }
 
     async function applyGroupSpeaker() {
         if (typeof rc === 'undefined') return;
         if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // the teacher pinned someone by hand — obey
-        // a student's screen share outranks the speaker logic on the teacher's side
-        const screenEl = anyRemoteScreenVideo();
-        if (screenEl) {
-            await pinByVideoEl(screenEl);
-            return;
-        }
+        // Q2(в): the screen share is the FACE of its owner — focus still picks
+        // the SPEAKER, and pinByPeer shows their screen instead of the camera
+        // when they have one (a muted sharer never hijacks the view)
         if (dom && dom !== selfId()) {
             const ok = await pinByPeer(dom);
             if (ok) return;
@@ -772,6 +778,9 @@ const MontemeetLayout = (() => {
                     } else {
                         ensureDefault();
                     }
+                    // structural changes may have flipped strip classes after the
+                    // stock resize ran — one more pass keeps tile sizes honest
+                    if (typeof resizeVideoMedia === 'function') resizeVideoMedia();
                 }, 800);
             });
             observer.observe(target, { childList: true });

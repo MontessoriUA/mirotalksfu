@@ -11465,6 +11465,19 @@ class RoomClient {
 
     confirmPeerAction(action, data) {
         console.log('Confirm peer action', action);
+        // Montemeet: mute/hide a single participant without a confirmation
+        // popup in managed rooms — the teacher's click IS the decision
+        if (
+            typeof MontemeetLayout !== 'undefined' &&
+            MontemeetLayout.managedRoom() &&
+            ['mute', 'hide'].includes(action) &&
+            !data?.broadcast
+        ) {
+            const btn = this.getId(data.peer_id + (action === 'mute' ? '___pAudio' : '___pVideo'));
+            if (btn) btn.innerHTML = action === 'mute' ? _PEER.audioOff : _PEER.videoOff;
+            this.socket.emit('peerAction', data);
+            return;
+        }
         switch (action) {
             case 'ban':
                 let banConfirmed = false;

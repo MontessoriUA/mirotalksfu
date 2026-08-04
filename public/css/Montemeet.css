@@ -102,6 +102,45 @@ body.montemeet-concert [id$='__pin'] {
     display: none !important;
 }
 
+/* a MANUAL pin shows its unpin button on the big video (mode pins do not) */
+body.montemeet-manualpin #videoPinMediaContainer [id$='__pin'] {
+    display: inline-block !important;
+}
+
+/*
+ * The three-dots dropdown wraps the real buttons into labeled items — hiding
+ * the button alone leaves the clickable label, so hide the wrapper itself.
+ * Kept for the teacher: Mirror, Ban, Kick Out.
+ */
+body.montemeet-lesson .navbar-dropdown-item:has([id$='__fullScreen']),
+body.montemeet-lesson .navbar-dropdown-item:has([id$='___sendMsg']),
+body.montemeet-lesson .navbar-dropdown-item:has([id$='___geoLocation']),
+body.montemeet-lesson .navbar-dropdown-item:has([id$='___sendFile']),
+body.montemeet-lesson .navbar-dropdown-item:has([id$='___sendVideo']),
+body.montemeet-concert .navbar-dropdown-item:has([id$='__fullScreen']),
+body.montemeet-concert .navbar-dropdown-item:has([id$='___sendMsg']),
+body.montemeet-concert .navbar-dropdown-item:has([id$='___geoLocation']),
+body.montemeet-concert .navbar-dropdown-item:has([id$='___sendFile']),
+body.montemeet-concert .navbar-dropdown-item:has([id$='___sendVideo']),
+body.montemeet-student .navbar-dropdown-item:has([id$='__mirror']),
+body.montemeet-student .navbar-dropdown-item:has([id$='__videoMirror']) {
+    display: none !important;
+}
+
+/* computer-sound button: attention pulse in dance rooms until enabled */
+#montemeetPcSoundBtn.montemeet-attention {
+    animation: montemeet-pulse 1.6s ease-in-out infinite;
+}
+@keyframes montemeet-pulse {
+    0%,
+    100% {
+        color: white;
+    }
+    50% {
+        color: lime;
+    }
+}
+
 body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {
     width: 86% !important;
     height: auto !important;

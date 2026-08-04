@@ -189,7 +189,97 @@ const MontemeetRoles = (() => {
                 if (typeof elemDisplay === 'function') elemDisplay('chat', true);
             }, 60);
         });
+        // the list's own X button goes through toggleShowParticipants directly —
+        // wrap it too, or closing via X surfaces the chat underneath
+        if (rc.toggleShowParticipants) {
+            const origShow = rc.toggleShowParticipants.bind(rc);
+            rc.toggleShowParticipants = function (fromUser = false) {
+                const saved = BUTTONS.main.chatButton;
+                BUTTONS.main.chatButton = false;
+                try {
+                    origShow(fromUser);
+                } finally {
+                    BUTTONS.main.chatButton = saved;
+                }
+                const plist = document.getElementById('plist');
+                if (plist?.classList.contains('hidden') && rc.isChatOpen) {
+                    rc.toggleChat(true);
+                }
+            };
+        }
         panelSplitDone = true;
+    }
+
+    // «Звук компьютера» (Q4): capture via the browser's screen picker, drop the
+    // video track and produce ONLY the audio — Zoom-style computer sound.
+    // Lessons only; dance rooms try to engage it right at join.
+    let pcSoundBtnDone = false;
+
+    function pcSoundActive() {
+        return !!(typeof rc !== 'undefined' && rc && rc.producerLabel?.has(RoomClient.mediaType.audioTab));
+    }
+
+    function updatePcSoundBtn() {
+        const btn = document.getElementById('montemeetPcSoundBtn');
+        if (!btn) return;
+        const on = pcSoundActive();
+        btn.style.color = on ? 'lime' : 'white';
+        btn.title = on ? 'Звук компьютера: транслируется (клик — выключить)' : 'Транслировать звук компьютера';
+        if (on) btn.classList.remove('montemeet-attention');
+    }
+
+    async function togglePcSound() {
+        try {
+            if (pcSoundActive()) {
+                rc.closeProducer(RoomClient.mediaType.audioTab);
+                setTimeout(updatePcSoundBtn, 300);
+                return;
+            }
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+            });
+            if (!stream.getAudioTracks().length) {
+                stream.getTracks().forEach((t) => t.stop());
+                if (typeof userLog === 'function') {
+                    userLog('warning', 'Отметьте галку «Предоставить доступ к звуку» в диалоге браузера', 'top-end', 6000);
+                }
+                return;
+            }
+            stream.getVideoTracks().forEach((t) => t.stop()); // sound only, no screen feed
+            await rc.produceScreenAudio(stream);
+            updatePcSoundBtn();
+        } catch (e) {
+            // NotAllowedError: dismissed picker or no gesture (dance auto-try) — stay off
+            updatePcSoundBtn();
+        }
+    }
+
+    function ensurePcSoundButton() {
+        if (pcSoundBtnDone || MontemeetProfile.roles() !== 'lesson') return;
+        if (!(typeof isPresenter !== 'undefined' && isPresenter)) return;
+        const bar = document.getElementById('bottomButtons');
+        if (!bar || typeof rc === 'undefined' || !rc) return;
+        const btn = document.createElement('button');
+        btn.id = 'montemeetPcSoundBtn';
+        // note inside a monitor
+        btn.innerHTML =
+            '<svg viewBox="0 0 16 16" width="19" height="19" fill="currentColor"><path d="M1.5 2h13a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9v1.5h2.5V15h-7v-1.5H7V12H1.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10.2 4.2 6.8 5v3.5a1.4 1.4 0 1 0 .8 1.26V6.3l1.8-.42v2.3a1.4 1.4 0 1 0 .8 1.26z"/></svg>';
+        btn.addEventListener('click', togglePcSound);
+        const anchorBtn = document.getElementById('montemeetFileShareBtn') || document.getElementById('participantsButton');
+        if (anchorBtn && anchorBtn.parentElement === bar) {
+            bar.insertBefore(btn, anchorBtn.nextSibling);
+        } else {
+            bar.appendChild(btn);
+        }
+        updatePcSoundBtn();
+        if (MontemeetProfile.name() === 'dance') {
+            // auto-engage at dance lessons; without a user gesture the browser
+            // refuses — then the pulsing button invites one click
+            btn.classList.add('montemeet-attention');
+            togglePcSound();
+        }
+        pcSoundBtnDone = true;
     }
 
     // File sharing moves to the bottom toolbar at lessons (not at concerts)
@@ -243,6 +333,8 @@ const MontemeetRoles = (() => {
         }
         splitParticipantsFromChat();
         ensureFileShareButton();
+        ensurePcSoundButton();
+        updatePcSoundBtn();
     }
 
     (async () => {
