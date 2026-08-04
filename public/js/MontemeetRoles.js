@@ -284,9 +284,9 @@ const MontemeetRoles = (() => {
         if (!bar || typeof rc === 'undefined' || !rc) return;
         const btn = document.createElement('button');
         btn.id = 'montemeetPcSoundBtn';
-        // note inside a monitor — full-bleed screen, no stand, big readable note
+        // note inside a monitor: taller screen + a small stand (Ivan, 2026-08-06)
         btn.innerHTML =
-            '<svg viewBox="0 0 22 16" width="27" height="20" fill="currentColor"><rect x="1" y="1" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.3 3.6 9.4 4.9v5a2.3 2.3 0 1 0 1.3 2.07V7.6l3.3-.73v2.6a2.3 2.3 0 1 0 1.3 2.07z"/></svg>';
+            '<svg viewBox="0 0 22 19" width="27" height="23" fill="currentColor"><rect x="1" y="1" width="20" height="14.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 17h5l1 1.6h-7z"/><path d="M15.3 3.8 9.4 5.1v5a2.3 2.3 0 1 0 1.3 2.07V7.8l3.3-.73v2.6a2.3 2.3 0 1 0 1.3 2.07z"/></svg>';
         btn.addEventListener('click', togglePcSound);
         const anchorBtn = document.getElementById('montemeetFileShareBtn') || document.getElementById('participantsButton');
         if (anchorBtn && anchorBtn.parentElement === bar) {
@@ -373,7 +373,8 @@ const MontemeetRoles = (() => {
             const btn = document.createElement('button');
             btn.id = peerId + '__mmUnhide';
             btn.title = 'Включить камеру участнику';
-            btn.innerHTML = '<i class="fas fa-video"></i>';
+            // the same icon the participants list shows for a muted camera
+            btn.innerHTML = typeof _PEER !== 'undefined' ? _PEER.videoOff : '<i class="fas fa-video-slash"></i>';
             btn.addEventListener('click', () => rc.peerAction('me', peerId + '___pVideo', 'unhide'));
             bar.insertBefore(btn, bar.firstChild);
         }
@@ -391,6 +392,15 @@ const MontemeetRoles = (() => {
                 if (typeof BUTTONS !== 'undefined' && patchButtons(BUTTONS_LESSON_BOTH)) clearInterval(early);
             }, 100);
             setTimeout(() => clearInterval(early), 20000);
+            // the panel split must be in place before the FIRST click on the
+            // chat/participants buttons — don't wait for a layout tick
+            const splitPoll = setInterval(() => {
+                if (typeof rc !== 'undefined' && rc && rc.toggleParticipants) {
+                    splitParticipantsFromChat();
+                    clearInterval(splitPoll);
+                }
+            }, 150);
+            setTimeout(() => clearInterval(splitPoll), 30000);
             if (preset === 'lesson') {
                 // the student extras wait until the role is settled (own tile built)
                 const studentPoll = setInterval(() => {

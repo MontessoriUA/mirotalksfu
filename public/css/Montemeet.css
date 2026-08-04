@@ -136,10 +136,12 @@ body.montemeet-student .navbar-dropdown-item:has([id$='__videoMirror']) {
     color: lime !important;
 }
 
-/* the chat alone in the panel takes its full width (the split hides plist) */
+/* the chat alone in the panel takes its full width (the split hides plist —
+   the stock 300px margin was reserved for the list on the left) */
 body.montemeet-lesson #plist.hidden ~ #chat,
 body.montemeet-concert #plist.hidden ~ #chat {
     width: 100% !important;
+    margin-left: 0 !important;
 }
 #montemeetPcSoundBtn.montemeet-attention {
     animation: montemeet-pulse 1.6s ease-in-out infinite;
