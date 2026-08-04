@@ -62,6 +62,7 @@ function forRoom(roomId) {
     return {
         name: profile ? profileName : 'default',
         audio: (profile && profile.audio) || null,
+        layout: (profile && profile.layout) || null,
         devicePriority, // installation-wide (e.g. SplitCam on school computers)
     };
 }

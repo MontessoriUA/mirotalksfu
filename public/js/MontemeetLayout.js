@@ -28,7 +28,16 @@ const MontemeetLayout = (() => {
     function current() {
         if (typeof rc === 'undefined' || !rc?.videoMediaContainer) return null;
         const el = rc.videoMediaContainer.querySelector('[focus-mode]');
-        return el ? el.id.replace(/__video$/, '') : null;
+        if (!el) return null;
+        // Self-heal: the attribute without the global flag is a stale leftover
+        // (see the addConsumer reset upstream) — clean it up and report no focus
+        if (typeof isHideALLVideosActive !== 'undefined' && !isHideALLVideosActive) {
+            el.removeAttribute('focus-mode');
+            el.style.width = '';
+            el.style.height = '';
+            return null;
+        }
+        return el.id.replace(/__video$/, '');
     }
 
     function isFocused(id) {
@@ -56,5 +65,55 @@ const MontemeetLayout = (() => {
         return current() === null;
     }
 
-    return { current, isFocused, focusOn, focusOff };
+    // ---------- room anchor (stage 2.2) ----------
+    // profile.layout.anchor === 'presenter': the presenter (Зал at concerts,
+    // the teacher at lessons) is the DEFAULT view — whenever nothing else is
+    // focused, focus the anchor's video. One never watches oneself: if I am
+    // the anchor (or the anchor has no video here), the grid stays.
+
+    let anchorMode = null;
+
+    function anchorPeerId() {
+        if (typeof rc === 'undefined' || !rc?.peers) return null;
+        for (const [peerId, peer] of rc.peers) {
+            if (peerId !== rc.peer_id && peer?.peer_info?.peer_presenter) return peerId;
+        }
+        return null;
+    }
+
+    function anchorVideoId() {
+        const peerId = anchorPeerId();
+        if (!peerId) return null;
+        const videoEl = rc.getVideoElementByPeerId(peerId);
+        return videoEl ? videoEl.id : null;
+    }
+
+    // Focus the anchor if the room is anchored and nothing else claims the screen
+    function ensureDefault() {
+        if (!anchorMode || typeof rc === 'undefined') return;
+        if (rc.isVideoPinned || current() !== null) return;
+        const id = anchorVideoId();
+        if (id) focusOn(id);
+    }
+
+    (async () => {
+        try {
+            await MontemeetProfile.ready;
+            anchorMode = MontemeetProfile.layout()?.anchor ?? null;
+            if (anchorMode !== 'presenter') return;
+            const target = document.getElementById('videoMediaContainer');
+            if (!target) return;
+            // Structural changes only (tiles appear/leave) — a manual unfocus
+            // does not add/remove nodes, so it is not overridden by the anchor.
+            let t = null;
+            new MutationObserver(() => {
+                clearTimeout(t);
+                t = setTimeout(ensureDefault, 800);
+            }).observe(target, { childList: true });
+        } catch (e) {
+            /* no profile -> stock behavior */
+        }
+    })();
+
+    return { current, isFocused, focusOn, focusOff, ensureDefault };
 })();

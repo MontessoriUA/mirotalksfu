@@ -83,6 +83,7 @@ function ensureFixtures() {
         silence: make('silence.wav', [{ seconds: 30, freq: 0 }]),
         speechThenSilence: make('speech8-silence8.wav', [...speechSegments(8, 440), { seconds: 8, freq: 0 }]),
         silenceThenSpeech: make('silence8-speech8.wav', [{ seconds: 8, freq: 0 }, ...speechSegments(8, 330)]),
+        speechOnce: make('speech8-silence22.wav', [...speechSegments(8, 440), { seconds: 22, freq: 0 }]),
     };
 }
 
@@ -92,7 +93,7 @@ function delay(ms) {
     return new Promise((r) => setTimeout(r, ms));
 }
 
-async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow = false } = {}) {
+async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow = false, room = ROOM } = {}) {
     const args = [
         '--use-fake-device-for-media-stream',
         '--use-fake-ui-for-media-stream',
@@ -123,7 +124,7 @@ async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow =
             /* page closing */
         }
     });
-    await page.goto(`${BASE}/join/${ROOM}?name=${name}&audio=${audio}&video=${video}&notify=0`, {
+    await page.goto(`${BASE}/join/${room}?name=${name}&audio=${audio}&video=${video}&notify=0`, {
         waitUntil: 'networkidle2',
         timeout: 30000,
     });
@@ -223,6 +224,71 @@ async function runFocusScenario(seconds) {
     return { scenario: 'focus', observerPeer: 'Observer', debug, focusedNames, ...summary };
 }
 
+// Anchor scenario (stage 2.2): in an anchored room the presenter (Zal, joins
+// first) is the default view. A speaking guest takes the focus over (dominant),
+// and after the speech + the 10s inactivity timeout the view RETURNS to the
+// anchor instead of falling back to the grid.
+async function runAnchorScenario() {
+    const room = 'montemeet-anchor';
+    const zal = await launchPeer('Zal', fixtures.silence, { room });
+    await delay(3000);
+    const observer = await launchPeer('Observer', null, { room, audio: 0, video: 0 });
+    await delay(5000); // consumer setup + anchor MutationObserver debounce
+
+    // enable auto-focus late — the settings restore overwrites an early flip
+    await observer.page.evaluate(() => {
+        const el = document.getElementById('switchDominantSpeakerFocus');
+        if (el) el.checked = true;
+    });
+
+    const focusedPeer = () =>
+        observer.page.evaluate(
+            () => document.querySelector('#videoMediaContainer [focus-mode] video[name]')?.getAttribute('name') ?? null
+        );
+    const peerNames = () =>
+        observer.page.evaluate(() =>
+            Object.fromEntries([...rc.peers].map(([id, p]) => [id, p?.peer_info?.peer_name ?? '?']))
+        );
+
+    const anchoredBeforeGuest = await focusedPeer();
+
+    const guest = await launchPeer('Guest1', fixtures.speechOnce, { room });
+    await delay(4000);
+    const debugState = await observer.page.evaluate(() => ({
+        checkbox: document.getElementById('switchDominantSpeakerFocus')?.checked ?? null,
+        roomDominantFlag: rc?.dominantSpeaker ?? null,
+        consumers: rc?.consumers?.size ?? -1,
+    }));
+    const samples = [];
+    for (let i = 0; i < 12; i++) {
+        await delay(2000);
+        samples.push(await focusedPeer());
+    }
+
+    // rc.peers is a join-time snapshot (late joiners missing) — merge in the
+    // names carried by dominantSpeaker events
+    const names = await peerNames();
+    for (const e of observer.events) if (e.peerId) names[e.peerId] = e.name;
+    const nameOf = (id) => (id ? (names[id] ?? id) : null);
+    const focusedSequence = [];
+    for (const s of samples.map(nameOf)) {
+        if (!focusedSequence.length || focusedSequence[focusedSequence.length - 1] !== s) focusedSequence.push(s);
+    }
+
+    await observer.browser.close();
+    await zal.browser.close();
+    await guest.browser.close();
+    return {
+        scenario: 'anchor',
+        observerPeer: 'Observer',
+        anchoredBeforeGuest: nameOf(anchoredBeforeGuest),
+        focusedSequence,
+        finalFocus: nameOf(samples[samples.length - 1]),
+        debugEvents: observer.events.map((e) => e.name),
+        debugState,
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -242,6 +308,14 @@ if (which === 'alternate' || which === 'both' || which === 'all') {
 if (which === 'focus' || which === 'all') {
     const r = await runFocusScenario(40);
     r.pass = r.focusedNames.includes('Zal') && r.focusedNames.includes('Guest1');
+    results.push(r);
+}
+if (which === 'anchor' || which === 'all') {
+    const r = await runAnchorScenario();
+    r.pass =
+        r.anchoredBeforeGuest === 'Zal' && // anchor is the default view
+        r.focusedSequence.includes('Guest1') && // the speaker takes over
+        r.finalFocus === 'Zal'; // and the view returns to the anchor
     results.push(r);
 }
 

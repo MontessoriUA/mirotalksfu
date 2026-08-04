@@ -4085,6 +4085,15 @@ class RoomClient {
                     btnsHA.forEach((btn) => {
                         btn.style.color = 'white';
                     });
+                    // Montemeet: upstream resets the flag but leaves the focus-mode
+                    // attribute and inline 100% size on the focused tile — clear them,
+                    // otherwise every later focus toggle acts inverted
+                    const focused = this.videoMediaContainer.querySelector('[focus-mode]');
+                    if (focused) {
+                        focused.removeAttribute('focus-mode');
+                        focused.style.width = '';
+                        focused.style.height = '';
+                    }
                 }
 
                 if (!this.isMobileDevice) {
@@ -4181,10 +4190,8 @@ class RoomClient {
 
                 // Check if video is in focus-mode...
                 if (d.hasAttribute('focus-mode')) {
-                    const dhaBtn = this.getId(consumer_id + '__hideALL');
-                    if (dhaBtn) {
-                        dhaBtn.click();
-                    }
+                    // Montemeet: unfocus via the layout owner (no synthetic clicks)
+                    MontemeetLayout.focusOff(consumer_id);
                 }
                 d.remove();
                 vb?.remove();
@@ -10761,13 +10768,33 @@ class RoomClient {
         }
     }
 
-    handleDominantSpeakerFocus(producer_id, consumer_id = null, timeout = 10000) {
+    handleDominantSpeakerFocus(producer_id, consumer_id = null, timeout = 10000, peer_id = null) {
         // Find the consumer id for this producer
-        const consumerId = consumer_id ? consumer_id : this.getConsumerIdByProducerId(producer_id);
+        let consumerId = consumer_id ? consumer_id : producer_id ? this.getConsumerIdByProducerId(producer_id) : null;
 
-        console.log('handleDominantSpeakerFocus', { consumersList: this.consumers, consumerId, producer_id });
+        // Montemeet: the event may carry producer_id null (the speaker's video
+        // producer did not exist yet at election time) — resolve by peer instead
+        if (!consumerId && peer_id) {
+            consumerId = this.getVideoElementByPeerId(peer_id)?.id ?? null;
+        }
 
-        if (!consumerId) return;
+        console.log('handleDominantSpeakerFocus', { consumersList: this.consumers, consumerId, producer_id, peer_id });
+
+        if (!consumerId) {
+            // Montemeet: the dominantSpeaker event is change-only and can arrive
+            // BEFORE this client has consumed the speaker's video (e.g. a guest
+            // starts talking the moment they join) — retry briefly, else the
+            // focus is lost until the next speaker change.
+            const key = producer_id || peer_id;
+            if (!this._dominantRetry || this._dominantRetry.key !== key) {
+                this._dominantRetry = { key, count: 0 };
+            }
+            if (++this._dominantRetry.count <= 10) {
+                setTimeout(() => this.handleDominantSpeakerFocus(producer_id, null, timeout, peer_id), 500);
+            }
+            return;
+        }
+        this._dominantRetry = null;
 
         // Track the currently focused video container
         if (!this._dominantSpeakerState) {
@@ -10788,10 +10815,12 @@ class RoomClient {
 
         // Set a timeout to remove focus after 'timeout' seconds of inactivity
         this._dominantSpeakerState.timeout = setTimeout(() => {
-            // Montemeet: remove focus via the layout owner if still focused
+            // Montemeet: remove focus via the layout owner if still focused,
+            // then fall back to the room anchor (if the room has one)
             if (this._dominantSpeakerState.prevConsumerId) {
                 MontemeetLayout.focusOff(this._dominantSpeakerState.prevConsumerId);
                 this._dominantSpeakerState.prevConsumerId = null;
+                MontemeetLayout.ensureDefault();
             }
         }, timeout); // 10 seconds
     }
@@ -10801,7 +10830,8 @@ class RoomClient {
         const { peer_id, producer_id } = data;
         this.handleDominantSpeakerHighlight(peer_id);
         if (this.dominantSpeaker && switchDominantSpeakerFocus.checked) {
-            this.handleDominantSpeakerFocus(producer_id);
+            // Montemeet: pass peer_id — producer_id may be null (see focus handler)
+            this.handleDominantSpeakerFocus(producer_id, null, 10000, peer_id);
         }
     }
 

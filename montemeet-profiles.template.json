@@ -11,6 +11,16 @@
                 "opusMaxAverageBitrate": 128000
             }
         },
+        "anchored-lesson": {
+            "audio": {
+                "echoCancellation": true,
+                "autoGainControl": false,
+                "noiseSuppression": false,
+                "opusDtx": false,
+                "opusMaxAverageBitrate": 128000
+            },
+            "layout": { "anchor": "presenter" }
+        },
         "default": {
             "audio": null
         }
