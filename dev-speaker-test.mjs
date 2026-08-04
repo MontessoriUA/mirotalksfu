@@ -313,9 +313,13 @@ async function runConcertScenario() {
     const ids = { zal: await idOf(zal), guest1: await idOf(guest1), guest2: await idOf(guest2) };
     const nameById = Object.fromEntries(Object.entries(ids).map(([k, v]) => [v, k]));
 
+    // the concert big view is a PIN on desktop (focus on mobile) — read both
     const focusedOn = (p) =>
         p.page.evaluate(
-            () => document.querySelector('#videoMediaContainer [focus-mode] video[name]')?.getAttribute('name') ?? null
+            () =>
+                document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ??
+                document.querySelector('#videoMediaContainer [focus-mode] video[name]')?.getAttribute('name') ??
+                null
         );
     const selfHidden = (p) =>
         p.page.evaluate(() => {

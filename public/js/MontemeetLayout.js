@@ -321,22 +321,33 @@ const MontemeetLayout = (() => {
         return false;
     }
 
+    // Concert big view: pin + tile strip on desktop (Ivan, 2026-08-05 — the
+    // other participants stay visible as small tiles), focus on mobile.
+    function concertPinView() {
+        return anchorView === 'pin' && typeof rc !== 'undefined' && rc && !rc.isMobileDevice;
+    }
+
     async function applyConcert() {
         if (!auto || typeof rc === 'undefined') return;
-        let focusedDom = false;
+        if (manualPinActive()) return; // a hand-made pin always wins
+        let shownDom = false;
         if (dom && dom !== selfId()) {
-            focusedDom = await focusByPeer(dom);
+            shownDom = concertPinView() ? await pinByPeer(dom) : await focusByPeer(dom);
         }
-        if (!focusedDom) {
+        if (!shownDom) {
             // silence, self is dominant, or the dominant has no video here
             if (isHost()) {
-                focusOff(); // grid of the others
+                concertPinView() ? unpin() : focusOff(); // grid of the others
             } else {
                 const id = anchorVideoId();
-                id ? focusOn(id) : focusOff();
+                if (concertPinView()) {
+                    id ? pinByVideoEl(document.getElementById(id)) : unpin();
+                } else {
+                    id ? focusOn(id) : focusOff();
+                }
             }
         }
-        // last — an unfocus above re-shows every sibling, including our own tile
+        // last — a re-layout above re-shows every sibling, including our own tile
         if (hideSelf() && typeof resizeVideoMedia === 'function') resizeVideoMedia();
     }
 
@@ -401,6 +412,11 @@ const MontemeetLayout = (() => {
 
     function cycleSpeakerView() {
         speakerView = VIEW_CYCLE[(VIEW_CYCLE.indexOf(speakerView) + 1) % VIEW_CYCLE.length];
+        try {
+            localStorage.setItem('MONTEMEET_SPEAKER_VIEW', speakerView);
+        } catch (e) {
+            /* localStorage unavailable */
+        }
         if (speakerView === 'grid') {
             disengageAuto();
             unpin();
@@ -504,7 +520,7 @@ const MontemeetLayout = (() => {
     // The button appears only for the presenter in pin-view rooms on desktop;
     // isPresenter settles after join, so creation is retried on DOM changes.
     function maybeCreateSpeakerViewButton() {
-        if (anchorView !== 'pin' || !isHost()) return;
+        if (anchorView !== 'pin' || !isHost() || concertRoom) return;
         if (typeof rc === 'undefined' || !rc || rc.isMobileDevice) return;
         if (document.getElementById('montemeetSpeakerViewBtn')) return;
         const bar = document.getElementById('bottomButtons');
@@ -513,6 +529,22 @@ const MontemeetLayout = (() => {
         btn.id = 'montemeetSpeakerViewBtn';
         btn.addEventListener('click', cycleSpeakerView);
         bar.appendChild(btn);
+        // restore the teacher's last chosen view (lesson rooms only — the
+        // button never exists at concerts, so the memory cannot leak there)
+        try {
+            const saved = localStorage.getItem('MONTEMEET_SPEAKER_VIEW');
+            if (saved && VIEW_CYCLE.includes(saved) && saved !== 'grid' && !soloActive) {
+                speakerView = saved;
+                engageAuto({
+                    holdMs: layoutCfg?.holdMs ?? 1500,
+                    silenceMs: layoutCfg?.silenceMs ?? 4000,
+                    minVolume: layoutCfg?.minVolume ?? 2,
+                    apply: applyGroupSpeaker,
+                });
+            }
+        } catch (e) {
+            /* localStorage unavailable */
+        }
         updateSpeakerViewButton();
     }
 

@@ -51,7 +51,8 @@
                 "anchor": "presenter",
                 "holdMs": 1500,
                 "silenceMs": 4000,
-                "minVolume": 4
+                "minVolume": 4,
+                "view": "pin"
             },
             "roles": "concert"
         },
