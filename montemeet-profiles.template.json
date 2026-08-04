@@ -26,7 +26,10 @@
             "layout": {
                 "mode": "anchored",
                 "anchor": "presenter",
-                "view": "pin"
+                "view": "pin",
+                "holdMs": 1500,
+                "silenceMs": 4000,
+                "minVolume": 2
             }
         },
         "concert": {

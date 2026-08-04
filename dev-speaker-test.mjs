@@ -403,6 +403,63 @@ async function runGroupScenario() {
     };
 }
 
+// Teacher's speaker view (2.4+): the toolbar toggle pins whoever speaks.
+// Student1 sings at ~5-13s; expectations on the TEACHER's page: grid before
+// (button just clicked), Student1 pinned during the speech, grid again after
+// silenceMs. Students keep the teacher pinned the whole time.
+async function runGroupSpeakerScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student1 = await launchPeer('Student1', fixtures.guestTurn, { room });
+    const student2 = await launchPeer('Student2', fixtures.silence, { room });
+    await delay(2000);
+
+    const ids = {
+        student1: await student1.page.evaluate(() => rc.peer_id),
+    };
+    const clicked = await teacher.page.evaluate(() => {
+        const btn = document.getElementById('montemeetSpeakerViewBtn');
+        if (!btn) return false;
+        btn.click();
+        return true;
+    });
+
+    const pinnedOn = (p) =>
+        p.page.evaluate(
+            () => document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ?? null
+        );
+
+    const samples = [];
+    const started = Date.now();
+    for (let i = 0; i < 13; i++) {
+        await delay(2000);
+        samples.push({
+            t: Math.round((Date.now() - started) / 1000),
+            teacherPin: (await pinnedOn(teacher)) === ids.student1 ? 'student1' : ((await pinnedOn(teacher)) ? 'other' : null),
+        });
+    }
+
+    await teacher.browser.close();
+    await student1.browser.close();
+    await student2.browser.close();
+
+    const early = samples.filter((s) => s.t <= 4);
+    const mid = samples.filter((s) => s.t >= 9 && s.t <= 15);
+    const late = samples.filter((s) => s.t >= 22);
+    return {
+        scenario: 'group-speaker',
+        buttonFound: clicked,
+        samples,
+        checks: {
+            buttonFound: clicked,
+            earlyGrid: early.some((s) => s.teacherPin === null),
+            speakerPinned: mid.some((s) => s.teacherPin === 'student1'),
+            backToGrid: late.length > 0 && late.every((s) => s.teacherPin === null),
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -439,6 +496,11 @@ if (which === 'concert' || which === 'all') {
 }
 if (which === 'group' || which === 'all') {
     const r = await runGroupScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'group-speaker' || which === 'all') {
+    const r = await runGroupSpeakerScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }

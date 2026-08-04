@@ -10832,9 +10832,10 @@ class RoomClient {
         console.log('Dominant Speaker', data);
         const { peer_id, producer_id } = data;
         this.handleDominantSpeakerHighlight(peer_id);
-        // Montemeet: concert rooms are driven by the layout owner (hold timer,
-        // roles, silence watchdog) instead of the stock checkbox behavior
-        if (typeof MontemeetLayout !== 'undefined' && MontemeetLayout.concertActive()) {
+        // Montemeet: auto modes (concert, teacher's speaker view) are driven by
+        // the layout owner (hold timer, silence watchdog) instead of the stock
+        // checkbox behavior
+        if (typeof MontemeetLayout !== 'undefined' && MontemeetLayout.autoActive()) {
             MontemeetLayout.onDominant(peer_id);
             return;
         }
