@@ -1,0 +1,44 @@
+/*
+ * Montemeet: layout overrides.
+ *
+ * Strip view for anchored pin-view rooms (group lessons): the pinned video
+ * on the RIGHT, the tile strip on the LEFT; tiles keep a fixed aspect ratio
+ * (stock resizeVideoMedia writes inline px sizes — the !important rules here
+ * intentionally win over them), vertical scroll when there are many tiles,
+ * DOM order is never re-shuffled by who is speaking.
+ *
+ * Both classes are managed by MontemeetLayout.js:
+ *   .montemeet-strip  — the room profile has layout.view 'pin';
+ *   .montemeet-pinned — a video is currently pinned.
+ */
+
+body.montemeet-strip.montemeet-pinned #videoPinMediaContainer {
+    left: auto !important;
+    right: 0 !important;
+    top: 0 !important;
+    width: 78% !important;
+    height: 100% !important;
+}
+
+body.montemeet-strip.montemeet-pinned #videoMediaContainer {
+    left: 0 !important;
+    right: auto !important;
+    top: 0 !important;
+    width: 22% !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {
+    width: 86% !important;
+    height: auto !important;
+    aspect-ratio: 16 / 9 !important;
+    flex: 0 0 auto !important;
+    margin: 4px 0 !important;
+}

@@ -403,10 +403,12 @@ async function runGroupScenario() {
     };
 }
 
-// Teacher's speaker view (2.4+): the toolbar toggle pins whoever speaks.
-// Student1 sings at ~5-13s; expectations on the TEACHER's page: grid before
-// (button just clicked), Student1 pinned during the speech, grid again after
-// silenceMs. Students keep the teacher pinned the whole time.
+// Teacher's view cycle (2.4+, Ivan 2026-08-04): grid → sticky (last speaker
+// stays pinned, silence changes nothing) → auto (speaker pinned, silence
+// returns the grid) → grid. Student1 sings at ~5-13s. One click before the
+// speech puts the teacher into STICKY: Student1 must be pinned during the
+// speech AND stay pinned through the silence after it. Two more clicks
+// (auto → grid) must unpin. Also asserts the Appendix A toolbar trim.
 async function runGroupSpeakerScenario() {
     const room = 'montemeet-group';
     const teacher = await launchPeer('Teacher', fixtures.silence, { room });
@@ -418,17 +420,24 @@ async function runGroupSpeakerScenario() {
     const ids = {
         student1: await student1.page.evaluate(() => rc.peer_id),
     };
-    const clicked = await teacher.page.evaluate(() => {
-        const btn = document.getElementById('montemeetSpeakerViewBtn');
-        if (!btn) return false;
-        btn.click();
-        return true;
-    });
+    const clickCycle = (p) =>
+        p.page.evaluate(() => {
+            const btn = document.getElementById('montemeetSpeakerViewBtn');
+            if (!btn) return false;
+            btn.click();
+            return true;
+        });
+    const clicked = await clickCycle(teacher); // grid → sticky
 
     const pinnedOn = (p) =>
         p.page.evaluate(
             () => document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ?? null
         );
+    const visible = (p, id) =>
+        p.page.evaluate((elId) => {
+            const el = document.getElementById(elId);
+            return !!el && getComputedStyle(el).display !== 'none';
+        }, id);
 
     const samples = [];
     const started = Date.now();
@@ -440,6 +449,18 @@ async function runGroupSpeakerScenario() {
         });
     }
 
+    await clickCycle(teacher); // sticky → auto
+    await clickCycle(teacher); // auto → grid (unpins)
+    await delay(1500);
+    const afterGridClick = await pinnedOn(teacher);
+
+    const toolbar = {
+        teacherPollHidden: !(await visible(teacher, 'pollButton')),
+        teacherShareVisible: await visible(teacher, 'shareButton'),
+        studentShareHidden: !(await visible(student2, 'shareButton')),
+        studentEmojiHidden: !(await visible(student2, 'emojiRoomButton')),
+    };
+
     await teacher.browser.close();
     await student1.browser.close();
     await student2.browser.close();
@@ -449,13 +470,15 @@ async function runGroupSpeakerScenario() {
     const late = samples.filter((s) => s.t >= 22);
     return {
         scenario: 'group-speaker',
-        buttonFound: clicked,
         samples,
+        toolbar,
         checks: {
             buttonFound: clicked,
             earlyGrid: early.some((s) => s.teacherPin === null),
             speakerPinned: mid.some((s) => s.teacherPin === 'student1'),
-            backToGrid: late.length > 0 && late.every((s) => s.teacherPin === null),
+            stickyThroughSilence: late.length > 0 && late.every((s) => s.teacherPin === 'student1'),
+            gridClickUnpins: afterGridClick === null,
+            toolbarTrimmed: Object.values(toolbar).every(Boolean),
         },
     };
 }

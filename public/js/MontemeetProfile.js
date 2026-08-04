@@ -42,6 +42,7 @@ const MontemeetProfile = (() => {
         name: () => (profile && profile.name) || 'default',
         audio: () => (profile && profile.audio) || null,
         layout: () => (profile && profile.layout) || null,
+        roles: () => (profile && profile.roles) || null,
         isMusic: () => !!(profile && profile.audio && profile.audio.noiseSuppression === false),
     };
 })();

@@ -106,6 +106,7 @@ const MontemeetLayout = (() => {
             // this is the one place a synthetic click is allowed, encapsulated here.
             const btn = document.getElementById(id + '__pin');
             if (btn) btn.click();
+            syncPinnedClass();
             return;
         }
         focusOn(id);
@@ -224,10 +225,30 @@ const MontemeetLayout = (() => {
     }
 
     // Pin helpers: the pin logic lives inside the button's click closure
-    // upstream — synthetic clicks are allowed here only (see ensureDefault)
+    // upstream — synthetic clicks are allowed here only (see ensureDefault).
+    // The strip order must not depend on who spoke (Ivan, 2026-08-04), so a
+    // programmatic pin remembers the tile's place and unpin puts it back
+    // (stock unpin appends the tile to the end).
+    const stripRestore = new Map(); // camId -> next sibling camId (null = was last)
+
+    function syncPinnedClass() {
+        document.body.classList.toggle('montemeet-pinned', !!(typeof rc !== 'undefined' && rc && rc.isVideoPinned));
+    }
+
     function unpin() {
         if (typeof rc === 'undefined' || !rc.isVideoPinned || !rc.pinnedVideoPlayerId) return;
+        const camId = containerId(rc.pinnedVideoPlayerId);
         document.getElementById(rc.pinnedVideoPlayerId + '__pin')?.click();
+        if (stripRestore.has(camId)) {
+            const nextId = stripRestore.get(camId);
+            stripRestore.delete(camId);
+            const cam = document.getElementById(camId);
+            const next = nextId ? document.getElementById(nextId) : null;
+            if (cam && next && next.parentElement === cam.parentElement) {
+                cam.parentElement.insertBefore(cam, next);
+            }
+        }
+        syncPinnedClass();
     }
 
     async function pinByPeer(peerId) {
@@ -237,7 +258,10 @@ const MontemeetLayout = (() => {
             if (rc.pinnedVideoPlayerId === videoEl.id) return true;
             unpin();
         }
+        const cam = document.getElementById(containerId(videoEl.id));
+        if (cam) stripRestore.set(cam.id, cam.nextElementSibling?.id ?? null);
         document.getElementById(videoEl.id + '__pin')?.click();
+        syncPinnedClass();
         return rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id;
     }
 
@@ -270,13 +294,28 @@ const MontemeetLayout = (() => {
         if (hideSelf() && typeof resizeVideoMedia === 'function') resizeVideoMedia();
     }
 
-    // ---------- teacher's speaker view at group lessons (2.4+) ----------
-    // A toolbar toggle for the teacher in view:'pin' rooms: OFF (default) —
-    // the plain grid of students; ON — the current speaker pinned big with
-    // the tile strip (same mechanics the students get, anchored to whoever
-    // speaks). Silence or the teacher speaking → back to the grid.
+    // ---------- teacher's view switch at group lessons (2.4+) ----------
+    // A toolbar button for the teacher in view:'pin' rooms cycles three views:
+    //   'grid'   (default) — the plain grid of students;
+    //   'sticky' — the active/LAST speaker stays pinned big with the tile
+    //              strip; silence changes nothing;
+    //   'auto'   — the active speaker pinned, silence returns the grid.
+    // The button's icon shows what the NEXT click will give (Ivan, 2026-08-04).
 
-    let speakerView = false;
+    const VIEW_CYCLE = ['grid', 'sticky', 'auto'];
+    // icon/title describe the NEXT state in the cycle
+    const VIEW_NEXT_ICON = {
+        grid: 'fas fa-th-large', // next: sticky (speaker + tiles)
+        sticky: 'fas fa-sync-alt', // next: auto (follows and lets go)
+        auto: 'fas fa-th', // next: grid
+    };
+    const VIEW_NEXT_TITLE = {
+        grid: 'Вид: сетка → следующий клик: говорящий крупно (остаётся)',
+        sticky: 'Вид: говорящий (остаётся) → следующий клик: говорящий (авто-возврат в сетку)',
+        auto: 'Вид: говорящий (авто-возврат) → следующий клик: сетка',
+    };
+
+    let speakerView = 'grid';
     let layoutCfg = null;
 
     async function applyGroupSpeaker() {
@@ -285,43 +324,48 @@ const MontemeetLayout = (() => {
             const ok = await pinByPeer(dom);
             if (ok) return;
         }
-        unpin(); // silence, self, or no video → grid
+        // silence, self speaking, or no video for the dominant:
+        if (speakerView === 'sticky') return; // keep the LAST speaker pinned
+        unpin(); // 'auto' → back to the grid
     }
 
-    function toggleSpeakerView() {
-        speakerView = !speakerView;
-        if (speakerView) {
+    function updateSpeakerViewButton() {
+        const btn = document.getElementById('montemeetSpeakerViewBtn');
+        if (!btn) return;
+        btn.innerHTML = `<i class="${VIEW_NEXT_ICON[speakerView]}"></i>`;
+        btn.title = VIEW_NEXT_TITLE[speakerView];
+        btn.style.color = speakerView === 'grid' ? 'white' : 'lime';
+    }
+
+    function cycleSpeakerView() {
+        speakerView = VIEW_CYCLE[(VIEW_CYCLE.indexOf(speakerView) + 1) % VIEW_CYCLE.length];
+        if (speakerView === 'grid') {
+            disengageAuto();
+            unpin();
+        } else if (!auto || auto.apply !== applyGroupSpeaker) {
             engageAuto({
                 holdMs: layoutCfg?.holdMs ?? 1500,
                 silenceMs: layoutCfg?.silenceMs ?? 4000,
                 minVolume: layoutCfg?.minVolume ?? 2,
                 apply: applyGroupSpeaker,
             });
-        } else {
-            disengageAuto();
-            unpin();
         }
-        const btn = document.getElementById('montemeetSpeakerViewBtn');
-        if (btn) {
-            btn.style.color = speakerView ? 'lime' : 'white';
-            btn.title = speakerView ? 'Speaker view: on (click for grid)' : 'Speaker view: off (click to follow the speaker)';
-        }
+        updateSpeakerViewButton();
     }
 
     // The button appears only for the presenter in pin-view rooms on desktop;
     // isPresenter settles after join, so creation is retried on DOM changes.
     function maybeCreateSpeakerViewButton() {
         if (anchorView !== 'pin' || !isHost()) return;
-        if (typeof rc === 'undefined' || rc.isMobileDevice) return;
+        if (typeof rc === 'undefined' || !rc || rc.isMobileDevice) return;
         if (document.getElementById('montemeetSpeakerViewBtn')) return;
         const bar = document.getElementById('bottomButtons');
         if (!bar) return;
         const btn = document.createElement('button');
         btn.id = 'montemeetSpeakerViewBtn';
-        btn.title = 'Speaker view: off (click to follow the speaker)';
-        btn.innerHTML = '<i class="fas fa-crosshairs"></i>';
-        btn.addEventListener('click', toggleSpeakerView);
+        btn.addEventListener('click', cycleSpeakerView);
         bar.appendChild(btn);
+        updateSpeakerViewButton();
     }
 
     (async () => {
@@ -331,6 +375,7 @@ const MontemeetLayout = (() => {
             layoutCfg = layout;
             anchorMode = layout?.anchor ?? null;
             anchorView = layout?.view ?? 'focus';
+            if (anchorView === 'pin') document.body.classList.add('montemeet-strip');
             const isConcert = layout?.mode === 'concert';
             if (isConcert) {
                 engageAuto({
@@ -350,6 +395,7 @@ const MontemeetLayout = (() => {
                 clearTimeout(t);
                 t = setTimeout(() => {
                     maybeCreateSpeakerViewButton();
+                    syncPinnedClass();
                     if (isConcert) {
                         applyConcert();
                     } else if (auto) {
