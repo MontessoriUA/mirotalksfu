@@ -42,3 +42,24 @@ body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {
     flex: 0 0 auto !important;
     margin: 4px 0 !important;
 }
+
+/*
+ * Solo (1:1) lesson layout, Google-Meet style: the companion is focused
+ * fullscreen by MontemeetLayout, the own tile floats as a small overlay
+ * (the stock focus mode hides siblings with inline display:none — the
+ * !important below wins it back for the own tile only).
+ */
+body.montemeet-solo .montemeet-self-pip {
+    display: block !important;
+    position: fixed !important;
+    right: 16px;
+    bottom: 96px;
+    width: 200px !important;
+    height: auto !important;
+    aspect-ratio: 16 / 9 !important;
+    margin: 0 !important;
+    z-index: 8;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}

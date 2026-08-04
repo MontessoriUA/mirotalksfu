@@ -26,11 +26,14 @@ const MontemeetRoles = (() => {
     ];
     // additionally hidden for students
     const HIDE_STUDENT = [...HIDE_BOTH, 'shareButton', 'hideMeButton', 'participantsButton', 'whiteboardButton'];
+    // concerts: no screen sharing and no chat for anyone (Ivan, 2026-08-05)
+    const HIDE_CONCERT = [...HIDE_BOTH, 'startScreenButton', 'chatButton', 'whiteboardButton'];
 
     function apply() {
         if (typeof rc === 'undefined' || !rc) return;
+        const preset = MontemeetProfile.roles();
         const teacher = typeof isPresenter !== 'undefined' && isPresenter;
-        const list = teacher ? HIDE_BOTH : HIDE_STUDENT;
+        const list = preset === 'concert' ? HIDE_CONCERT : teacher ? HIDE_BOTH : HIDE_STUDENT;
         for (const id of list) {
             const el = document.getElementById(id);
             if (el && el.style.display !== 'none') el.style.display = 'none';
@@ -40,7 +43,7 @@ const MontemeetRoles = (() => {
     (async () => {
         try {
             await MontemeetProfile.ready;
-            if (MontemeetProfile.roles() !== 'lesson') return;
+            if (!['lesson', 'concert'].includes(MontemeetProfile.roles())) return;
             const target = document.getElementById('videoMediaContainer');
             if (!target) return;
             let t = null;

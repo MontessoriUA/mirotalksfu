@@ -91,25 +91,31 @@ const MontemeetLayout = (() => {
     function anchorVideoId() {
         const peerId = anchorPeerId();
         if (!peerId) return null;
+        // an active screen share replaces the anchor's camera (Ivan, 2026-08-05)
+        const screenEl = peerScreenVideo(peerId);
+        if (screenEl) return screenEl.id;
         const videoEl = rc.getVideoElementByPeerId(peerId);
         return videoEl ? videoEl.id : null;
     }
 
     // Show the anchor if the room is anchored and nothing else claims the screen
     function ensureDefault() {
-        if (!anchorMode || typeof rc === 'undefined') return;
-        if (rc.isVideoPinned || current() !== null) return; // manual layout wins
-        const id = anchorVideoId();
-        if (!id) return;
+        if (!anchorMode || typeof rc === 'undefined' || !rc) return;
+        if (soloActive) return; // the 1:1 layout owns the screen
+        const id = anchorVideoId(); // prefers the anchor's screen share
         if (anchorView === 'pin' && !rc.isMobileDevice) {
-            // The pin logic lives inside the button's click closure upstream —
-            // this is the one place a synthetic click is allowed, encapsulated here.
-            const btn = document.getElementById(id + '__pin');
-            if (btn) btn.click();
-            syncPinnedClass();
+            if (manualPinActive() || current() !== null) return;
+            if (auto) return; // the teacher's speaker view owns pinning
+            if (!id) return;
+            if (rc.isVideoPinned) {
+                if (rc.pinnedVideoPlayerId === id) return;
+                unpin(); // the anchor started/stopped sharing → swap the pin
+            }
+            pinByVideoEl(document.getElementById(id));
             return;
         }
-        focusOn(id);
+        if (rc.isVideoPinned || current() !== null) return; // manual layout wins
+        if (id) focusOn(id);
     }
 
     // ---------- concert mode (stage 2.3, ТЗ §5) ----------
@@ -178,6 +184,7 @@ const MontemeetLayout = (() => {
             timer: setTimeout(() => {
                 if (!auto || !pending) return;
                 dom = pending.peerId;
+                lastDom = dom;
                 pending = null;
                 auto.apply();
             }, auto.holdMs),
@@ -231,6 +238,35 @@ const MontemeetLayout = (() => {
     // (stock unpin appends the tile to the end).
     const stripRestore = new Map(); // camId -> next sibling camId (null = was last)
 
+    // Stock pin/focus clicks play a UI sound — automated switches must be silent
+    function silentClick(el) {
+        if (!el) return;
+        if (typeof rc !== 'undefined' && rc && typeof rc.sound === 'function') {
+            const orig = rc.sound;
+            rc.sound = () => {};
+            try {
+                el.click();
+            } finally {
+                rc.sound = orig;
+            }
+        } else {
+            el.click();
+        }
+    }
+
+    // Screen-share videos carry no name attribute — only volumeBar (upstream)
+    function peerScreenVideo(peerId) {
+        return document.querySelector(`video[volumeBar="${peerId}___pVolume"]:not([name])`) || null;
+    }
+
+    function anyRemoteScreenVideo() {
+        for (const el of document.querySelectorAll('video[volumeBar]:not([name])')) {
+            const owner = (el.getAttribute('volumeBar') || '').replace(/___pVolume$/, '');
+            if (owner && owner !== selfId()) return el;
+        }
+        return null;
+    }
+
     function syncPinnedClass() {
         document.body.classList.toggle('montemeet-pinned', !!(typeof rc !== 'undefined' && rc && rc.isVideoPinned));
     }
@@ -238,7 +274,8 @@ const MontemeetLayout = (() => {
     function unpin() {
         if (typeof rc === 'undefined' || !rc.isVideoPinned || !rc.pinnedVideoPlayerId) return;
         const camId = containerId(rc.pinnedVideoPlayerId);
-        document.getElementById(rc.pinnedVideoPlayerId + '__pin')?.click();
+        silentClick(document.getElementById(rc.pinnedVideoPlayerId + '__pin'));
+        programmaticPinId = null;
         if (stripRestore.has(camId)) {
             const nextId = stripRestore.get(camId);
             stripRestore.delete(camId);
@@ -251,18 +288,27 @@ const MontemeetLayout = (() => {
         syncPinnedClass();
     }
 
-    async function pinByPeer(peerId) {
-        const videoEl = await resolvePeerVideo(peerId);
+    function pinByVideoEl(videoEl) {
         if (!videoEl) return false;
         if (rc.isVideoPinned) {
             if (rc.pinnedVideoPlayerId === videoEl.id) return true;
+            if (manualPinActive()) return false; // never fight a manual pin
             unpin();
         }
         const cam = document.getElementById(containerId(videoEl.id));
         if (cam) stripRestore.set(cam.id, cam.nextElementSibling?.id ?? null);
-        document.getElementById(videoEl.id + '__pin')?.click();
+        silentClick(document.getElementById(videoEl.id + '__pin'));
+        if (rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id) {
+            programmaticPinId = videoEl.id;
+            syncPinnedClass();
+            return true;
+        }
         syncPinnedClass();
-        return rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id;
+        return false;
+    }
+
+    async function pinByPeer(peerId) {
+        return pinByVideoEl(await resolvePeerVideo(peerId));
     }
 
     function hideSelf() {
@@ -303,23 +349,39 @@ const MontemeetLayout = (() => {
     // The button's icon shows what the NEXT click will give (Ivan, 2026-08-04).
 
     const VIEW_CYCLE = ['grid', 'sticky', 'auto'];
-    // icon/title describe the NEXT state in the cycle
-    const VIEW_NEXT_ICON = {
-        grid: 'fas fa-th-large', // next: sticky (speaker + tiles)
-        sticky: 'fas fa-sync-alt', // next: auto (follows and lets go)
-        auto: 'fas fa-th', // next: grid
+    // The button shows the CURRENT state (Ivan, 2026-08-05), always lime.
+    const VIEW_ICON = {
+        // grid: four cells
+        grid: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><rect x="1" y="1" width="6.4" height="6.4" rx="1"/><rect x="8.6" y="1" width="6.4" height="6.4" rx="1"/><rect x="1" y="8.6" width="6.4" height="6.4" rx="1"/><rect x="8.6" y="8.6" width="6.4" height="6.4" rx="1"/></svg>',
+        // sticky: one big cell right, small tiles left
+        sticky: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><rect x="1" y="1" width="4" height="4" rx="0.8"/><rect x="1" y="6" width="4" height="4" rx="0.8"/><rect x="1" y="11" width="4" height="4" rx="0.8"/><rect x="6.4" y="1" width="8.6" height="14" rx="1"/></svg>',
+        // auto: the word in a cell-like frame
+        auto: '<svg viewBox="0 0 16 16" width="16" height="16"><rect x="0.75" y="2.75" width="14.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="10.5" text-anchor="middle" font-size="5.2" font-family="sans-serif" font-weight="bold" fill="currentColor">AUTO</text></svg>',
     };
-    const VIEW_NEXT_TITLE = {
-        grid: 'Вид: сетка → следующий клик: говорящий крупно (остаётся)',
-        sticky: 'Вид: говорящий (остаётся) → следующий клик: говорящий (авто-возврат в сетку)',
-        auto: 'Вид: говорящий (авто-возврат) → следующий клик: сетка',
+    const VIEW_TITLE = {
+        grid: 'Вид: сетка (клик — говорящий крупно)',
+        sticky: 'Вид: говорящий крупно, остаётся (клик — авто-возврат в сетку)',
+        auto: 'Вид: говорящий крупно, тишина возвращает сетку (клик — сетка)',
     };
 
     let speakerView = 'grid';
     let layoutCfg = null;
+    let programmaticPinId = null; // pinnedVideoPlayerId set by US (manual pins win)
+    let lastDom = null; // last non-null dominant — engaging sticky/auto starts from them
+
+    function manualPinActive() {
+        return !!(rc?.isVideoPinned && rc.pinnedVideoPlayerId && rc.pinnedVideoPlayerId !== programmaticPinId);
+    }
 
     async function applyGroupSpeaker() {
         if (typeof rc === 'undefined') return;
+        if (manualPinActive()) return; // the teacher pinned someone by hand — obey
+        // a student's screen share outranks the speaker logic on the teacher's side
+        const screenEl = anyRemoteScreenVideo();
+        if (screenEl) {
+            await pinByVideoEl(screenEl);
+            return;
+        }
         if (dom && dom !== selfId()) {
             const ok = await pinByPeer(dom);
             if (ok) return;
@@ -332,9 +394,9 @@ const MontemeetLayout = (() => {
     function updateSpeakerViewButton() {
         const btn = document.getElementById('montemeetSpeakerViewBtn');
         if (!btn) return;
-        btn.innerHTML = `<i class="${VIEW_NEXT_ICON[speakerView]}"></i>`;
-        btn.title = VIEW_NEXT_TITLE[speakerView];
-        btn.style.color = speakerView === 'grid' ? 'white' : 'lime';
+        btn.innerHTML = VIEW_ICON[speakerView];
+        btn.title = VIEW_TITLE[speakerView];
+        btn.style.color = 'lime';
     }
 
     function cycleSpeakerView() {
@@ -342,15 +404,101 @@ const MontemeetLayout = (() => {
         if (speakerView === 'grid') {
             disengageAuto();
             unpin();
-        } else if (!auto || auto.apply !== applyGroupSpeaker) {
-            engageAuto({
-                holdMs: layoutCfg?.holdMs ?? 1500,
-                silenceMs: layoutCfg?.silenceMs ?? 4000,
-                minVolume: layoutCfg?.minVolume ?? 2,
-                apply: applyGroupSpeaker,
-            });
+        } else {
+            if (!auto || auto.apply !== applyGroupSpeaker) {
+                engageAuto({
+                    holdMs: layoutCfg?.holdMs ?? 1500,
+                    silenceMs: layoutCfg?.silenceMs ?? 4000,
+                    minVolume: layoutCfg?.minVolume ?? 2,
+                    apply: applyGroupSpeaker,
+                });
+            }
+            // don't wait for the next speech — start from the LAST speaker
+            if (dom === null && lastDom) {
+                dom = lastDom;
+                lastActivityTs = Date.now();
+            }
+            applyGroupSpeaker();
         }
         updateSpeakerViewButton();
+    }
+
+    // ---------- solo (1:1) layout, Google-Meet style (Ivan, 2026-08-05) ----------
+    // Lessons with exactly two participants: the companion fullscreen, the own
+    // tile as a small overlay in the corner; the view-cycle button is hidden.
+    // Entering/leaving is automatic as the third participant joins/leaves.
+
+    let soloActive = false;
+    let concertRoom = false;
+
+    function markSelfPip() {
+        const videoEl = rc?.getVideoElementByPeerId?.(selfId());
+        const cam = videoEl ? document.getElementById(containerId(videoEl.id)) : null;
+        for (const el of document.querySelectorAll('.montemeet-self-pip')) {
+            if (el !== cam) el.classList.remove('montemeet-self-pip');
+        }
+        if (cam) cam.classList.add('montemeet-self-pip');
+    }
+
+    function clearSelfPip() {
+        for (const el of document.querySelectorAll('.montemeet-self-pip')) el.classList.remove('montemeet-self-pip');
+    }
+
+    // rc.peers is a join-time snapshot (the first joiner never learns about
+    // later peers there) — the DOM is the live source of participant identity
+    function livePeerIds() {
+        const ids = new Set();
+        for (const el of document.querySelectorAll('video[name]')) ids.add(el.getAttribute('name'));
+        for (const el of document.querySelectorAll('video[volumeBar]:not([name])')) {
+            ids.add((el.getAttribute('volumeBar') || '').replace(/___pVolume$/, ''));
+        }
+        for (const el of document.querySelectorAll('[id$="__videoOff"]')) ids.add(el.id.replace(/__videoOff$/, ''));
+        ids.delete('');
+        if (selfId()) ids.add(selfId());
+        return ids;
+    }
+
+    function companionPeerId() {
+        for (const id of livePeerIds()) {
+            if (id !== selfId()) return id;
+        }
+        return null;
+    }
+
+    async function applySolo() {
+        const companion = companionPeerId();
+        if (!companion) return;
+        const videoEl = peerScreenVideo(companion) || (await resolvePeerVideo(companion));
+        if (videoEl) focusOn(videoEl.id);
+        markSelfPip();
+    }
+
+    function syncSolo() {
+        if (!anchorMode || concertRoom || typeof rc === 'undefined' || !rc) return;
+        const shouldSolo = livePeerIds().size === 2 && !rc.isMobileDevice;
+        const btn = document.getElementById('montemeetSpeakerViewBtn');
+        if (shouldSolo === soloActive) {
+            if (soloActive) applySolo(); // keep in shape (screen share swaps etc.)
+            return;
+        }
+        soloActive = shouldSolo;
+        document.body.classList.toggle('montemeet-solo', soloActive);
+        if (btn) btn.style.display = soloActive ? 'none' : '';
+        if (soloActive) {
+            if (auto && auto.apply === applyGroupSpeaker) disengageAuto();
+            speakerView = 'grid';
+            updateSpeakerViewButton();
+            unpin();
+            applySolo();
+        } else {
+            clearSelfPip();
+            // keep an existing focus (it is the companion/anchor or already the
+            // new speaker) — only the pin view needs an actual re-layout
+            if (anchorView === 'pin' && !rc.isMobileDevice) {
+                focusOff();
+                ensureDefault();
+            }
+        }
     }
 
     // The button appears only for the presenter in pin-view rooms on desktop;
@@ -377,6 +525,7 @@ const MontemeetLayout = (() => {
             anchorView = layout?.view ?? 'focus';
             if (anchorView === 'pin') document.body.classList.add('montemeet-strip');
             const isConcert = layout?.mode === 'concert';
+            concertRoom = isConcert;
             if (isConcert) {
                 engageAuto({
                     holdMs: layout.holdMs ?? 1500,
@@ -396,6 +545,8 @@ const MontemeetLayout = (() => {
                 t = setTimeout(() => {
                     maybeCreateSpeakerViewButton();
                     syncPinnedClass();
+                    if (!isConcert) syncSolo();
+                    if (soloActive) return;
                     if (isConcert) {
                         applyConcert();
                     } else if (auto) {
@@ -410,5 +561,5 @@ const MontemeetLayout = (() => {
         }
     })();
 
-    return { current, isFocused, focusOn, focusOff, ensureDefault, autoActive, onDominant, noteActivity };
+    return { current, isFocused, focusOn, focusOff, ensureDefault, autoActive, onDominant, noteActivity, syncPinnedClass };
 })();

@@ -95,9 +95,13 @@ function resizeVideoMedia() {
         VideoDrawingOverlay.resizeAll();
     }
 
-    // Montemeet: feed simulcast layers matching the new tile sizes
+    // Montemeet: feed simulcast layers matching the new tile sizes,
+    // keep the pinned-state body class honest (manual pin/unpin included)
     if (typeof MontemeetLayers !== 'undefined') {
         MontemeetLayers.sync();
+    }
+    if (typeof MontemeetLayout !== 'undefined') {
+        MontemeetLayout.syncPinnedClass();
     }
 }
 

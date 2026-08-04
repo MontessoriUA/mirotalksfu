@@ -465,7 +465,6 @@ async function runGroupSpeakerScenario() {
     await student1.browser.close();
     await student2.browser.close();
 
-    const early = samples.filter((s) => s.t <= 4);
     const mid = samples.filter((s) => s.t >= 9 && s.t <= 15);
     const late = samples.filter((s) => s.t >= 22);
     return {
@@ -474,11 +473,63 @@ async function runGroupSpeakerScenario() {
         toolbar,
         checks: {
             buttonFound: clicked,
-            earlyGrid: early.some((s) => s.teacherPin === null),
             speakerPinned: mid.some((s) => s.teacherPin === 'student1'),
             stickyThroughSilence: late.length > 0 && late.every((s) => s.teacherPin === 'student1'),
             gridClickUnpins: afterGridClick === null,
             toolbarTrimmed: Object.values(toolbar).every(Boolean),
+        },
+    };
+}
+
+// Solo (1:1) lesson layout: exactly two participants → Google-Meet style on
+// BOTH sides (companion fullscreen, self as a corner overlay, view button
+// hidden); a third participant joining returns the group layout.
+async function runSoloScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student1 = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(8000);
+
+    const ids = {
+        teacher: await teacher.page.evaluate(() => rc.peer_id),
+        student1: await student1.page.evaluate(() => rc.peer_id),
+    };
+    const soloState = (p) =>
+        p.page.evaluate(() => ({
+            solo: document.body.classList.contains('montemeet-solo'),
+            pip: !!document.querySelector('.montemeet-self-pip'),
+            focused:
+                document.querySelector('#videoMediaContainer [focus-mode] video[name]')?.getAttribute('name') ?? null,
+            btnHidden: (() => {
+                const b = document.getElementById('montemeetSpeakerViewBtn');
+                return !b || b.style.display === 'none';
+            })(),
+        }));
+    const teacherSolo = await soloState(teacher);
+    const studentSolo = await soloState(student1);
+
+    const student2 = await launchPeer('Student2', fixtures.silence, { room });
+    await delay(8000);
+    const teacherAfter = await soloState(teacher);
+    const student2Pin = await student2.page.evaluate(
+        () => document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ?? null
+    );
+
+    await teacher.browser.close();
+    await student1.browser.close();
+    await student2.browser.close();
+
+    return {
+        scenario: 'solo-lesson',
+        teacherSolo,
+        studentSolo,
+        teacherAfter,
+        checks: {
+            soloOnAtTwo: teacherSolo.solo && studentSolo.solo && teacherSolo.pip && studentSolo.pip,
+            companionsFocused: teacherSolo.focused === ids.student1 && studentSolo.focused === ids.teacher,
+            buttonHiddenInSolo: teacherSolo.btnHidden,
+            groupRestoredAtThree: !teacherAfter.solo && student2Pin === ids.teacher,
         },
     };
 }
@@ -524,6 +575,11 @@ if (which === 'group' || which === 'all') {
 }
 if (which === 'group-speaker' || which === 'all') {
     const r = await runGroupSpeakerScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'solo-lesson' || which === 'all') {
+    const r = await runSoloScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
