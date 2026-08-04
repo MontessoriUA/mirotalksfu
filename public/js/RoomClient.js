@@ -4073,7 +4073,15 @@ class RoomClient {
 
                 if (!remoteIsScreen && remotePrivacyOn) this.setVideoPrivacyStatus(remotePeerId, remotePrivacyOn);
 
-                if (remoteIsScreen && !isHideALLVideosActive) pn.click();
+                // Montemeet: in managed rooms (lessons/concerts) the layout owner
+                // decides what a screen share does — no stock auto-pin
+                if (
+                    remoteIsScreen &&
+                    !isHideALLVideosActive &&
+                    !(typeof MontemeetLayout !== 'undefined' && MontemeetLayout.managedRoom())
+                ) {
+                    pn.click();
+                }
 
                 if (isHideALLVideosActive) {
                     isHideALLVideosActive = false;

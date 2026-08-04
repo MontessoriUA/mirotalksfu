@@ -175,6 +175,12 @@ const MontemeetRoles = (() => {
             } finally {
                 BUTTONS.main.chatButton = saved;
             }
+            // closing the list must close the whole panel — otherwise the chat
+            // hiding underneath surfaces (Ivan, 2026-08-05)
+            const plist = document.getElementById('plist');
+            if (plist?.classList.contains('hidden') && rc.isChatOpen) {
+                rc.toggleChat(true);
+            }
         };
         document.getElementById('chatButton')?.addEventListener('click', () => {
             setTimeout(() => {
@@ -197,7 +203,13 @@ const MontemeetRoles = (() => {
         btn.title = 'Отправить файл';
         btn.innerHTML = '<i class="fas fa-file-upload"></i>';
         btn.addEventListener('click', () => stockBtn.click());
-        bar.appendChild(btn);
+        // right next to the participants button (Ivan, 2026-08-05)
+        const anchorBtn = document.getElementById('participantsButton');
+        if (anchorBtn && anchorBtn.parentElement === bar) {
+            bar.insertBefore(btn, anchorBtn.nextSibling);
+        } else {
+            bar.appendChild(btn);
+        }
         fileShareBtnDone = true;
     }
 
@@ -205,6 +217,11 @@ const MontemeetRoles = (() => {
         if (typeof rc === 'undefined' || !rc) return;
         const preset = MontemeetProfile.roles();
         const teacher = typeof isPresenter !== 'undefined' && isPresenter;
+        // body role classes drive the race-proof CSS trims (Montemeet.css)
+        document.body.classList.toggle('montemeet-lesson', preset === 'lesson');
+        document.body.classList.toggle('montemeet-concert', preset === 'concert');
+        document.body.classList.toggle('montemeet-teacher', teacher);
+        document.body.classList.toggle('montemeet-student', !teacher);
         const list = preset === 'concert' ? HIDE_CONCERT : teacher ? HIDE_BOTH : HIDE_STUDENT;
         for (const id of [...list, ...HIDE_SETTINGS_TABS, ...HIDE_CHAT_EXTRAS]) {
             const el = document.getElementById(id);
@@ -214,6 +231,11 @@ const MontemeetRoles = (() => {
         hideSettingRow('switchPushToTalk');
         hideSettingRow('videoQuality');
         hideSettingRow('videoFps');
+        hideSettingRow('screenFps');
+        // orphan divider left at the bottom of the audio tab after the trims
+        const audioTab = document.getElementById('tabAudioDevices');
+        const lastHr = audioTab ? [...audioTab.querySelectorAll('hr')].pop() : null;
+        if (lastHr) lastHr.style.display = 'none';
         if (!defaultTabPicked) {
             // the hidden Room tab was the default — land on the video tab instead
             document.getElementById('tabVideoDevicesBtn')?.click();

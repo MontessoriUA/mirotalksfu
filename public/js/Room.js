@@ -3235,9 +3235,18 @@ function handleSelects() {
         localStorageSettings.screen_fps = screenFps.selectedIndex;
         lS.setSettings(localStorageSettings);
     };
-    microphoneSelect.onchange = () => {
+    microphoneSelect.onchange = async () => {
         // If audio is currently OFF, just update selection for the next start.
-        if (audio) rc.closeThenProduce(RoomClient.mediaType.audio, microphoneSelect.value);
+        if (audio) {
+            // Montemeet: lock the mic buttons while the stream re-produces —
+            // the blinking button invited an accidental self-mute
+            setAudioButtonsDisabled(true);
+            try {
+                await rc.closeThenProduce(RoomClient.mediaType.audio, microphoneSelect.value);
+            } finally {
+                setAudioButtonsDisabled(false);
+            }
+        }
         refreshLsDevices();
     };
     speakerSelect.onchange = () => {

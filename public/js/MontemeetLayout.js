@@ -267,7 +267,26 @@ const MontemeetLayout = (() => {
         return null;
     }
 
+    // Our layout rules own screen shares and pins in profile rooms
+    function managedRoom() {
+        return !!(anchorMode || concertRoom);
+    }
+
     function syncPinnedClass() {
+        if (typeof rc !== 'undefined' && rc) {
+            // sanitize a dead pin: the pinned tile can vanish with its peer
+            // (e.g. a screen share ended) leaving the stock flag stuck
+            if (rc.isVideoPinned && rc.pinnedVideoPlayerId && !document.getElementById(rc.pinnedVideoPlayerId)) {
+                rc.isVideoPinned = false;
+                rc.pinnedVideoPlayerId = null;
+                programmaticPinId = null;
+                try {
+                    rc.removeVideoPinMediaContainer();
+                } catch (e) {
+                    /* container already gone */
+                }
+            }
+        }
         document.body.classList.toggle('montemeet-pinned', !!(typeof rc !== 'undefined' && rc && rc.isVideoPinned));
     }
 
@@ -286,6 +305,8 @@ const MontemeetLayout = (() => {
             }
         }
         syncPinnedClass();
+        // the stock unpin resized while our strip classes were still applied
+        if (typeof resizeVideoMedia === 'function') resizeVideoMedia();
     }
 
     function pinByVideoEl(videoEl) {
@@ -298,13 +319,12 @@ const MontemeetLayout = (() => {
         const cam = document.getElementById(containerId(videoEl.id));
         if (cam) stripRestore.set(cam.id, cam.nextElementSibling?.id ?? null);
         silentClick(document.getElementById(videoEl.id + '__pin'));
-        if (rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id) {
-            programmaticPinId = videoEl.id;
-            syncPinnedClass();
-            return true;
-        }
+        const ok = rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id;
+        if (ok) programmaticPinId = videoEl.id;
         syncPinnedClass();
-        return false;
+        // re-run the layout with the final strip classes in place
+        if (typeof resizeVideoMedia === 'function') resizeVideoMedia();
+        return ok;
     }
 
     async function pinByPeer(peerId) {
@@ -370,7 +390,7 @@ const MontemeetLayout = (() => {
         // sticky: one big cell right, small tiles left
         sticky: '<svg viewBox="0 0 16 16" width="19" height="19" fill="currentColor"><rect x="1" y="1" width="4" height="4" rx="0.8"/><rect x="1" y="6" width="4" height="4" rx="0.8"/><rect x="1" y="11" width="4" height="4" rx="0.8"/><rect x="6.4" y="1" width="8.6" height="14" rx="1"/></svg>',
         // auto: the word in a cell-like frame (padded so the frame clears the text)
-        auto: '<svg viewBox="0 0 18 16" width="21" height="19"><rect x="0.75" y="1.75" width="16.5" height="12.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><text x="9" y="10.6" text-anchor="middle" font-size="4.6" font-family="sans-serif" font-weight="bold" letter-spacing="0.3" fill="currentColor">AUTO</text></svg>',
+        auto: '<svg viewBox="0 0 20 16" width="23" height="19"><rect x="0.75" y="1.75" width="18.5" height="12.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><text x="10" y="8" dominant-baseline="central" text-anchor="middle" font-size="4.6" font-family="sans-serif" font-weight="bold" letter-spacing="0.3" fill="currentColor">AUTO</text></svg>',
     };
     const VIEW_TITLE = {
         grid: 'Вид: сетка (клик — говорящий крупно)',
@@ -433,10 +453,22 @@ const MontemeetLayout = (() => {
                     apply: applyGroupSpeaker,
                 });
             }
-            // don't wait for the next speech — start from the LAST speaker
-            if (dom === null && lastDom) {
-                dom = lastDom;
-                lastActivityTs = Date.now();
+            // don't wait for the next speech — start from the LAST speaker,
+            // or from the first remote participant when nobody spoke yet
+            if (dom === null) {
+                if (!lastDom) {
+                    for (const el of document.querySelectorAll('video[name]')) {
+                        const p = el.getAttribute('name');
+                        if (p && p !== selfId()) {
+                            lastDom = p;
+                            break;
+                        }
+                    }
+                }
+                if (lastDom) {
+                    dom = lastDom;
+                    lastActivityTs = Date.now();
+                }
             }
             applyGroupSpeaker();
         }
@@ -498,15 +530,18 @@ const MontemeetLayout = (() => {
     // of an empty strip; the self tile becomes visible there by design.
     function syncSolo() {
         if (!anchorMode || typeof rc === 'undefined' || !rc) return;
-        const shouldSolo = livePeerIds().size === 2 && !rc.isMobileDevice;
+        const peerCount = livePeerIds().size;
+        const shouldSolo = peerCount === 2 && !rc.isMobileDevice;
         const btn = document.getElementById('montemeetSpeakerViewBtn');
+        // the view button makes sense only with an actual group (3+): hidden
+        // when the teacher sits alone and in the solo 1:1 layout
+        if (btn) btn.style.display = !shouldSolo && peerCount >= 3 ? '' : 'none';
         if (shouldSolo === soloActive) {
             if (soloActive) applySolo(); // keep in shape (screen share swaps etc.)
             return;
         }
         soloActive = shouldSolo;
         document.body.classList.toggle('montemeet-solo', soloActive);
-        if (btn) btn.style.display = soloActive ? 'none' : '';
         if (soloActive) {
             if (auto && auto.apply === applyGroupSpeaker) disengageAuto();
             speakerView = 'grid';
@@ -523,6 +558,35 @@ const MontemeetLayout = (() => {
                 ensureDefault();
             }
             // focus view keeps an existing focus (companion/anchor or the new speaker)
+        }
+    }
+
+    // Concert splash: an image (profile layout.splash) fills the stage when no
+    // other participant's video is visible (nobody online / all cameras off).
+    // The admin cabinet will manage the image later — the mechanics live here.
+    function syncConcertSplash() {
+        if (!concertRoom) return;
+        const url = layoutCfg?.splash;
+        if (!url) return;
+        const others = [
+            ...document.querySelectorAll(
+                '#videoMediaContainer video[name], #videoPinMediaContainer video[name],' +
+                    '#videoMediaContainer video[volumeBar]:not([name]), #videoPinMediaContainer video[volumeBar]:not([name])'
+            ),
+        ].filter((v) => {
+            const owner = v.getAttribute('name') || (v.getAttribute('volumeBar') || '').replace(/___pVolume$/, '');
+            if (!owner || owner === selfId()) return false;
+            const cam = v.closest('.Camera');
+            return !cam || cam.style.display !== 'none';
+        });
+        let el = document.getElementById('montemeetSplash');
+        if (others.length === 0 && !el) {
+            el = document.createElement('div');
+            el.id = 'montemeetSplash';
+            el.style.cssText = `position:fixed;inset:0;z-index:6;background:#000 url('${url}') center/contain no-repeat;`;
+            document.body.appendChild(el);
+        } else if (others.length > 0 && el) {
+            el.remove();
         }
     }
 
@@ -587,6 +651,7 @@ const MontemeetLayout = (() => {
                     maybeCreateSpeakerViewButton();
                     syncPinnedClass();
                     syncSolo();
+                    if (isConcert) syncConcertSplash();
                     if (soloActive) return;
                     if (isConcert) {
                         applyConcert();
@@ -602,5 +667,16 @@ const MontemeetLayout = (() => {
         }
     })();
 
-    return { current, isFocused, focusOn, focusOff, ensureDefault, autoActive, onDominant, noteActivity, syncPinnedClass };
+    return {
+        current,
+        isFocused,
+        focusOn,
+        focusOff,
+        ensureDefault,
+        autoActive,
+        onDominant,
+        noteActivity,
+        syncPinnedClass,
+        managedRoom,
+    };
 })();

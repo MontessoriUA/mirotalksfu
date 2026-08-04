@@ -34,7 +34,7 @@
                 "view": "pin",
                 "holdMs": 1500,
                 "silenceMs": 4000,
-                "minVolume": 4
+                "minVolume": 3
             },
             "roles": "lesson"
         },
@@ -52,12 +52,25 @@
                 "holdMs": 1500,
                 "silenceMs": 4000,
                 "minVolume": 2,
-                "view": "pin"
+                "view": "pin",
+                "splash": ""
             },
             "roles": "concert"
         },
         "default": {
             "audio": null
+        },
+        "dance": {
+            "audio": null,
+            "layout": {
+                "mode": "anchored",
+                "anchor": "presenter",
+                "view": "pin",
+                "holdMs": 1500,
+                "silenceMs": 4000,
+                "minVolume": 3
+            },
+            "roles": "lesson"
         }
     },
     "rooms": {

@@ -43,6 +43,44 @@ body.montemeet-strip.montemeet-pinned #videoMediaContainer {
     margin: 0 auto;
 }
 
+/*
+ * Tile-button trims (Appendix A) — CSS by id suffix is race-proof: the
+ * BUTTONS overrides can lose to early-built tiles, these rules cannot.
+ * Body classes are set by MontemeetRoles.js.
+ */
+body.montemeet-lesson [id$='__pictureInPicture'],
+body.montemeet-concert [id$='__pictureInPicture'],
+body.montemeet-lesson [id$='__fullScreen'],
+body.montemeet-concert [id$='__fullScreen'],
+body.montemeet-lesson [id$='__snapshot'],
+body.montemeet-concert [id$='__snapshot'],
+body.montemeet-lesson [id$='__hideALL'],
+body.montemeet-concert [id$='__hideALL'],
+body.montemeet-lesson [id$='__draw'],
+body.montemeet-concert [id$='__draw'],
+body.montemeet-lesson [id$='__hideMe'],
+body.montemeet-concert [id$='__hideMe'],
+body.montemeet-lesson [id$='___geoLocation'],
+body.montemeet-concert [id$='___geoLocation'],
+body.montemeet-lesson [id$='___sendFile'],
+body.montemeet-concert [id$='___sendFile'],
+body.montemeet-lesson [id$='___sendMsg'],
+body.montemeet-concert [id$='___sendMsg'],
+body.montemeet-lesson [id$='___sendVideo'],
+body.montemeet-concert [id$='___sendVideo'],
+body.montemeet-student [id$='__mirror'],
+body.montemeet-student [id$='__videoMirror'],
+body.montemeet-concert [id$='__mirror'],
+body.montemeet-concert [id$='__videoMirror'] {
+    display: none !important;
+}
+
+/* the participants list is a PEOPLE list — the Public chat row is not a person */
+body.montemeet-lesson #participantsList li#all,
+body.montemeet-concert #participantsList li#all {
+    display: none !important;
+}
+
 body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {
     width: 86% !important;
     height: auto !important;
