@@ -53,7 +53,7 @@ function load() {
 }
 
 function forRoom(roomId) {
-    const { profiles = {}, rooms = {}, devicePriority = null } = load() || {};
+    const { profiles = {}, rooms = {}, presenters = {}, devicePriority = null, googleClientId = null } = load() || {};
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
     const profileName = has(rooms, roomId) ? rooms[roomId] : has(rooms, '*') ? rooms['*'] : 'default';
@@ -64,7 +64,10 @@ function forRoom(roomId) {
         audio: (profile && profile.audio) || null,
         layout: (profile && profile.layout) || null,
         roles: (profile && profile.roles) || null,
+        // deterministic presenter: the room's teacher by NAME (cabinet-managed)
+        presenterName: has(presenters, roomId) ? presenters[roomId] : null,
         devicePriority, // installation-wide (e.g. SplitCam on school computers)
+        googleClientId: googleClientId || null, // One Tap name prefill (optional)
     };
 }
 

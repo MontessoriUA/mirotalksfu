@@ -2482,7 +2482,16 @@ function startServer() {
              * For breakout rooms, skip join_first rule - only presenters.list or token-based presenters are valid
              */
             const isBreakoutRoom = socket.room_id.includes('_breakout_');
-            if (
+            // Montemeet: deterministic presenter — the registry names the room's
+            // teacher, so joining order, re-joins and ghost peers can never
+            // grant or revoke the role by accident
+            const mmPresenterName = montemeetProfiles.forRoom(socket.room_id)?.presenterName;
+            if (mmPresenterName) {
+                presenter.is_presenter = peer_name === mmPresenterName;
+                if (presenter.is_presenter) {
+                    presenters[socket.room_id][socket.id] = presenter;
+                }
+            } else if (
                 hostCfg?.presenters?.list?.includes(peer_name) ||
                 (!isBreakoutRoom &&
                     hostCfg?.presenters?.join_first &&
@@ -2495,9 +2504,11 @@ function startServer() {
 
             log.debug('[Join] - Connected presenters grp by roomId', presenters);
 
-            const isPresenter = peer_token
-                ? is_presenter
-                : isPeerPresenter(socket.room_id, socket.id, peer_name, peer_uuid);
+            const isPresenter = mmPresenterName
+                ? presenter.is_presenter
+                : peer_token
+                  ? is_presenter
+                  : isPeerPresenter(socket.room_id, socket.id, peer_name, peer_uuid);
 
             const peer = room.getPeer(socket.id);
 

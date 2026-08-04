@@ -36,6 +36,44 @@ const MontemeetProfile = (() => {
         return profile;
     })();
 
+    // Google One Tap: prefill the pre-join name field from the active Google
+    // account (the participant can still edit it). Active only when the
+    // registry provides a googleClientId (cabinet-managed, prod domains).
+    ready.then((p) => {
+        const clientId = p && p.googleClientId;
+        if (!clientId) return;
+        const script = document.createElement('script');
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.onload = () => {
+            try {
+                google.accounts.id.initialize({
+                    client_id: clientId,
+                    auto_select: true,
+                    callback: (resp) => {
+                        try {
+                            const payload = JSON.parse(atob(resp.credential.split('.')[1]));
+                            if (!payload?.name) return;
+                            // drop the name into the pre-join input once it exists and is empty
+                            const fill = setInterval(() => {
+                                const input = document.getElementById('usernameInput');
+                                if (!input) return;
+                                if (!input.value) input.value = payload.name;
+                                clearInterval(fill);
+                            }, 200);
+                            setTimeout(() => clearInterval(fill), 60000);
+                        } catch (e) {
+                            /* malformed credential — ignore */
+                        }
+                    },
+                });
+                google.accounts.id.prompt();
+            } catch (e) {
+                console.warn('MontemeetProfile: One Tap unavailable', e);
+            }
+        };
+        document.head.appendChild(script);
+    });
+
     return {
         ready,
         get: () => profile,

@@ -720,8 +720,11 @@ const MontemeetLayout = (() => {
         // restore the teacher's last chosen view (lesson rooms only — the
         // button never exists at concerts, so the memory cannot leak there)
         try {
-            const saved = localStorage.getItem('MONTEMEET_SPEAKER_VIEW');
-            if (saved && VIEW_CYCLE.includes(saved) && saved !== 'grid' && !soloActive) {
+            // no remembered choice → default to the speaker view (sticky):
+            // not the grid and not auto (Ivan, 2026-08-06)
+            const stored = localStorage.getItem('MONTEMEET_SPEAKER_VIEW');
+            const saved = stored && VIEW_CYCLE.includes(stored) ? stored : 'sticky';
+            if (saved !== 'grid' && !soloActive) {
                 speakerView = saved;
                 engageAuto({
                     holdMs: layoutCfg?.holdMs ?? 1500,

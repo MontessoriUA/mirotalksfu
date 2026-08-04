@@ -1,5 +1,5 @@
 {
-    "_readme": "Montemeet room profile registry. Copy to montemeet-profiles.json and edit. 'rooms' maps a room name to a profile name; '*' is the fallback. audio:null means stock MiroTalk behavior. devicePriority.match: device-label substring selected as default camera/mic when present (e.g. SplitCam on school computers).",
+    "_readme": "Montemeet room profile registry. Copy to montemeet-profiles.json and edit. 'rooms' maps a room name to a profile name; '*' is the fallback. audio:null means stock MiroTalk behavior. devicePriority.match: device-label substring selected as default camera/mic when present (e.g. SplitCam on school computers). presenters: room -> teacher NAME (deterministic presenter, joining order does not matter).",
     "devicePriority": {
         "match": "splitcam"
     },
@@ -75,5 +75,7 @@
     },
     "rooms": {
         "*": "default"
-    }
+    },
+    "presenters": {},
+    "googleClientId": ""
 }

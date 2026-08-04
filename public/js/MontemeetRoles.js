@@ -410,7 +410,13 @@ const MontemeetRoles = (() => {
             // bar's hover show/hide only works for that pattern
             btn.className = 'fas fa-video-slash red';
             btn.addEventListener('click', () => rc.peerAction('me', peerId + '___pVideo', 'unhide'));
-            bar.insertBefore(btn, bar.firstChild);
+            // right next to the mic mute/unmute button (Ivan, 2026-08-06)
+            const audioBtn = bar.querySelector('[id$="__audio"]');
+            if (audioBtn) {
+                audioBtn.insertAdjacentElement('afterend', btn);
+            } else {
+                bar.insertBefore(btn, bar.firstChild);
+            }
         }
     }
 
@@ -426,6 +432,19 @@ const MontemeetRoles = (() => {
                 if (typeof BUTTONS !== 'undefined' && patchButtons(BUTTONS_LESSON_BOTH)) clearInterval(early);
             }, 100);
             setTimeout(() => clearInterval(early), 20000);
+            // pre-join popup: keep refresh / camera / mic / emoji / exit only
+            // (Ivan, 2026-08-06: the eye, screen and mirror buttons go away)
+            const initTrim = setInterval(() => {
+                const eye = document.getElementById('initAudioVideoButton');
+                if (!eye) return;
+                for (const id of ['initAudioVideoButton', 'initStartScreenButton', 'initVideoMirrorButton']) {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                }
+                clearInterval(initTrim);
+            }, 100);
+            setTimeout(() => clearInterval(initTrim), 20000);
+
             // the panel split must be in place before the FIRST click on the
             // chat/participants buttons. A capture-phase interceptor queues
             // clicks that arrive before the client exists (the stock handler
