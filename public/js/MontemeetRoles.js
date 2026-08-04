@@ -164,61 +164,94 @@ const MontemeetRoles = (() => {
     // Participants and chat live in one stock panel; the participants button
     // must open ONLY the list (Ivan, 2026-08-05). The stock code already has a
     // participants-only path gated by BUTTONS.main.chatButton — reuse it.
-    function splitParticipantsFromChat() {
-        if (panelSplitDone || typeof rc === 'undefined' || !rc || !rc.toggleParticipants) return;
+    // Panel split: the buttons get OUR handlers directly (a click before the
+    // client is ready is queued and replayed — the stock handlers just threw
+    // on a null client, eating the first clicks after page load).
+    let pendingPanel = null; // 'chat' | 'participants'
 
-        const plistEl = () => document.getElementById('plist');
-        const showList = () => {
-            plistEl()?.classList.remove('hidden');
-            const p = plistEl();
-            if (p) p.style.width = '100%';
-            if (typeof elemDisplay === 'function') elemDisplay('chat', false);
-            rc.isParticipantsOpen = true;
-            rc.syncChatToolbarButtons?.();
-        };
-        const closePanel = () => {
-            rc.isParticipantsOpen = false;
-            plistEl()?.classList.add('hidden');
-            if (rc.isChatOpen) rc.toggleChat(true);
-        };
+    const plistEl = () => document.getElementById('plist');
 
-        // participants button: the panel with ONLY the list; second click closes
-        rc.toggleParticipants = async function () {
-            const listOpen = rc.isChatOpen && !plistEl()?.classList.contains('hidden');
-            if (listOpen) {
-                closePanel();
-                return;
-            }
-            if (!rc.isChatOpen) {
-                const saved = BUTTONS.main.chatButton;
-                BUTTONS.main.chatButton = false; // the stock open path must not show the chat
-                try {
-                    await rc.toggleChat(true);
-                } finally {
-                    BUTTONS.main.chatButton = saved;
-                }
-            }
-            showList();
-        };
+    function rcReady() {
+        return typeof rc !== 'undefined' && rc && typeof rc.toggleChat === 'function';
+    }
 
-        // the list's own X goes through toggleShowParticipants — closing there
-        // closes the whole panel instead of surfacing the chat underneath
-        rc.toggleShowParticipants = function () {
+    function showList() {
+        const p = plistEl();
+        p?.classList.remove('hidden');
+        if (p) p.style.width = '100%';
+        if (typeof elemDisplay === 'function') elemDisplay('chat', false);
+        rc.isParticipantsOpen = true;
+        rc.syncChatToolbarButtons?.();
+    }
+
+    function closePanel() {
+        rc.isParticipantsOpen = false;
+        plistEl()?.classList.add('hidden');
+        if (rc.isChatOpen) rc.toggleChat(true);
+    }
+
+    function openChatSplit() {
+        if (!rcReady()) {
+            pendingPanel = 'chat';
+            return;
+        }
+        pendingPanel = null;
+        const p = plistEl();
+        const chatAlone = rc.isChatOpen && p?.classList.contains('hidden');
+        if (chatAlone) {
+            rc.toggleChat(true); // second click closes
+            return;
+        }
+        if (!rc.isChatOpen) rc.toggleChat(true);
+        p?.classList.add('hidden');
+        if (p) p.style.width = '';
+        if (typeof elemDisplay === 'function') elemDisplay('chat', true);
+        rc.isParticipantsOpen = false;
+    }
+
+    async function toggleParticipantsSplit() {
+        if (!rcReady()) {
+            pendingPanel = 'participants';
+            return;
+        }
+        pendingPanel = null;
+        const listOpen = rc.isChatOpen && plistEl() && !plistEl().classList.contains('hidden');
+        if (listOpen) {
             closePanel();
-        };
+            return;
+        }
+        if (!rc.isChatOpen) {
+            const saved = BUTTONS.main.chatButton;
+            BUTTONS.main.chatButton = false; // the stock open path must not show the chat
+            try {
+                await rc.toggleChat(true);
+            } finally {
+                BUTTONS.main.chatButton = saved;
+            }
+        }
+        showList();
+    }
 
-        // chat button: always the chat, never the list
-        document.getElementById('chatButton')?.addEventListener('click', () => {
-            setTimeout(() => {
-                if (!rc.isChatOpen) return;
-                const p = plistEl();
-                p?.classList.add('hidden');
-                if (p) p.style.width = '';
-                if (typeof elemDisplay === 'function') elemDisplay('chat', true);
-                rc.isParticipantsOpen = false;
-            }, 60);
-        });
-        panelSplitDone = true;
+    openChatSplit._mm = true;
+    toggleParticipantsSplit._mm = true;
+
+    function splitParticipantsFromChat() {
+        // re-assert our handlers (the stock init may overwrite them at any point)
+        const chatBtn = document.getElementById('chatButton');
+        const partBtn = document.getElementById('participantsButton');
+        if (chatBtn && chatBtn.onclick !== openChatSplit) chatBtn.onclick = openChatSplit;
+        if (partBtn && partBtn.onclick !== toggleParticipantsSplit) partBtn.onclick = toggleParticipantsSplit;
+        if (rcReady()) {
+            if (!panelSplitDone) {
+                // the list's own X closes the whole panel
+                rc.toggleShowParticipants = function () {
+                    closePanel();
+                };
+                panelSplitDone = true;
+            }
+            if (pendingPanel === 'chat') openChatSplit();
+            else if (pendingPanel === 'participants') toggleParticipantsSplit();
+        }
     }
 
     // «Звук компьютера» (Q4): capture via the browser's screen picker, drop the
@@ -373,8 +406,9 @@ const MontemeetRoles = (() => {
             const btn = document.createElement('button');
             btn.id = peerId + '__mmUnhide';
             btn.title = 'Включить камеру участнику';
-            // the same icon the participants list shows for a muted camera
-            btn.innerHTML = typeof _PEER !== 'undefined' ? _PEER.videoOff : '<i class="fas fa-video-slash"></i>';
+            // stock buttons carry the FA class ON the button itself — the tile
+            // bar's hover show/hide only works for that pattern
+            btn.className = 'fas fa-video-slash red';
             btn.addEventListener('click', () => rc.peerAction('me', peerId + '___pVideo', 'unhide'));
             bar.insertBefore(btn, bar.firstChild);
         }
@@ -393,12 +427,24 @@ const MontemeetRoles = (() => {
             }, 100);
             setTimeout(() => clearInterval(early), 20000);
             // the panel split must be in place before the FIRST click on the
-            // chat/participants buttons — don't wait for a layout tick
+            // chat/participants buttons. A capture-phase interceptor queues
+            // clicks that arrive before the client exists (the stock handler
+            // would throw on the null client and eat them); the poll installs
+            // our handlers and replays the queued click once the client is up.
+            document.addEventListener(
+                'click',
+                (e) => {
+                    const btn = e.target.closest('#chatButton, #participantsButton');
+                    if (!btn || rcReady()) return;
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    pendingPanel = btn.id === 'chatButton' ? 'chat' : 'participants';
+                },
+                true
+            );
             const splitPoll = setInterval(() => {
-                if (typeof rc !== 'undefined' && rc && rc.toggleParticipants) {
-                    splitParticipantsFromChat();
-                    clearInterval(splitPoll);
-                }
+                splitParticipantsFromChat();
+                if (panelSplitDone && pendingPanel === null) clearInterval(splitPoll);
             }, 150);
             setTimeout(() => clearInterval(splitPoll), 30000);
             if (preset === 'lesson') {
