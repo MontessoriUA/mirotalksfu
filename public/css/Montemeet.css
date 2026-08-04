@@ -33,6 +33,14 @@ body.montemeet-strip.montemeet-pinned #videoMediaContainer {
     justify-content: flex-start !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
+    /* clear the big video's button bar (Ivan, 2026-08-05) */
+    padding-top: 48px !important;
+}
+
+/* the view-cycle button: center the inline SVG */
+#montemeetSpeakerViewBtn svg {
+    display: block;
+    margin: 0 auto;
 }
 
 body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {

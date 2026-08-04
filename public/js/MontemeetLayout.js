@@ -329,6 +329,7 @@ const MontemeetLayout = (() => {
 
     async function applyConcert() {
         if (!auto || typeof rc === 'undefined') return;
+        if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // a hand-made pin always wins
         let shownDom = false;
         if (dom && dom !== selfId()) {
@@ -347,8 +348,10 @@ const MontemeetLayout = (() => {
                 }
             }
         }
-        // last — a re-layout above re-shows every sibling, including our own tile
-        if (hideSelf() && typeof resizeVideoMedia === 'function') resizeVideoMedia();
+        // last — a re-layout above re-shows every sibling, including our own
+        // tile; a full resize keeps the grid honest after class/visibility flips
+        hideSelf();
+        if (typeof resizeVideoMedia === 'function') resizeVideoMedia();
     }
 
     // ---------- teacher's view switch at group lessons (2.4+) ----------
@@ -363,11 +366,11 @@ const MontemeetLayout = (() => {
     // The button shows the CURRENT state (Ivan, 2026-08-05), always lime.
     const VIEW_ICON = {
         // grid: four cells
-        grid: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><rect x="1" y="1" width="6.4" height="6.4" rx="1"/><rect x="8.6" y="1" width="6.4" height="6.4" rx="1"/><rect x="1" y="8.6" width="6.4" height="6.4" rx="1"/><rect x="8.6" y="8.6" width="6.4" height="6.4" rx="1"/></svg>',
+        grid: '<svg viewBox="0 0 16 16" width="19" height="19" fill="currentColor"><rect x="1" y="1" width="6.4" height="6.4" rx="1"/><rect x="8.6" y="1" width="6.4" height="6.4" rx="1"/><rect x="1" y="8.6" width="6.4" height="6.4" rx="1"/><rect x="8.6" y="8.6" width="6.4" height="6.4" rx="1"/></svg>',
         // sticky: one big cell right, small tiles left
-        sticky: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><rect x="1" y="1" width="4" height="4" rx="0.8"/><rect x="1" y="6" width="4" height="4" rx="0.8"/><rect x="1" y="11" width="4" height="4" rx="0.8"/><rect x="6.4" y="1" width="8.6" height="14" rx="1"/></svg>',
-        // auto: the word in a cell-like frame
-        auto: '<svg viewBox="0 0 16 16" width="16" height="16"><rect x="0.75" y="2.75" width="14.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="10.5" text-anchor="middle" font-size="5.2" font-family="sans-serif" font-weight="bold" fill="currentColor">AUTO</text></svg>',
+        sticky: '<svg viewBox="0 0 16 16" width="19" height="19" fill="currentColor"><rect x="1" y="1" width="4" height="4" rx="0.8"/><rect x="1" y="6" width="4" height="4" rx="0.8"/><rect x="1" y="11" width="4" height="4" rx="0.8"/><rect x="6.4" y="1" width="8.6" height="14" rx="1"/></svg>',
+        // auto: the word in a cell-like frame (padded so the frame clears the text)
+        auto: '<svg viewBox="0 0 18 16" width="21" height="19"><rect x="0.75" y="1.75" width="16.5" height="12.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><text x="9" y="10.6" text-anchor="middle" font-size="4.6" font-family="sans-serif" font-weight="bold" letter-spacing="0.3" fill="currentColor">AUTO</text></svg>',
     };
     const VIEW_TITLE = {
         grid: 'Вид: сетка (клик — говорящий крупно)',
@@ -386,6 +389,7 @@ const MontemeetLayout = (() => {
 
     async function applyGroupSpeaker() {
         if (typeof rc === 'undefined') return;
+        if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // the teacher pinned someone by hand — obey
         // a student's screen share outranks the speaker logic on the teacher's side
         const screenEl = anyRemoteScreenVideo();
@@ -489,8 +493,11 @@ const MontemeetLayout = (() => {
         markSelfPip();
     }
 
+    // Solo also applies at concerts with a single online guest (Ivan,
+    // 2026-08-05): the guest and the hall see each other Meet-style instead
+    // of an empty strip; the self tile becomes visible there by design.
     function syncSolo() {
-        if (!anchorMode || concertRoom || typeof rc === 'undefined' || !rc) return;
+        if (!anchorMode || typeof rc === 'undefined' || !rc) return;
         const shouldSolo = livePeerIds().size === 2 && !rc.isMobileDevice;
         const btn = document.getElementById('montemeetSpeakerViewBtn');
         if (shouldSolo === soloActive) {
@@ -508,12 +515,14 @@ const MontemeetLayout = (() => {
             applySolo();
         } else {
             clearSelfPip();
-            // keep an existing focus (it is the companion/anchor or already the
-            // new speaker) — only the pin view needs an actual re-layout
-            if (anchorView === 'pin' && !rc.isMobileDevice) {
+            if (concertRoom) {
+                // the concert machinery re-applies on the same observer tick
+                focusOff();
+            } else if (anchorView === 'pin' && !rc.isMobileDevice) {
                 focusOff();
                 ensureDefault();
             }
+            // focus view keeps an existing focus (companion/anchor or the new speaker)
         }
     }
 
@@ -577,7 +586,7 @@ const MontemeetLayout = (() => {
                 t = setTimeout(() => {
                     maybeCreateSpeakerViewButton();
                     syncPinnedClass();
-                    if (!isConcert) syncSolo();
+                    syncSolo();
                     if (soloActive) return;
                     if (isConcert) {
                         applyConcert();

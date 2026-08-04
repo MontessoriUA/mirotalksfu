@@ -373,6 +373,7 @@ document.addEventListener('DOMContentLoaded', function () {
 // ####################################################
 
 function initCursorLightEffect() {
+    return; // Montemeet: cursor halo disabled (Ivan, 2026-08-05)
     if (!videoMediaContainer || !isDesktopDevice) return;
     videoMediaContainer.classList.add('mouse-light');
     videoMediaContainer.addEventListener('mousemove', function (e) {

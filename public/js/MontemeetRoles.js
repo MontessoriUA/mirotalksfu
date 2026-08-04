@@ -50,6 +50,8 @@ const MontemeetRoles = (() => {
             videoMirrorButton: false,
             snapShotButton: false,
             drawingButton: false,
+            fullScreenButton: false,
+            focusVideoButton: false, // breaks the layout on the way back (Ivan)
         },
         consumerVideo: {
             sendMessageButton: false,
@@ -57,6 +59,11 @@ const MontemeetRoles = (() => {
             sendVideoButton: false,
             geolocationButton: false,
             drawingButton: false,
+            videoPictureInPicture: false,
+            videoMirrorButton: false,
+            fullScreenButton: false,
+            snapShotButton: false,
+            focusVideoButton: false,
         },
         videoOff: {
             sendMessageButton: false,
@@ -67,6 +74,7 @@ const MontemeetRoles = (() => {
         chat: {
             chatMarkdownButton: false,
             chatSpeechStartButton: false, // "только эмодзи" из ввода
+            chatMaxButton: false,
         },
         participantsList: {
             saveInfoButton: false,
@@ -112,15 +120,107 @@ const MontemeetRoles = (() => {
         return true;
     }
 
+    // Settings tabs kept at lessons/concerts: video, audio, virtual background,
+    // language. Everything else is admin-level or noise (Ivan, 2026-08-05).
+    const HIDE_SETTINGS_TABS = [
+        'tabRoomBtn',
+        'tabRecordingBtn',
+        'tabModeratorBtn',
+        'tabNotificationsBtn',
+        'tabProfileBtn',
+        'tabShortcutsBtn',
+        'tabAspectBtn',
+        'tabStylingBtn',
+        'tabVideoShareBtn',
+        'tabVideoAIBtn',
+        'tabRTMPStreamingBtn',
+    ];
+    // chat panel extras removed for everyone
+    const HIDE_CHAT_EXTRAS = ['participantsRaiseHandBtn', 'chatSpeechStartButton', 'chatMaxButton'];
+
+    // hide a settings row: a <tr> for switches, or the select + its .title label
+    function hideSettingRow(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const tr = el.closest('tr');
+        if (tr) {
+            tr.style.display = 'none';
+            return;
+        }
+        el.style.display = 'none';
+        let prev = el.previousElementSibling;
+        while (prev && !(prev.classList && prev.classList.contains('title'))) {
+            const next = prev.previousElementSibling;
+            prev.style.display = 'none';
+            prev = next;
+        }
+        if (prev) prev.style.display = 'none';
+    }
+
+    let defaultTabPicked = false;
+    let panelSplitDone = false;
+    let fileShareBtnDone = false;
+
+    // Participants and chat live in one stock panel; the participants button
+    // must open ONLY the list (Ivan, 2026-08-05). The stock code already has a
+    // participants-only path gated by BUTTONS.main.chatButton — reuse it.
+    function splitParticipantsFromChat() {
+        if (panelSplitDone || typeof rc === 'undefined' || !rc || !rc.toggleParticipants) return;
+        const orig = rc.toggleParticipants.bind(rc);
+        rc.toggleParticipants = async function () {
+            const saved = BUTTONS.main.chatButton;
+            BUTTONS.main.chatButton = false;
+            try {
+                await orig();
+            } finally {
+                BUTTONS.main.chatButton = saved;
+            }
+        };
+        document.getElementById('chatButton')?.addEventListener('click', () => {
+            setTimeout(() => {
+                if (!rc.isChatOpen) return;
+                document.getElementById('plist')?.classList.add('hidden');
+                if (typeof elemDisplay === 'function') elemDisplay('chat', true);
+            }, 60);
+        });
+        panelSplitDone = true;
+    }
+
+    // File sharing moves to the bottom toolbar at lessons (not at concerts)
+    function ensureFileShareButton() {
+        if (fileShareBtnDone || MontemeetProfile.roles() !== 'lesson') return;
+        const bar = document.getElementById('bottomButtons');
+        const stockBtn = document.getElementById('fileShareButton');
+        if (!bar || !stockBtn) return;
+        const btn = document.createElement('button');
+        btn.id = 'montemeetFileShareBtn';
+        btn.title = 'Отправить файл';
+        btn.innerHTML = '<i class="fas fa-file-upload"></i>';
+        btn.addEventListener('click', () => stockBtn.click());
+        bar.appendChild(btn);
+        fileShareBtnDone = true;
+    }
+
     function apply() {
         if (typeof rc === 'undefined' || !rc) return;
         const preset = MontemeetProfile.roles();
         const teacher = typeof isPresenter !== 'undefined' && isPresenter;
         const list = preset === 'concert' ? HIDE_CONCERT : teacher ? HIDE_BOTH : HIDE_STUDENT;
-        for (const id of list) {
+        for (const id of [...list, ...HIDE_SETTINGS_TABS, ...HIDE_CHAT_EXTRAS]) {
             const el = document.getElementById(id);
             if (el && el.style.display !== 'none') el.style.display = 'none';
         }
+        hideSettingRow('switchDominantSpeakerFocus');
+        hideSettingRow('switchPushToTalk');
+        hideSettingRow('videoQuality');
+        hideSettingRow('videoFps');
+        if (!defaultTabPicked) {
+            // the hidden Room tab was the default — land on the video tab instead
+            document.getElementById('tabVideoDevicesBtn')?.click();
+            defaultTabPicked = true;
+        }
+        splitParticipantsFromChat();
+        ensureFileShareButton();
     }
 
     (async () => {
@@ -129,13 +229,13 @@ const MontemeetRoles = (() => {
             const preset = MontemeetProfile.roles();
             if (!['lesson', 'concert'].includes(preset)) return;
 
+            // role-independent BUTTONS overrides — as early as BUTTONS exists, so
+            // tiles are built without the trimmed buttons at all (concerts included)
+            const early = setInterval(() => {
+                if (typeof BUTTONS !== 'undefined' && patchButtons(BUTTONS_LESSON_BOTH)) clearInterval(early);
+            }, 100);
+            setTimeout(() => clearInterval(early), 20000);
             if (preset === 'lesson') {
-                // role-independent BUTTONS overrides — as early as BUTTONS exists,
-                // so tiles are built without the trimmed buttons at all
-                const early = setInterval(() => {
-                    if (typeof BUTTONS !== 'undefined' && patchButtons(BUTTONS_LESSON_BOTH)) clearInterval(early);
-                }, 100);
-                setTimeout(() => clearInterval(early), 20000);
                 // the student extras wait until the role is settled (own tile built)
                 const studentPoll = setInterval(() => {
                     if (
