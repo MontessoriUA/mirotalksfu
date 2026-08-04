@@ -368,9 +368,11 @@ const MontemeetLayout = (() => {
                 }
             }
         }
-        // last — a re-layout above re-shows every sibling, including our own
-        // tile; a full resize keeps the grid honest after class/visibility flips
-        hideSelf();
+        // last — a re-layout above re-shows every sibling; only the HALL hides
+        // its own tile (the TV shows guests only), a guest sees themselves in
+        // the strip like at lessons (Ivan, 2026-08-06). A full resize keeps
+        // the grid honest after class/visibility flips.
+        if (isHost()) hideSelf();
         if (typeof resizeVideoMedia === 'function') resizeVideoMedia();
     }
 
@@ -402,9 +404,23 @@ const MontemeetLayout = (() => {
     let layoutCfg = null;
     let programmaticPinId = null; // pinnedVideoPlayerId set by US (manual pins win)
     let lastDom = null; // last non-null dominant — engaging sticky/auto starts from them
+    let manualState = null; // { prevView } while a hand-made pin is on screen
 
     function manualPinActive() {
         return !!(rc?.isVideoPinned && rc.pinnedVideoPlayerId && rc.pinnedVideoPlayerId !== programmaticPinId);
+    }
+
+    // Track manual pins: entering shows the pin icon on the view button,
+    // leaving (unpin by any means) restores the mode that was active before
+    function syncManualPinState() {
+        if (manualPinActive() && !manualState) {
+            manualState = { prevView: speakerView };
+            updateSpeakerViewButton();
+        } else if (!manualPinActive() && manualState) {
+            const prev = manualState.prevView;
+            manualState = null;
+            setSpeakerViewTo(prev);
+        }
     }
 
     async function applyGroupSpeaker() {
@@ -426,16 +442,24 @@ const MontemeetLayout = (() => {
         unpin(); // 'auto' → back to the grid
     }
 
+    const MANUAL_PIN_ICON =
+        '<svg viewBox="0 0 16 16" width="19" height="19" fill="currentColor"><path d="M9.5 1l5.5 5.5-2 2-.9-.3-2.8 2.8.4 3-1.4 1.4L4.7 11.8 1.5 15l-1-1 3.2-3.2L.1 7.2l1.4-1.4 3 .4L7.3 3.4 7 2.5z"/></svg>';
+
     function updateSpeakerViewButton() {
         const btn = document.getElementById('montemeetSpeakerViewBtn');
         if (!btn) return;
-        btn.innerHTML = VIEW_ICON[speakerView];
-        btn.title = VIEW_TITLE[speakerView];
+        if (manualState) {
+            btn.innerHTML = MANUAL_PIN_ICON;
+            btn.title = 'Закреплено вручную — клик: вернуть прежний режим';
+        } else {
+            btn.innerHTML = VIEW_ICON[speakerView];
+            btn.title = VIEW_TITLE[speakerView];
+        }
         btn.style.color = 'lime';
     }
 
-    function cycleSpeakerView() {
-        speakerView = VIEW_CYCLE[(VIEW_CYCLE.indexOf(speakerView) + 1) % VIEW_CYCLE.length];
+    function setSpeakerViewTo(view) {
+        speakerView = VIEW_CYCLE.includes(view) ? view : 'grid';
         try {
             localStorage.setItem('MONTEMEET_SPEAKER_VIEW', speakerView);
         } catch (e) {
@@ -473,6 +497,18 @@ const MontemeetLayout = (() => {
             applyGroupSpeaker();
         }
         updateSpeakerViewButton();
+    }
+
+    function cycleSpeakerView() {
+        if (manualState) {
+            // exit the manual pin and restore the mode active before it
+            const prev = manualState.prevView;
+            manualState = null;
+            unpin();
+            setSpeakerViewTo(prev);
+            return;
+        }
+        setSpeakerViewTo(VIEW_CYCLE[(VIEW_CYCLE.indexOf(speakerView) + 1) % VIEW_CYCLE.length]);
     }
 
     // ---------- solo (1:1) layout, Google-Meet style (Ivan, 2026-08-05) ----------
@@ -561,6 +597,79 @@ const MontemeetLayout = (() => {
         }
     }
 
+    // Mark the own tile (video or avatar) — drives CSS (self buttons hidden,
+    // teacher's own bar) and the strip ordering (self always on top)
+    function markSelfTile() {
+        const me = selfId();
+        if (!me) return;
+        const own = new Set();
+        const videoEl = rc?.getVideoElementByPeerId?.(me);
+        if (videoEl) {
+            const cam = document.getElementById(containerId(videoEl.id));
+            if (cam) own.add(cam);
+        }
+        const off = document.getElementById(me + '__videoOff');
+        if (off) own.add(off);
+        for (const el of document.querySelectorAll('.montemeet-self')) {
+            if (!own.has(el)) el.classList.remove('montemeet-self');
+        }
+        for (const el of own) el.classList.add('montemeet-self');
+    }
+
+    // Strip ordering: the own tile first, newcomers (incl. screen feeds) right
+    // below it instead of the bottom (Ivan, 2026-08-06)
+    function orderStrip() {
+        const container = rc?.videoMediaContainer;
+        if (!container || !document.body.classList.contains('montemeet-pinned')) return;
+        const tiles = [...container.children].filter((c) => c.classList?.contains('Camera'));
+        const selfTile = tiles.find((c) => c.classList.contains('montemeet-self'));
+        if (selfTile && container.firstElementChild !== selfTile) {
+            container.insertBefore(selfTile, container.firstElementChild);
+        }
+        const anchorNode = selfTile && selfTile.parentElement === container ? selfTile.nextSibling : container.firstChild;
+        for (const tile of tiles) {
+            if (tile === selfTile || tile.dataset.mmSeen) continue;
+            tile.dataset.mmSeen = '1';
+            if (tile !== anchorNode) container.insertBefore(tile, anchorNode);
+        }
+    }
+
+    // Manual pin by clicking the video itself (teacher, pin-view group rooms).
+    // Clicking the big manually-pinned video unpins it (mode auto-restores);
+    // clicking another tile switches the pin — no stock popup dance.
+    function manualPinClick(e) {
+        if (typeof rc === 'undefined' || !rc || rc.isMobileDevice) return;
+        if (!isHost() || concertRoom || soloActive || anchorView !== 'pin') return;
+        const videoEl = e.target.closest('video[id]');
+        if (!videoEl) return;
+        const cam = videoEl.closest('.Camera');
+        // the big pinned video loses its .Camera class upstream — allow it too
+        const isBigPinned = rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id;
+        if (!cam && !isBigPinned) return;
+        if (cam?.classList.contains('montemeet-self')) return; // never pin oneself
+        if (e.target.closest('button, input, select')) return; // tile buttons keep working
+        if (rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id) {
+            if (manualPinActive()) {
+                const prev = manualState ? manualState.prevView : speakerView;
+                manualState = null;
+                unpin();
+                setSpeakerViewTo(prev);
+            }
+            return; // a mode-made pin is not unpinnable by hand (Q6.5)
+        }
+        const camForRestore = document.getElementById(containerId(videoEl.id));
+        if (camForRestore) stripRestore.set(camForRestore.id, camForRestore.nextElementSibling?.id ?? null);
+        if (rc.isVideoPinned) {
+            silentClick(document.getElementById(rc.pinnedVideoPlayerId + '__pin')); // auto-swap
+        }
+        silentClick(document.getElementById(videoEl.id + '__pin'));
+        programmaticPinId = null; // this is a MANUAL pin
+        syncPinnedClass();
+        syncManualPinState();
+        if (typeof resizeVideoMedia === 'function') resizeVideoMedia();
+    }
+    document.addEventListener('click', manualPinClick, true);
+
     // Concert splash: an image (profile layout.splash) fills the stage when no
     // other participant's video is visible (nobody online / all cameras off).
     // The admin cabinet will manage the image later — the mechanics live here.
@@ -645,11 +754,14 @@ const MontemeetLayout = (() => {
             // Structural changes only (tiles appear/leave) — a manual unfocus
             // does not add/remove nodes, so it is not overridden by the anchor.
             let t = null;
-            new MutationObserver(() => {
+            const observer = new MutationObserver(() => {
                 clearTimeout(t);
                 t = setTimeout(() => {
                     maybeCreateSpeakerViewButton();
                     syncPinnedClass();
+                    markSelfTile();
+                    syncManualPinState();
+                    orderStrip();
                     syncSolo();
                     if (isConcert) syncConcertSplash();
                     if (soloActive) return;
@@ -661,7 +773,12 @@ const MontemeetLayout = (() => {
                         ensureDefault();
                     }
                 }, 800);
-            }).observe(target, { childList: true });
+            });
+            observer.observe(target, { childList: true });
+            // the pinned video lives in a SEPARATE container — a screen share
+            // ending there must also trigger a re-layout (Ivan's grid-after-share)
+            const pinTarget = document.getElementById('videoPinMediaContainer');
+            if (pinTarget) observer.observe(pinTarget, { childList: true });
         } catch (e) {
             /* no profile -> stock behavior */
         }

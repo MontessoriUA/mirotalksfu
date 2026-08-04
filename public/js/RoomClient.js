@@ -5597,6 +5597,8 @@ class RoomClient {
         if (this.isZoomCenterMode) {
             if (videoPlayer) {
                 videoPlayer.addEventListener('wheel', (e) => {
+                    // Montemeet: no wheel zoom in managed rooms (the wheel scrolls the strip)
+                    if (typeof MontemeetLayout !== 'undefined' && MontemeetLayout.managedRoom()) return;
                     e.preventDefault();
                     let delta = e.wheelDelta ? e.wheelDelta : -e.deltaY;
                     delta > 0 ? (zoom *= 1.2) : (zoom /= 1.2);
@@ -5607,6 +5609,8 @@ class RoomClient {
         } else {
             if (videoPlayer && videoWrap) {
                 videoPlayer.addEventListener('wheel', (e) => {
+                    // Montemeet: no wheel zoom in managed rooms (the wheel scrolls the strip)
+                    if (typeof MontemeetLayout !== 'undefined' && MontemeetLayout.managedRoom()) return;
                     e.preventDefault();
                     if (isVideoPrivacyActive) return;
                     const rect = videoWrap.getBoundingClientRect();

@@ -357,7 +357,9 @@ async function runConcertScenario() {
             guestTakeover: mid.some((s) => s.zalSees === 'guest1' && s.guest2Sees === 'guest1'),
             performerWatchesZal: samples.every((s) => s.guest1Sees === 'zal' || s.guest1Sees === null),
             backToDefaults: late.length > 0 && late.every((s) => s.zalSees === null && s.guest2Sees === 'zal'),
-            selfHidden: hidden.zal === true && hidden.guest2 === true,
+            // the HALL (TV) never sees itself; a guest DOES see themselves in
+            // the strip since 2026-08-06 (Ivan's decision, like at lessons)
+            selfVisibility: hidden.zal === true && hidden.guest2 === false,
         },
     };
 }

@@ -81,6 +81,27 @@ body.montemeet-concert #participantsList li#all {
     display: none !important;
 }
 
+/*
+ * Final tile-button matrix (Ivan, 2026-08-06):
+ * - students and everyone at concerts: no tile buttons at all;
+ * - teacher, own tile: no buttons (mic/cam controls live in the toolbar);
+ * - teacher, remote tiles: volume, mute-mic, mute-cam, mirror, ban/eject —
+ *   everything else (incl. privacy, pin) is hidden; pins are made by
+ *   clicking the video itself, the hidden __pin buttons still work
+ *   programmatically for the layout owner.
+ */
+body.montemeet-student [id$='__vb'],
+body.montemeet-concert [id$='__vb'],
+body.montemeet-teacher .montemeet-self [id$='__vb'] {
+    display: none !important;
+}
+
+body.montemeet-lesson [id$='__vp'],
+body.montemeet-lesson [id$='__pin'],
+body.montemeet-concert [id$='__pin'] {
+    display: none !important;
+}
+
 body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {
     width: 86% !important;
     height: auto !important;
