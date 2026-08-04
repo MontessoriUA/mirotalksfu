@@ -166,47 +166,58 @@ const MontemeetRoles = (() => {
     // participants-only path gated by BUTTONS.main.chatButton — reuse it.
     function splitParticipantsFromChat() {
         if (panelSplitDone || typeof rc === 'undefined' || !rc || !rc.toggleParticipants) return;
-        const orig = rc.toggleParticipants.bind(rc);
-        rc.toggleParticipants = async function () {
-            const saved = BUTTONS.main.chatButton;
-            BUTTONS.main.chatButton = false;
-            try {
-                await orig();
-            } finally {
-                BUTTONS.main.chatButton = saved;
-            }
-            // closing the list must close the whole panel — otherwise the chat
-            // hiding underneath surfaces (Ivan, 2026-08-05)
-            const plist = document.getElementById('plist');
-            if (plist?.classList.contains('hidden') && rc.isChatOpen) {
-                rc.toggleChat(true);
-            }
+
+        const plistEl = () => document.getElementById('plist');
+        const showList = () => {
+            plistEl()?.classList.remove('hidden');
+            const p = plistEl();
+            if (p) p.style.width = '100%';
+            if (typeof elemDisplay === 'function') elemDisplay('chat', false);
+            rc.isParticipantsOpen = true;
+            rc.syncChatToolbarButtons?.();
         };
-        document.getElementById('chatButton')?.addEventListener('click', () => {
-            setTimeout(() => {
-                if (!rc.isChatOpen) return;
-                document.getElementById('plist')?.classList.add('hidden');
-                if (typeof elemDisplay === 'function') elemDisplay('chat', true);
-            }, 60);
-        });
-        // the list's own X button goes through toggleShowParticipants directly —
-        // wrap it too, or closing via X surfaces the chat underneath
-        if (rc.toggleShowParticipants) {
-            const origShow = rc.toggleShowParticipants.bind(rc);
-            rc.toggleShowParticipants = function (fromUser = false) {
+        const closePanel = () => {
+            rc.isParticipantsOpen = false;
+            plistEl()?.classList.add('hidden');
+            if (rc.isChatOpen) rc.toggleChat(true);
+        };
+
+        // participants button: the panel with ONLY the list; second click closes
+        rc.toggleParticipants = async function () {
+            const listOpen = rc.isChatOpen && !plistEl()?.classList.contains('hidden');
+            if (listOpen) {
+                closePanel();
+                return;
+            }
+            if (!rc.isChatOpen) {
                 const saved = BUTTONS.main.chatButton;
-                BUTTONS.main.chatButton = false;
+                BUTTONS.main.chatButton = false; // the stock open path must not show the chat
                 try {
-                    origShow(fromUser);
+                    await rc.toggleChat(true);
                 } finally {
                     BUTTONS.main.chatButton = saved;
                 }
-                const plist = document.getElementById('plist');
-                if (plist?.classList.contains('hidden') && rc.isChatOpen) {
-                    rc.toggleChat(true);
-                }
-            };
-        }
+            }
+            showList();
+        };
+
+        // the list's own X goes through toggleShowParticipants — closing there
+        // closes the whole panel instead of surfacing the chat underneath
+        rc.toggleShowParticipants = function () {
+            closePanel();
+        };
+
+        // chat button: always the chat, never the list
+        document.getElementById('chatButton')?.addEventListener('click', () => {
+            setTimeout(() => {
+                if (!rc.isChatOpen) return;
+                const p = plistEl();
+                p?.classList.add('hidden');
+                if (p) p.style.width = '';
+                if (typeof elemDisplay === 'function') elemDisplay('chat', true);
+                rc.isParticipantsOpen = false;
+            }, 60);
+        });
         panelSplitDone = true;
     }
 
@@ -223,7 +234,7 @@ const MontemeetRoles = (() => {
         const btn = document.getElementById('montemeetPcSoundBtn');
         if (!btn) return;
         const on = pcSoundActive();
-        btn.style.color = on ? 'lime' : 'white';
+        btn.classList.toggle('montemeet-on', on); // CSS !important beats stock button colors
         btn.title = on ? 'Звук компьютера: транслируется (клик — выключить)' : 'Транслировать звук компьютера';
         if (on) btn.classList.remove('montemeet-attention');
     }
@@ -262,9 +273,9 @@ const MontemeetRoles = (() => {
         if (!bar || typeof rc === 'undefined' || !rc) return;
         const btn = document.createElement('button');
         btn.id = 'montemeetPcSoundBtn';
-        // note inside a monitor
+        // note inside a monitor — bigger, bolder note (Ivan, 2026-08-06)
         btn.innerHTML =
-            '<svg viewBox="0 0 16 16" width="19" height="19" fill="currentColor"><path d="M1.5 2h13a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9v1.5h2.5V15h-7v-1.5H7V12H1.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10.2 4.2 6.8 5v3.5a1.4 1.4 0 1 0 .8 1.26V6.3l1.8-.42v2.3a1.4 1.4 0 1 0 .8 1.26z"/></svg>';
+            '<svg viewBox="0 0 20 18" width="24" height="22" fill="currentColor"><rect x="1" y="1.5" width="18" height="11.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 16h4l.8 1.5H7.2z"/><path d="M13.2 4.2 8.9 5.2v4.1a2 2 0 1 0 1.1 1.8V7.2l2.1-.5v2a2 2 0 1 0 1.1 1.8z"/></svg>';
         btn.addEventListener('click', togglePcSound);
         const anchorBtn = document.getElementById('montemeetFileShareBtn') || document.getElementById('participantsButton');
         if (anchorBtn && anchorBtn.parentElement === bar) {

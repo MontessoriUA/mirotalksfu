@@ -127,7 +127,10 @@ body.montemeet-student .navbar-dropdown-item:has([id$='__videoMirror']) {
     display: none !important;
 }
 
-/* computer-sound button: attention pulse in dance rooms until enabled */
+/* computer-sound button: green while streaming, attention pulse in dance rooms */
+#montemeetPcSoundBtn.montemeet-on {
+    color: lime !important;
+}
 #montemeetPcSoundBtn.montemeet-attention {
     animation: montemeet-pulse 1.6s ease-in-out infinite;
 }
