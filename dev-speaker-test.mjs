@@ -358,6 +358,51 @@ async function runConcertScenario() {
     };
 }
 
+// Group lesson scenario (stage 2.4). Teacher (presenter) + two students in an
+// anchored room with view:'pin': students must see the teacher pinned big with
+// a strip of tiles (the other student AND themselves — lessons don't hide
+// self); the teacher keeps the plain grid of students (no pin, no focus).
+async function runGroupScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student1 = await launchPeer('Student1', fixtures.silence, { room });
+    const student2 = await launchPeer('Student2', fixtures.silence, { room });
+    await delay(6000);
+
+    const teacherId = await teacher.page.evaluate(() => rc.peer_id);
+    const view = (p) =>
+        p.page.evaluate(() => ({
+            pinned: rc.isVideoPinned === true,
+            pinnedPeer: document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ?? null,
+            focused: document.querySelector('#videoMediaContainer [focus-mode]') !== null,
+            stripTiles: [...document.querySelectorAll('#videoMediaContainer .Camera')].filter(
+                (c) => c.style.display !== 'none'
+            ).length,
+        }));
+
+    const teacherView = await view(teacher);
+    const s1View = await view(student1);
+    const s2View = await view(student2);
+
+    await teacher.browser.close();
+    await student1.browser.close();
+    await student2.browser.close();
+
+    return {
+        scenario: 'group',
+        teacherView,
+        s1View,
+        s2View,
+        checks: {
+            studentsSeeTeacherPinned:
+                s1View.pinned && s1View.pinnedPeer === teacherId && s2View.pinned && s2View.pinnedPeer === teacherId,
+            studentsKeepTileStrip: s1View.stripTiles >= 2 && s2View.stripTiles >= 2,
+            teacherKeepsGrid: !teacherView.pinned && !teacherView.focused && teacherView.stripTiles >= 2,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -389,6 +434,11 @@ if (which === 'anchor' || which === 'all') {
 }
 if (which === 'concert' || which === 'all') {
     const r = await runConcertScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'group' || which === 'all') {
+    const r = await runGroupScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }

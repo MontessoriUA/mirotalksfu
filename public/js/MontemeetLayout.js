@@ -65,13 +65,20 @@ const MontemeetLayout = (() => {
         return current() === null;
     }
 
-    // ---------- room anchor (stage 2.2) ----------
+    // ---------- room anchor (stage 2.2 + 2.4) ----------
     // profile.layout.anchor === 'presenter': the presenter (Зал at concerts,
     // the teacher at lessons) is the DEFAULT view — whenever nothing else is
-    // focused, focus the anchor's video. One never watches oneself: if I am
-    // the anchor (or the anchor has no video here), the grid stays.
+    // focused, show the anchor. One never watches oneself: if I am the anchor
+    // (or the anchor has no video here), the grid stays.
+    //
+    // profile.layout.view selects HOW the anchor is shown (stage 2.4):
+    //   'focus' (default) — anchor fullscreen, others hidden (1:1 lessons);
+    //   'pin'             — anchor big, everyone else as a tile strip
+    //                       (group lessons). Falls back to 'focus' on mobile,
+    //                       where the stock pin is disabled.
 
     let anchorMode = null;
+    let anchorView = 'focus';
 
     function anchorPeerId() {
         if (typeof rc === 'undefined' || !rc?.peers) return null;
@@ -88,12 +95,20 @@ const MontemeetLayout = (() => {
         return videoEl ? videoEl.id : null;
     }
 
-    // Focus the anchor if the room is anchored and nothing else claims the screen
+    // Show the anchor if the room is anchored and nothing else claims the screen
     function ensureDefault() {
         if (!anchorMode || typeof rc === 'undefined') return;
-        if (rc.isVideoPinned || current() !== null) return;
+        if (rc.isVideoPinned || current() !== null) return; // manual layout wins
         const id = anchorVideoId();
-        if (id) focusOn(id);
+        if (!id) return;
+        if (anchorView === 'pin' && !rc.isMobileDevice) {
+            // The pin logic lives inside the button's click closure upstream —
+            // this is the one place a synthetic click is allowed, encapsulated here.
+            const btn = document.getElementById(id + '__pin');
+            if (btn) btn.click();
+            return;
+        }
+        focusOn(id);
     }
 
     // ---------- concert mode (stage 2.3, ТЗ §5) ----------
@@ -194,6 +209,7 @@ const MontemeetLayout = (() => {
             await MontemeetProfile.ready;
             const layout = MontemeetProfile.layout();
             anchorMode = layout?.anchor ?? null;
+            anchorView = layout?.view ?? 'focus';
             if (layout?.mode === 'concert') {
                 concert = {
                     holdMs: layout.holdMs ?? 1500,

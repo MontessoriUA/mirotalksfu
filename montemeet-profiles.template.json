@@ -21,6 +21,14 @@
             },
             "layout": { "anchor": "presenter" }
         },
+        "anchored-group": {
+            "audio": null,
+            "layout": {
+                "mode": "anchored",
+                "anchor": "presenter",
+                "view": "pin"
+            }
+        },
         "concert": {
             "audio": {
                 "echoCancellation": true,
