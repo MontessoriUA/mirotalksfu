@@ -128,8 +128,18 @@ body.montemeet-student .navbar-dropdown-item:has([id$='__videoMirror']) {
 }
 
 /* computer-sound button: green while streaming, attention pulse in dance rooms */
+#montemeetPcSoundBtn svg {
+    display: block;
+    margin: 0 auto;
+}
 #montemeetPcSoundBtn.montemeet-on {
     color: lime !important;
+}
+
+/* the chat alone in the panel takes its full width (the split hides plist) */
+body.montemeet-lesson #plist.hidden ~ #chat,
+body.montemeet-concert #plist.hidden ~ #chat {
+    width: 100% !important;
 }
 #montemeetPcSoundBtn.montemeet-attention {
     animation: montemeet-pulse 1.6s ease-in-out infinite;

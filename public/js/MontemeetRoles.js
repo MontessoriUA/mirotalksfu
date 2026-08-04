@@ -249,11 +249,22 @@ const MontemeetRoles = (() => {
             const stream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
                 audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+                systemAudio: 'include', // Windows Chrome: pre-tick the system-audio box
             });
             if (!stream.getAudioTracks().length) {
                 stream.getTracks().forEach((t) => t.stop());
                 if (typeof userLog === 'function') {
-                    userLog('warning', 'Отметьте галку «Предоставить доступ к звуку» в диалоге браузера', 'top-end', 6000);
+                    // macOS never yields SYSTEM audio to the browser — only a
+                    // Chrome tab's own audio can be captured there
+                    const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+                    userLog(
+                        'warning',
+                        isMac
+                            ? 'На macOS звук доступен только из вкладки Chrome: выберите ВКЛАДКУ с плеером и включите «Также предоставить доступ к аудио вкладки»'
+                            : 'Отметьте галку «Предоставить доступ к системному звуку» в диалоге браузера',
+                        'top-end',
+                        8000
+                    );
                 }
                 return;
             }
@@ -273,9 +284,9 @@ const MontemeetRoles = (() => {
         if (!bar || typeof rc === 'undefined' || !rc) return;
         const btn = document.createElement('button');
         btn.id = 'montemeetPcSoundBtn';
-        // note inside a monitor — bigger, bolder note (Ivan, 2026-08-06)
+        // note inside a monitor — full-bleed screen, no stand, big readable note
         btn.innerHTML =
-            '<svg viewBox="0 0 20 18" width="24" height="22" fill="currentColor"><rect x="1" y="1.5" width="18" height="11.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 16h4l.8 1.5H7.2z"/><path d="M13.2 4.2 8.9 5.2v4.1a2 2 0 1 0 1.1 1.8V7.2l2.1-.5v2a2 2 0 1 0 1.1 1.8z"/></svg>';
+            '<svg viewBox="0 0 22 16" width="27" height="20" fill="currentColor"><rect x="1" y="1" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.3 3.6 9.4 4.9v5a2.3 2.3 0 1 0 1.3 2.07V7.6l3.3-.73v2.6a2.3 2.3 0 1 0 1.3 2.07z"/></svg>';
         btn.addEventListener('click', togglePcSound);
         const anchorBtn = document.getElementById('montemeetFileShareBtn') || document.getElementById('participantsButton');
         if (anchorBtn && anchorBtn.parentElement === bar) {
@@ -346,6 +357,26 @@ const MontemeetRoles = (() => {
         ensureFileShareButton();
         ensurePcSoundButton();
         updatePcSoundBtn();
+        ensureUnhideButtons(teacher);
+    }
+
+    // The teacher can re-enable a participant's camera right from the avatar
+    // tile (Ivan, 2026-08-06) — a hidden camera has no video tile, and the
+    // stock videoOff button set has no camera control at all.
+    function ensureUnhideButtons(teacher) {
+        if (!teacher || MontemeetProfile.roles() !== 'lesson') return;
+        for (const tile of document.querySelectorAll('[id$="__videoOff"]')) {
+            const peerId = tile.id.replace(/__videoOff$/, '');
+            if (!peerId || peerId === rc.peer_id) continue;
+            if (document.getElementById(peerId + '__mmUnhide')) continue;
+            const bar = tile.querySelector('[id$="__vb"]') || tile;
+            const btn = document.createElement('button');
+            btn.id = peerId + '__mmUnhide';
+            btn.title = 'Включить камеру участнику';
+            btn.innerHTML = '<i class="fas fa-video"></i>';
+            btn.addEventListener('click', () => rc.peerAction('me', peerId + '___pVideo', 'unhide'));
+            bar.insertBefore(btn, bar.firstChild);
+        }
     }
 
     (async () => {
