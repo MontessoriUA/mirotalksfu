@@ -84,6 +84,11 @@ function ensureFixtures() {
         speechThenSilence: make('speech8-silence8.wav', [...speechSegments(8, 440), { seconds: 8, freq: 0 }]),
         silenceThenSpeech: make('silence8-speech8.wav', [{ seconds: 8, freq: 0 }, ...speechSegments(8, 330)]),
         speechOnce: make('speech8-silence22.wav', [...speechSegments(8, 440), { seconds: 22, freq: 0 }]),
+        guestTurn: make('silence5-speech8-silence22.wav', [
+            { seconds: 5, freq: 0 },
+            ...speechSegments(8, 440),
+            { seconds: 22, freq: 0 },
+        ]),
     };
 }
 
@@ -289,6 +294,70 @@ async function runAnchorScenario() {
     };
 }
 
+// Concert scenario (stage 2.3, ТЗ §5). Three peers, three perspectives:
+//   Zal    — presenter/Host (the hall), silent, own tile hidden, grid by default;
+//   Guest1 — sings at ~5-13s (dominant), otherwise silent;
+//   Guest2 — silent guest, must watch the Зал by default.
+// Expectations: silence -> Host: grid, Guests: focus on Зал; Guest1 speaking ->
+// Host & Guest2 focus Guest1, while Guest1 himself keeps watching the Зал
+// (dom == self -> anchor); after the speech + silenceMs -> back to defaults.
+async function runConcertScenario() {
+    const room = 'montemeet-concert';
+    const zal = await launchPeer('Zal', fixtures.silence, { room });
+    await delay(3000);
+    const guest1 = await launchPeer('Guest1', fixtures.guestTurn, { room });
+    const guest2 = await launchPeer('Guest2', fixtures.silence, { room });
+    await delay(2000);
+
+    const idOf = (p) => p.page.evaluate(() => rc.peer_id);
+    const ids = { zal: await idOf(zal), guest1: await idOf(guest1), guest2: await idOf(guest2) };
+    const nameById = Object.fromEntries(Object.entries(ids).map(([k, v]) => [v, k]));
+
+    const focusedOn = (p) =>
+        p.page.evaluate(
+            () => document.querySelector('#videoMediaContainer [focus-mode] video[name]')?.getAttribute('name') ?? null
+        );
+    const selfHidden = (p) =>
+        p.page.evaluate(() => {
+            const videoEl = rc.getVideoElementByPeerId(rc.peer_id);
+            const c = videoEl ? document.getElementById(videoEl.id + '__video') : null;
+            return c ? c.style.display === 'none' : null;
+        });
+
+    const samples = [];
+    const started = Date.now();
+    for (let i = 0; i < 14; i++) {
+        await delay(2000);
+        samples.push({
+            t: Math.round((Date.now() - started) / 1000),
+            zalSees: nameById[await focusedOn(zal)] ?? null,
+            guest1Sees: nameById[await focusedOn(guest1)] ?? null,
+            guest2Sees: nameById[await focusedOn(guest2)] ?? null,
+        });
+    }
+    const hidden = { zal: await selfHidden(zal), guest2: await selfHidden(guest2) };
+
+    await zal.browser.close();
+    await guest1.browser.close();
+    await guest2.browser.close();
+
+    const early = samples.filter((s) => s.t <= 4);
+    const mid = samples.filter((s) => s.t >= 10 && s.t <= 16);
+    const late = samples.filter((s) => s.t >= 24);
+    return {
+        scenario: 'concert',
+        hidden,
+        samples,
+        checks: {
+            earlyDefaults: early.some((s) => s.zalSees === null && s.guest2Sees === 'zal'),
+            guestTakeover: mid.some((s) => s.zalSees === 'guest1' && s.guest2Sees === 'guest1'),
+            performerWatchesZal: samples.every((s) => s.guest1Sees === 'zal' || s.guest1Sees === null),
+            backToDefaults: late.length > 0 && late.every((s) => s.zalSees === null && s.guest2Sees === 'zal'),
+            selfHidden: hidden.zal === true && hidden.guest2 === true,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -316,6 +385,11 @@ if (which === 'anchor' || which === 'all') {
         r.anchoredBeforeGuest === 'Zal' && // anchor is the default view
         r.focusedSequence.includes('Guest1') && // the speaker takes over
         r.finalFocus === 'Zal'; // and the view returns to the anchor
+    results.push(r);
+}
+if (which === 'concert' || which === 'all') {
+    const r = await runConcertScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
 

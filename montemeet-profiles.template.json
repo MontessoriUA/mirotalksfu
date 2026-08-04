@@ -21,6 +21,22 @@
             },
             "layout": { "anchor": "presenter" }
         },
+        "concert": {
+            "audio": {
+                "echoCancellation": true,
+                "autoGainControl": false,
+                "noiseSuppression": false,
+                "opusDtx": false,
+                "opusMaxAverageBitrate": 128000
+            },
+            "layout": {
+                "mode": "concert",
+                "anchor": "presenter",
+                "holdMs": 1500,
+                "silenceMs": 4000,
+                "minVolume": 2
+            }
+        },
         "default": {
             "audio": null
         }

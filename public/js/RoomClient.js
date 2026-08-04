@@ -10537,6 +10537,9 @@ class RoomClient {
         //console.log('Active speaker', data);
 
         const { peer_id, peer_name, audioVolume } = data;
+
+        // Montemeet: activity heartbeat for the concert silence watchdog
+        if (typeof MontemeetLayout !== 'undefined') MontemeetLayout.noteActivity(peer_id, audioVolume);
         const audioVolumeTmp = audioVolume * 10; //10-100
         const audioColorTmp = this.getAudioVolumeColor(audioVolumeTmp);
 
@@ -10829,6 +10832,12 @@ class RoomClient {
         console.log('Dominant Speaker', data);
         const { peer_id, producer_id } = data;
         this.handleDominantSpeakerHighlight(peer_id);
+        // Montemeet: concert rooms are driven by the layout owner (hold timer,
+        // roles, silence watchdog) instead of the stock checkbox behavior
+        if (typeof MontemeetLayout !== 'undefined' && MontemeetLayout.concertActive()) {
+            MontemeetLayout.onDominant(peer_id);
+            return;
+        }
         if (this.dominantSpeaker && switchDominantSpeakerFocus.checked) {
             // Montemeet: pass peer_id — producer_id may be null (see focus handler)
             this.handleDominantSpeakerFocus(producer_id, null, 10000, peer_id);

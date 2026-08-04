@@ -47,12 +47,12 @@ function resizeVideoMedia() {
 
     let Margin = 5;
     let videoMediaContainer = document.getElementById('videoMediaContainer');
-    let Cameras = document.getElementsByClassName('Camera');
+    // Montemeet: lay out only the visible tiles (concert rooms hide the own tile)
+    let Cameras = [...document.getElementsByClassName('Camera')].filter((c) => c.style.display !== 'none');
     let Width = videoMediaContainer.offsetWidth - Margin * 2;
     let Height = videoMediaContainer.offsetHeight - Margin * 2;
     let max = 0;
-    let optional = isHideMeActive && videoMediaContainer.childElementCount <= 2 ? 1 : 0;
-    let isOneVideoElement = videoMediaContainer.childElementCount - optional == 1 ? true : false;
+    let isOneVideoElement = Cameras.length == 1 ? true : false;
 
     // console.log('videoMediaContainer.childElementCount', {
     //     isOneVideoElement: isOneVideoElement,

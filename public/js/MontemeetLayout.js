@@ -96,11 +96,123 @@ const MontemeetLayout = (() => {
         if (id) focusOn(id);
     }
 
+    // ---------- concert mode (stage 2.3, ТЗ §5) ----------
+    // Roles: the presenter is the Host («Зал», the hall machine on the TV),
+    // everyone else is a Guest. dom = dominant speaker confirmed by a hold
+    // timer; silence = no audio activity above minVolume for silenceMs
+    // (heartbeat via the audioVolume events, see RoomClient.handleAudioVolume).
+    //
+    //           | dom == self       | dom == other     | silence
+    //   Host    | grid of others    | focus on dom     | grid of others
+    //   Guest   | focus on anchor   | focus on dom     | focus on anchor
+    //
+    // One never sees oneself: the own tile is hidden in concert rooms.
+
+    let concert = null; // { holdMs, silenceMs, minVolume }
+    let dom = null; // confirmed dominant peer id (null = silence)
+    let pending = null; // { peerId, timer } — hold in progress
+    let lastActivityTs = 0;
+
+    const selfId = () => (typeof rc !== 'undefined' ? rc.peer_id : null);
+    const isHost = () => typeof isPresenter !== 'undefined' && isPresenter;
+
+    function concertActive() {
+        return !!concert;
+    }
+
+    // Heartbeat from audioVolume events (volume 1-10); ignores sub-threshold noise
+    function noteActivity(peer_id, volume) {
+        if (!concert) return;
+        if ((volume ?? 0) < concert.minVolume) return;
+        lastActivityTs = Date.now();
+    }
+
+    // dominantSpeaker event → hold the candidate before switching
+    function onDominant(peer_id) {
+        if (!concert || !peer_id) return;
+        lastActivityTs = Date.now();
+        if (peer_id === dom) return;
+        if (pending?.peerId === peer_id) return; // already holding this candidate
+        if (pending) clearTimeout(pending.timer);
+        pending = {
+            peerId: peer_id,
+            timer: setTimeout(() => {
+                dom = pending.peerId;
+                pending = null;
+                applyConcert();
+            }, concert.holdMs),
+        };
+    }
+
+    async function focusByPeer(peerId) {
+        let videoEl = rc.getVideoElementByPeerId(peerId);
+        if (!videoEl) {
+            // late joiner — rc.peers/DOM may lag; one refresh + retry
+            try {
+                const info = await rc.getRoomInfo();
+                if (info?.peers) rc.peers = new Map(JSON.parse(info.peers));
+            } catch (e) {
+                /* keep going */
+            }
+            videoEl = rc.getVideoElementByPeerId(peerId);
+        }
+        if (videoEl) return focusOn(videoEl.id);
+        return false;
+    }
+
+    function hideSelf() {
+        const videoEl = rc?.getVideoElementByPeerId?.(selfId());
+        const container = videoEl ? document.getElementById(videoEl.id + '__video') : null;
+        if (container && container.style.display !== 'none') {
+            container.style.display = 'none';
+            return true;
+        }
+        return false;
+    }
+
+    async function applyConcert() {
+        if (!concert || typeof rc === 'undefined') return;
+        let focusedDom = false;
+        if (dom && dom !== selfId()) {
+            focusedDom = await focusByPeer(dom);
+        }
+        if (!focusedDom) {
+            // silence, self is dominant, or the dominant has no video here
+            if (isHost()) {
+                focusOff(); // grid of the others
+            } else {
+                const id = anchorVideoId();
+                id ? focusOn(id) : focusOff();
+            }
+        }
+        // last — an unfocus above re-shows every sibling, including our own tile
+        if (hideSelf() && typeof resizeVideoMedia === 'function') resizeVideoMedia();
+    }
+
     (async () => {
         try {
             await MontemeetProfile.ready;
-            anchorMode = MontemeetProfile.layout()?.anchor ?? null;
-            if (anchorMode !== 'presenter') return;
+            const layout = MontemeetProfile.layout();
+            anchorMode = layout?.anchor ?? null;
+            if (layout?.mode === 'concert') {
+                concert = {
+                    holdMs: layout.holdMs ?? 1500,
+                    silenceMs: layout.silenceMs ?? 4000,
+                    minVolume: layout.minVolume ?? 2,
+                };
+                // silence watchdog: no activity above the threshold → back to default
+                setInterval(() => {
+                    if (dom !== null && Date.now() - lastActivityTs > concert.silenceMs) {
+                        dom = null;
+                        if (pending) {
+                            clearTimeout(pending.timer);
+                            pending = null;
+                        }
+                        applyConcert();
+                    }
+                }, 1000);
+            }
+            if (!anchorMode && !concert) return;
             const target = document.getElementById('videoMediaContainer');
             if (!target) return;
             // Structural changes only (tiles appear/leave) — a manual unfocus
@@ -108,12 +220,12 @@ const MontemeetLayout = (() => {
             let t = null;
             new MutationObserver(() => {
                 clearTimeout(t);
-                t = setTimeout(ensureDefault, 800);
+                t = setTimeout(concert ? applyConcert : ensureDefault, 800);
             }).observe(target, { childList: true });
         } catch (e) {
             /* no profile -> stock behavior */
         }
     })();
 
-    return { current, isFocused, focusOn, focusOff, ensureDefault };
+    return { current, isFocused, focusOn, focusOff, ensureDefault, concertActive, onDominant, noteActivity };
 })();
