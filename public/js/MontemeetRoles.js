@@ -393,6 +393,26 @@ const MontemeetRoles = (() => {
         ensureUnhideButtons(teacher);
     }
 
+    // Teacher's «размывать мой фон по умолчанию» (cabinet switch): a one-time
+    // seed of the stock virtual-background low blur. The teacher's OWN saved
+    // choice always wins — once virtualBackgroundSettings exists (including an
+    // explicit "no effect"), the default never fires again. Students unaffected.
+    // Returns true when done (or not applicable) so the poll can stop.
+    function ensureBlurDefault() {
+        try {
+            const ov = MontemeetProfile.overrides ? MontemeetProfile.overrides() : null;
+            if (!ov || !ov.blurSelf) return true;
+            if (localStorage.getItem('virtualBackgroundSettings')) return true;
+            if (typeof rc === 'undefined' || !rc || !rc.producerExist) return false;
+            if (!rc.producerExist(mediaType.video)) return false; // wait for the camera producer
+            if (!(typeof isPresenter !== 'undefined' && isPresenter)) return true;
+            rc.applyVirtualBackground(10);
+            return true;
+        } catch (e) {
+            return true;
+        }
+    }
+
     // The teacher can re-enable a participant's camera right from the avatar
     // tile (Ivan, 2026-08-06) — a hidden camera has no video tile, and the
     // stock videoOff button set has no camera control at all.
@@ -467,6 +487,10 @@ const MontemeetRoles = (() => {
             }, 150);
             setTimeout(() => clearInterval(splitPoll), 30000);
             if (preset === 'lesson') {
+                const blurPoll = setInterval(() => {
+                    if (ensureBlurDefault()) clearInterval(blurPoll);
+                }, 500);
+                setTimeout(() => clearInterval(blurPoll), 30000);
                 // the student extras wait until the role is settled (own tile built)
                 const studentPoll = setInterval(() => {
                     if (

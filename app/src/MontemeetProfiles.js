@@ -53,7 +53,14 @@ function load() {
 }
 
 function forRoom(roomId) {
-    const { profiles = {}, rooms = {}, presenters = {}, devicePriority = null, googleClientId = null } = load() || {};
+    const {
+        profiles = {},
+        rooms = {},
+        presenters = {},
+        roomOverrides = {},
+        devicePriority = null,
+        googleClientId = null,
+    } = load() || {};
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
     const profileName = has(rooms, roomId) ? rooms[roomId] : has(rooms, '*') ? rooms['*'] : 'default';
@@ -66,9 +73,57 @@ function forRoom(roomId) {
         roles: (profile && profile.roles) || null,
         // deterministic presenter: the room's teacher by NAME (cabinet-managed)
         presenterName: has(presenters, roomId) ? presenters[roomId] : null,
+        // per-room teacher switches (client cares about blurSelf; the rest is applied server-side)
+        overrides: has(roomOverrides, roomId) ? roomOverrides[roomId] : null,
         devicePriority, // installation-wide (e.g. SplitCam on school computers)
         googleClientId: googleClientId || null, // One Tap name prefill (optional)
     };
 }
 
-module.exports = { forRoom };
+// cabinet policy -> stock room moderator flag(s); the stock client already
+// exempts the presenter from moderator rules and from the lobby
+const POLICY_TO_MODERATOR = {
+    startMutedAll: ['audio_start_muted'],
+    startHiddenAll: ['video_start_hidden'],
+    privacyAll: ['video_start_privacy'],
+    cantUnmute: ['audio_cant_unmute'],
+    cantUnhide: ['video_cant_unhide'],
+    screenShareStudentsOff: ['screen_cant_share'],
+    chatPrivateOff: ['chat_cant_privately'],
+    chatPublicOff: ['chat_cant_publicly'],
+    aiOff: ['chat_cant_chatgpt', 'chat_cant_deep_seek'],
+    pollsOff: ['polls_cant_create'],
+    mediaShareOff: ['media_cant_sharing'],
+};
+
+function isLessonRoom(roomId) {
+    const { profiles = {}, rooms = {} } = load() || {};
+    const profileName = Object.prototype.hasOwnProperty.call(rooms, roomId) ? rooms[roomId] : null;
+    const profile = profileName ? profiles[profileName] : null;
+    return !!(profile && profile.roles === 'lesson');
+}
+
+// seed a freshly created Room with cabinet policies + the teacher's switches.
+// Lessons only: concerts run their own rules, unmanaged rooms stay stock.
+function applyToRoom(room, roomId) {
+    if (!isLessonRoom(roomId)) return false;
+    const { roomOverrides = {}, lessonPolicies = {} } = load() || {};
+    for (const [policy, flags] of Object.entries(POLICY_TO_MODERATOR)) {
+        if (lessonPolicies[policy]) for (const flag of flags) room._moderator[flag] = true;
+    }
+    const ov = roomOverrides[roomId];
+    if (ov) {
+        if (ov.startMuted) room._moderator.audio_start_muted = true;
+        if (ov.startHidden) room._moderator.video_start_hidden = true;
+        if (ov.lobby) room._isLobbyEnabled = true;
+    }
+    log.debug('Montemeet room policies applied', { roomId, moderator: room._moderator, lobby: room._isLobbyEnabled });
+    return true;
+}
+
+function endsOnTeacherLeave(roomId) {
+    const { lessonPolicies = {} } = load() || {};
+    return !!lessonPolicies.endOnTeacherLeave && isLessonRoom(roomId);
+}
+
+module.exports = { forRoom, applyToRoom, endsOnTeacherLeave, isLessonRoom };

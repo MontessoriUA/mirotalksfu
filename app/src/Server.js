@@ -2352,6 +2352,8 @@ function startServer() {
                 log.debug('Created room', { room_id: socket.room_id });
                 const worker = await getMediasoupWorker();
                 roomList.set(socket.room_id, new Room(socket.room_id, worker, io));
+                // Montemeet: seed lesson rooms with cabinet policies + teacher switches
+                montemeetProfiles.applyToRoom(roomList.get(socket.room_id), socket.room_id);
                 callback({ room_id: socket.room_id });
             }
         });
@@ -3265,11 +3267,14 @@ function startServer() {
                     break;
                 case 'lobbyOn':
                     if (!isPresenter) return;
+                    // Montemeet: in lesson rooms the lobby follows the cabinet switch only
+                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
                     room.setLobbyEnabled(true);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
                 case 'lobbyOff':
                     if (!isPresenter) return;
+                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
                     room.setLobbyEnabled(false);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
@@ -3590,6 +3595,10 @@ function startServer() {
         socket.on('updateRoomModerator', (dataObject) => {
             if (!roomExists(socket)) return;
 
+            // Montemeet: lesson policies are cabinet-managed (admin level) — the hidden
+            // Moderator tab still pushes the presenter's stale localStorage on join
+            if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+
             const data = checkXSS(dataObject);
 
             if (!Validator.isValidData(data)) return;
@@ -3623,6 +3632,9 @@ function startServer() {
 
         socket.on('updateRoomModeratorALL', (dataObject) => {
             if (!roomExists(socket)) return;
+
+            // Montemeet: see updateRoomModerator — cabinet policies win in lesson rooms
+            if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
 
             const data = checkXSS(dataObject);
 
@@ -4807,6 +4819,11 @@ function startServer() {
 
             room.broadCast(socket.id, 'removeMe', removeMeData(room, peer_name, isPresenter));
 
+            // Montemeet: admin policy — the teacher leaving ends the lesson for everyone
+            if (isPresenter && room.getPeersCount() > 0 && montemeetProfiles.endsOnTeacherLeave(socket.room_id)) {
+                room.broadCast(socket.id, 'cmd', { type: 'ejectAll', peer_name, broadcast: true });
+            }
+
             // Notify main room when a peer leaves a breakout room
             if (socket.room_id.includes('_breakout_')) {
                 notifyMainRoomBreakoutCountChanged(socket.room_id);
@@ -4876,6 +4893,11 @@ function startServer() {
             room.removePeer(socket.id);
 
             room.broadCast(socket.id, 'removeMe', removeMeData(room, peer_name, isPresenter));
+
+            // Montemeet: admin policy — the teacher leaving ends the lesson for everyone
+            if (isPresenter && room.getPeersCount() > 0 && montemeetProfiles.endsOnTeacherLeave(socket.room_id)) {
+                room.broadCast(socket.id, 'cmd', { type: 'ejectAll', peer_name, broadcast: true });
+            }
 
             // Clean up this peer's presenter entry immediately
             if (socket.room_id in presenters && socket.id in presenters[socket.room_id]) {
