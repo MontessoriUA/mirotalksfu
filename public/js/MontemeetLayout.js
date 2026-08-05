@@ -1,5 +1,6 @@
 'use strict';
 
+
 /*
  * Montemeet: single owner for PROGRAMMATIC layout control (stage 2.1).
  *
@@ -20,6 +21,8 @@
  */
 
 const MontemeetLayout = (() => {
+    // translated at call time by MontemeetI18n (identity until it loads)
+    const mmT = (s) => (typeof window.mmT === 'function' ? window.mmT(s) : s);
     const containerId = (id) => id + '__video';
     const container = (id) => document.getElementById(containerId(id));
     const focusBtn = (id) => document.getElementById(id + '__hideALL');
@@ -456,10 +459,10 @@ const MontemeetLayout = (() => {
         if (!btn) return;
         if (manualState) {
             btn.innerHTML = MANUAL_PIN_ICON;
-            btn.title = 'Закреплено вручную — клик: вернуть прежний режим';
+            btn.title = mmT('Закреплено вручную — клик: вернуть прежний режим');
         } else {
             btn.innerHTML = VIEW_ICON[speakerView];
-            btn.title = VIEW_TITLE[speakerView];
+            btn.title = mmT(VIEW_TITLE[speakerView]);
         }
         btn.style.color = 'lime';
     }

@@ -1,5 +1,6 @@
 'use strict';
 
+
 /*
  * Montemeet: role presets — trim the UI per the Appendix A decision table
  * (MASTERPLAN.md). First pass: the main toolbar. The settings panel and the
@@ -12,6 +13,8 @@
  */
 
 const MontemeetRoles = (() => {
+    // translated at call time by MontemeetI18n (identity until it loads)
+    const mmT = (s) => (typeof window.mmT === 'function' ? window.mmT(s) : s);
     // Appendix A, «Основная панель»: hidden for BOTH roles at lessons
     const HIDE_BOTH = [
         'raiseHandButton',
@@ -268,7 +271,7 @@ const MontemeetRoles = (() => {
         if (!btn) return;
         const on = pcSoundActive();
         btn.classList.toggle('montemeet-on', on); // CSS !important beats stock button colors
-        btn.title = on ? 'Звук компьютера: транслируется (клик — выключить)' : 'Транслировать звук компьютера';
+        btn.title = on ? mmT('Звук компьютера: транслируется (клик — выключить)') : mmT('Транслировать звук компьютера');
         if (on) btn.classList.remove('montemeet-attention');
     }
 
@@ -293,8 +296,8 @@ const MontemeetRoles = (() => {
                     userLog(
                         'warning',
                         isMac
-                            ? 'На macOS звук доступен только из вкладки Chrome: выберите ВКЛАДКУ с плеером и включите «Также предоставить доступ к аудио вкладки»'
-                            : 'Отметьте галку «Предоставить доступ к системному звуку» в диалоге браузера',
+                            ? mmT('На macOS звук доступен только из вкладки Chrome: выберите ВКЛАДКУ с плеером и включите «Также предоставить доступ к аудио вкладки»')
+                            : mmT('Отметьте галку «Предоставить доступ к системному звуку» в диалоге браузера'),
                         'top-end',
                         8000
                     );
@@ -345,7 +348,7 @@ const MontemeetRoles = (() => {
         if (!bar || !stockBtn) return;
         const btn = document.createElement('button');
         btn.id = 'montemeetFileShareBtn';
-        btn.title = 'Отправить файл';
+        btn.title = mmT('Отправить файл');
         btn.innerHTML = '<i class="fas fa-file-upload"></i>';
         btn.addEventListener('click', () => stockBtn.click());
         // right next to the participants button (Ivan, 2026-08-05)
@@ -425,7 +428,7 @@ const MontemeetRoles = (() => {
             const bar = tile.querySelector('[id$="__vb"]') || tile;
             const btn = document.createElement('button');
             btn.id = peerId + '__mmUnhide';
-            btn.title = 'Включить камеру участнику';
+            btn.title = mmT('Включить камеру участнику');
             // stock buttons carry the FA class ON the button itself — the tile
             // bar's hover show/hide only works for that pattern
             btn.className = 'fas fa-video-slash red';
