@@ -684,6 +684,12 @@ const MontemeetLayout = (() => {
     // The admin cabinet will manage the image later — the mechanics live here.
     function syncConcertSplash() {
         if (!concertRoom) return;
+        // the splash is the HALL's stage filler only (Ivan, 2026-08-06) — guests
+        // keep the normal focus-on-hall view
+        if (!isHost()) {
+            document.getElementById('montemeetSplash')?.remove();
+            return;
+        }
         const url = layoutCfg?.splash;
         if (!url) return;
         const others = [

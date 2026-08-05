@@ -460,7 +460,7 @@ const MontemeetRoles = (() => {
             const initTrim = setInterval(() => {
                 const eye = document.getElementById('initAudioVideoButton');
                 if (!eye) return;
-                for (const id of ['initAudioVideoButton', 'initStartScreenButton', 'initVideoMirrorButton']) {
+                for (const id of ['initAudioVideoButton', 'initStartScreenButton', 'initVideoMirrorButton', 'initVirtualBackgroundButton']) {
                     const el = document.getElementById(id);
                     if (el) el.style.display = 'none';
                 }
@@ -484,11 +484,12 @@ const MontemeetRoles = (() => {
                 },
                 true
             );
-            const splitPoll = setInterval(() => {
-                splitParticipantsFromChat();
-                if (panelSplitDone && pendingPanel === null) clearInterval(splitPoll);
-            }, 150);
-            setTimeout(() => clearInterval(splitPoll), 30000);
+            // keep re-asserting for the whole warm-up window: the stock
+            // roomIsReady() -> handleButtons() re-binds these onclick handlers
+            // AFTER the client exists, which used to steal the buttons back
+            // (Ivan: "чат открывается со 2-3-4 клика")
+            const splitPoll = setInterval(splitParticipantsFromChat, 150);
+            setTimeout(() => clearInterval(splitPoll), 45000);
             if (preset === 'lesson') {
                 const blurPoll = setInterval(() => {
                     if (ensureBlurDefault()) clearInterval(blurPoll);

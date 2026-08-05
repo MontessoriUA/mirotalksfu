@@ -5,27 +5,30 @@
  *
  * No stock strings are edited — everything happens at runtime:
  *  - WRAPPERS: the global setTippy()/userLog() (Room.js) AND the RoomClient
- *    prototype methods (setTippy/userLog/toast/msgPopup) plus Swal.fire are
- *    wrapped as soon as this script loads (it is included AFTER Room.js, all
- *    scripts deferred), so every runtime string passes through tr();
- *  - TOOLTIPS installed before the wrap (top-level initClient) are re-applied
- *    from the TOOLTIPS list (id -> stock English source);
- *  - STATIC texts in Room.html are replaced by the STATIC map on
- *    DOMContentLoaded (+ one delayed pass for late-built panels);
- *  - our own Montemeet modules call window.mmT('русская строка') at runtime.
+ *    prototype methods (setTippy/userLog/toast/msgPopup), Swal.fire/mixin
+ *    (incl. inputLabel/inputValidator/showValidationMessage) are wrapped as
+ *    soon as this script loads (it is included AFTER Room.js, all deferred);
+ *  - DOM PASS: every text node and translatable attribute (placeholder, title,
+ *    aria-label, alt) in the document AND inside every <template>.content is
+ *    translated by exact MSG match or RULES regex on DOMContentLoaded. Icons
+ *    survive: only text nodes are touched, never element markup;
+ *  - LIVE: a MutationObserver translates nodes the stock code builds later
+ *    (device dropdowns, participants list, chat headers, Swal html bodies...);
+ *  - our own Montemeet modules call window.mmT('русская строка') at run time.
  *
- * Dictionaries live in MontemeetI18n.dict.js (MSG / RULES / STATIC / TOOLTIPS).
+ * Dictionaries live in MontemeetI18n.dict.js (MSG / RULES / STATIC).
  * English is the stock language: en entries exist only for OUR russian-authored
  * strings; a stock string without an entry passes through unchanged.
  *
  * Language priority: localStorage MM_LANG (explicit choice in the conference)
- *  -> mm_lang cookie (the cabinet / landing choice, same domain)
- *  -> 'uk'. The Settings > Language tab hosts the selector (replaces the stock
- * Google-Translate widget).
+ *  -> mm_lang cookie (the cabinet / landing choice, same domain) -> 'uk'.
+ * The Settings > Language tab hosts the selector (the async Google-Translate
+ * widget mount is hidden).
  */
 
 const MontemeetI18n = (() => {
     const LANGS = ['uk', 'ru', 'en'];
+    const ATTRS = ['placeholder', 'title', 'aria-label', 'alt'];
 
     function pick() {
         try {
@@ -37,47 +40,106 @@ const MontemeetI18n = (() => {
     }
 
     const lang = pick();
-    const D = window.MontemeetDict || { MSG: {}, RULES: [], STATIC: [], TOOLTIPS: [] };
+    const D = window.MontemeetDict || { MSG: {}, RULES: [], STATIC: [] };
 
     // translate one string: exact MSG match, then RULES (regex templates)
     function tr(text) {
         if (typeof text !== 'string' || !text) return text;
         const key = text.trim();
+        if (!key || key.length > 400) return text;
         const hit = D.MSG[key];
         if (hit && hit[lang] != null) return text.replace(key, hit[lang]);
         for (const rule of D.RULES) {
-            const m = rule.re.exec(text);
+            const m = rule.re.exec(key);
             if (m && rule[lang]) {
-                return rule[lang].replace(/\$(\d)/g, (_, n) => m[Number(n)] ?? '');
+                return text.replace(key, rule[lang].replace(/\$(\d)/g, (_, n) => m[Number(n)] ?? ''));
             }
         }
         return text;
     }
 
-    function applyStatic() {
+    // stock is English → for en only OUR russian strings matter, and those are
+    // translated at the source via window.mmT
+    const domActive = lang !== 'en';
+
+    function translateTextNode(node) {
+        const out = tr(node.nodeValue);
+        if (out !== node.nodeValue) node.nodeValue = out;
+    }
+
+    function translateAttrs(el) {
+        for (const a of ATTRS) {
+            const v = el.getAttribute && el.getAttribute(a);
+            if (v) {
+                const out = tr(v);
+                if (out !== v) el.setAttribute(a, out);
+            }
+        }
+    }
+
+    function applyDom(root) {
+        if (!root) return;
+        if (root.nodeType === Node.TEXT_NODE) {
+            translateTextNode(root);
+            return;
+        }
+        if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
+        if (root.nodeType === Node.ELEMENT_NODE) translateAttrs(root);
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+        let n;
+        while ((n = walker.nextNode())) {
+            if (n.nodeType === Node.TEXT_NODE) translateTextNode(n);
+            else translateAttrs(n);
+        }
+    }
+
+    function applyAll() {
+        applyDom(document.body);
+        for (const t of document.querySelectorAll('template')) applyDom(t.content);
+        // explicit overrides / html-bearing entries
         for (const [selector, kind, byLang] of D.STATIC) {
             const value = byLang[lang];
             if (value == null) continue;
             for (const el of document.querySelectorAll(selector)) {
                 if (kind === 'text') el.textContent = value;
                 else if (kind === 'html') el.innerHTML = value;
-                else el.setAttribute(kind, value); // placeholder / title / aria-label
+                else el.setAttribute(kind, value);
             }
         }
     }
 
-    function applyTooltips() {
-        if (typeof window.setTippy !== 'function') return;
-        for (const [id, source] of D.TOOLTIPS) {
-            if (document.getElementById(id)) window.setTippy(id, source, 'top');
-        }
+    let observer = null;
+    function observe() {
+        observer = new MutationObserver((muts) => {
+            for (const m of muts) {
+                if (m.type === 'attributes') {
+                    translateAttrs(m.target);
+                    continue;
+                }
+                for (const node of m.addedNodes) applyDom(node);
+            }
+        });
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ATTRS,
+        });
     }
 
     function wrapSwalOptions(options) {
         if (options && typeof options === 'object' && !Array.isArray(options)) {
             options = { ...options };
-            for (const k of ['title', 'text', 'html', 'confirmButtonText', 'denyButtonText', 'cancelButtonText', 'footer', 'inputPlaceholder']) {
+            for (const k of ['title', 'text', 'html', 'confirmButtonText', 'denyButtonText', 'cancelButtonText', 'footer', 'inputPlaceholder', 'inputLabel']) {
                 if (typeof options[k] === 'string') options[k] = tr(options[k]);
+            }
+            if (typeof options.inputValidator === 'function') {
+                const orig = options.inputValidator;
+                options.inputValidator = async (...args) => tr(await orig(...args));
+            }
+            if (typeof options.preConfirm === 'function') {
+                const orig = options.preConfirm;
+                options.preConfirm = (...args) => orig(...args);
             }
         }
         return options;
@@ -118,7 +180,6 @@ const MontemeetI18n = (() => {
         if (window.Swal && typeof window.Swal.fire === 'function') {
             const origFire = window.Swal.fire.bind(window.Swal);
             window.Swal.fire = (options, ...rest) => origFire(wrapSwalOptions(options), ...rest);
-            // toasts and steppers go through Swal.mixin(...).fire
             const origMixin = window.Swal.mixin.bind(window.Swal);
             window.Swal.mixin = (mixinOptions) => {
                 const inst = origMixin(wrapSwalOptions(mixinOptions));
@@ -126,6 +187,10 @@ const MontemeetI18n = (() => {
                 inst.fire = (options, ...r) => instFire(wrapSwalOptions(options), ...r);
                 return inst;
             };
+            if (typeof window.Swal.showValidationMessage === 'function') {
+                const origSVM = window.Swal.showValidationMessage.bind(window.Swal);
+                window.Swal.showValidationMessage = (message) => origSVM(tr(message));
+            }
         }
     }
 
@@ -137,10 +202,10 @@ const MontemeetI18n = (() => {
         window.location.reload();
     }
 
-    // Settings > Language tab: our selector instead of the Google-Translate widget
+    // Settings > Language tab: our selector; the async Google widget mount is hidden
     function mountSelector() {
         const host = document.getElementById('google_translate_element');
-        if (!host) return;
+        if (!host || document.getElementById('mmLangSelect')) return;
         const NAMES = { uk: 'Українська', ru: 'Русский', en: 'English' };
         const sel = document.createElement('select');
         sel.id = 'mmLangSelect';
@@ -154,7 +219,6 @@ const MontemeetI18n = (() => {
             sel.appendChild(o);
         }
         sel.addEventListener('change', () => set(sel.value));
-        // the async Google-Translate widget mounts into the host later — park it
         host.style.display = 'none';
         host.parentElement.insertBefore(sel, host);
     }
@@ -163,15 +227,14 @@ const MontemeetI18n = (() => {
     wrap();
 
     document.addEventListener('DOMContentLoaded', () => {
-        applyStatic();
-        if (lang !== 'en') applyTooltips();
         mountSelector();
         document.documentElement.lang = lang;
-        // some panels are (re)built after join — one delayed second pass
-        setTimeout(() => {
-            applyStatic();
-            if (lang !== 'en') applyTooltips();
-        }, 3000);
+        if (domActive) {
+            applyAll();
+            observe();
+            // late-built panels that replace big chunks wholesale
+            setTimeout(applyAll, 3000);
+        }
     });
 
     return { lang, t: tr, set };
