@@ -2514,10 +2514,12 @@ function startServer() {
             const isBreakoutRoom = socket.room_id.includes('_breakout_');
             // Montemeet: deterministic presenter — the registry names the room's
             // teacher, so joining order, re-joins and ghost peers can never
-            // grant or revoke the role by accident
+            // grant or revoke the role by accident. A signed presenter token
+            // (the cabinet's own «Перейти в комнату» link) also grants the role —
+            // name matching stays as the tokenless fallback for now.
             const mmPresenterName = montemeetProfiles.forRoom(socket.room_id)?.presenterName;
             if (mmPresenterName) {
-                presenter.is_presenter = peer_name === mmPresenterName;
+                presenter.is_presenter = (peer_token && is_presenter) || peer_name === mmPresenterName;
                 if (presenter.is_presenter) {
                     presenters[socket.room_id][socket.id] = presenter;
                 }
