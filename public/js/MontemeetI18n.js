@@ -24,6 +24,10 @@
  *  -> mm_lang cookie (the cabinet / landing choice, same domain) -> 'uk'.
  * The Settings > Language tab hosts the selector (the async Google-Translate
  * widget mount is hidden).
+ *
+ * Switching is LIVE (no page reload — a reload would drop a student back into
+ * the lobby): every touched text node / attribute keeps its source string in
+ * __mmSrc/__mmOut expandos, tooltips are re-created from remembered originals.
  */
 
 const MontemeetI18n = (() => {
@@ -39,41 +43,49 @@ const MontemeetI18n = (() => {
         return m ? m[1] : 'uk';
     }
 
-    const lang = pick();
+    let lang = pick();
     const D = window.MontemeetDict || { MSG: {}, RULES: [], STATIC: [] };
 
-    // translate one string: exact MSG match, then RULES (regex templates)
+    // translate one string: exact MSG match, then RULES (regex templates);
+    // stock markup mixes &nbsp; into labels ("🎥&nbsp;Default") — match on plain spaces
     function tr(text) {
         if (typeof text !== 'string' || !text) return text;
-        const key = text.trim();
+        const norm = text.replace(/ /g, ' ');
+        const key = norm.trim();
         if (!key || key.length > 400) return text;
         const hit = D.MSG[key];
-        if (hit && hit[lang] != null) return text.replace(key, hit[lang]);
+        if (hit && hit[lang] != null) return norm.replace(key, hit[lang]);
         for (const rule of D.RULES) {
             const m = rule.re.exec(key);
             if (m && rule[lang]) {
-                return text.replace(key, rule[lang].replace(/\$(\d)/g, (_, n) => m[Number(n)] ?? ''));
+                return norm.replace(key, rule[lang].replace(/\$(\d)/g, (_, n) => m[Number(n)] ?? ''));
             }
         }
         return text;
     }
 
-    // stock is English → for en only OUR russian strings matter, and those are
-    // translated at the source via window.mmT
-    const domActive = lang !== 'en';
-
+    // Source tracking for live re-translation: __mmSrc holds the stock string,
+    // __mmOut what we last wrote. A current value matching neither means the
+    // stock code wrote a fresh string — it becomes the new source.
     function translateTextNode(node) {
-        const out = tr(node.nodeValue);
-        if (out !== node.nodeValue) node.nodeValue = out;
+        const cur = node.nodeValue;
+        if (node.__mmSrc == null || (cur !== node.__mmSrc && cur !== node.__mmOut)) node.__mmSrc = cur;
+        const out = tr(node.__mmSrc);
+        node.__mmOut = out;
+        if (out !== cur) node.nodeValue = out;
     }
 
     function translateAttrs(el) {
+        if (!el.getAttribute) return;
         for (const a of ATTRS) {
-            const v = el.getAttribute && el.getAttribute(a);
-            if (v) {
-                const out = tr(v);
-                if (out !== v) el.setAttribute(a, out);
-            }
+            const cur = el.getAttribute(a);
+            if (!cur) continue;
+            const src = el.__mmSrcA || (el.__mmSrcA = {});
+            const prev = el.__mmOutA || (el.__mmOutA = {});
+            if (src[a] == null || (cur !== src[a] && cur !== prev[a])) src[a] = cur;
+            const out = tr(src[a]);
+            prev[a] = out;
+            if (out !== cur) el.setAttribute(a, out);
         }
     }
 
@@ -96,14 +108,23 @@ const MontemeetI18n = (() => {
     function applyAll() {
         applyDom(document.body);
         for (const t of document.querySelectorAll('template')) applyDom(t.content);
-        // explicit overrides / html-bearing entries
+        // explicit overrides / html-bearing entries; the stock value is kept so
+        // switching to en (no entry) restores it
         for (const [selector, kind, byLang] of D.STATIC) {
-            const value = byLang[lang];
-            if (value == null) continue;
             for (const el of document.querySelectorAll(selector)) {
-                if (kind === 'text') el.textContent = value;
-                else if (kind === 'html') el.innerHTML = value;
-                else el.setAttribute(kind, value);
+                const store = el.__mmStatic || (el.__mmStatic = {});
+                if (store[kind] == null) {
+                    store[kind] = kind === 'text' ? el.textContent : kind === 'html' ? el.innerHTML : el.getAttribute(kind);
+                }
+                const value = byLang[lang] != null ? byLang[lang] : store[kind];
+                if (value == null) continue;
+                if (kind === 'text') {
+                    if (el.textContent !== value) el.textContent = value;
+                } else if (kind === 'html') {
+                    if (el.innerHTML !== value) el.innerHTML = value;
+                } else if (el.getAttribute(kind) !== value) {
+                    el.setAttribute(kind, value);
+                }
             }
         }
     }
@@ -127,9 +148,28 @@ const MontemeetI18n = (() => {
         });
     }
 
+    // tooltips are created with an already-translated string — remember the raw
+    // one so a live language switch can rebuild them
+    const TIPS = new Map();
+    function rememberTip(fn, self, args) {
+        if (typeof args[1] === 'string') TIPS.set(args[0], { fn, self, args });
+    }
+    function reapplyTips() {
+        for (const { fn, self, args } of TIPS.values()) {
+            try {
+                fn.call(self, args[0], tr(args[1]), args[2], args[3]);
+            } catch (e) {}
+        }
+    }
+
     function wrapSwalOptions(options) {
         if (options && typeof options === 'object' && !Array.isArray(options)) {
             options = { ...options };
+            // stock popups without an explicit background get Swal's white while
+            // the theme colors text white → invisible; default to the theme bg
+            if (options.background === undefined && typeof swalBackground !== 'undefined' && swalBackground) {
+                options.background = swalBackground;
+            }
             for (const k of ['title', 'text', 'html', 'confirmButtonText', 'denyButtonText', 'cancelButtonText', 'footer', 'inputPlaceholder', 'inputLabel']) {
                 if (typeof options[k] === 'string') options[k] = tr(options[k]);
             }
@@ -148,7 +188,10 @@ const MontemeetI18n = (() => {
     function wrap() {
         if (typeof window.setTippy === 'function') {
             const orig = window.setTippy;
-            window.setTippy = (elem, content, placement, allowHTML) => orig(elem, tr(content), placement, allowHTML);
+            window.setTippy = (elem, content, placement, allowHTML) => {
+                rememberTip(orig, null, [elem, content, placement, allowHTML]);
+                return orig(elem, tr(content), placement, allowHTML);
+            };
         }
         if (typeof window.userLog === 'function') {
             const orig = window.userLog;
@@ -173,6 +216,7 @@ const MontemeetI18n = (() => {
             if (typeof proto.setTippy === 'function') {
                 const orig = proto.setTippy;
                 proto.setTippy = function (elem, content, placement, allowHTML) {
+                    rememberTip(orig, this, [elem, content, placement, allowHTML]);
                     return orig.call(this, elem, tr(content), placement, allowHTML);
                 };
             }
@@ -194,12 +238,18 @@ const MontemeetI18n = (() => {
         }
     }
 
+    // live switch — no reload (a reload would kick a student back into the lobby)
     function set(next) {
-        if (!LANGS.includes(next)) return;
+        if (!LANGS.includes(next) || next === lang) return;
+        lang = next;
         try {
             localStorage.setItem('MM_LANG', next);
         } catch (e) {}
-        window.location.reload();
+        document.documentElement.lang = next;
+        applyAll();
+        reapplyTips();
+        const sel = document.getElementById('mmLangSelect');
+        if (sel && sel.value !== next) sel.value = next;
     }
 
     // Settings > Language tab: our selector; the async Google widget mount is hidden
@@ -229,15 +279,21 @@ const MontemeetI18n = (() => {
     document.addEventListener('DOMContentLoaded', () => {
         mountSelector();
         document.documentElement.lang = lang;
-        if (domActive) {
-            applyAll();
-            observe();
-            // late-built panels that replace big chunks wholesale
-            setTimeout(applyAll, 3000);
-        }
+        // always active (even for en): the source-tracking pass is what makes a
+        // later live switch possible, and for en it is a near-no-op
+        applyAll();
+        observe();
+        // late-built panels that replace big chunks wholesale
+        setTimeout(applyAll, 3000);
     });
 
-    return { lang, t: tr, set };
+    return {
+        get lang() {
+            return lang;
+        },
+        t: tr,
+        set,
+    };
 })();
 
 // our Montemeet modules translate their runtime strings through this

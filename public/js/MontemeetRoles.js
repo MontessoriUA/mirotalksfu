@@ -193,6 +193,24 @@ const MontemeetRoles = (() => {
         if (rc.isChatOpen) rc.toggleChat(true);
     }
 
+    // open the stock chat with its side effects muted: the toolbar flag lets the
+    // fromParticipants guard pass, and the desktop auto-pin stays off — its
+    // chatPin() force-syncs the participants list (which closed our panel right
+    // after opening) and can toast "Please unpin..." warnings. The pin stays
+    // available manually via the chat header icon.
+    async function openChatQuiet() {
+        const savedBtn = BUTTONS.main.chatButton;
+        const savedPin = typeof isChatPinEnabled !== 'undefined' ? isChatPinEnabled : null;
+        BUTTONS.main.chatButton = false;
+        if (savedPin !== null) isChatPinEnabled = false;
+        try {
+            await rc.toggleChat(true);
+        } finally {
+            BUTTONS.main.chatButton = savedBtn;
+            if (savedPin !== null) isChatPinEnabled = savedPin;
+        }
+    }
+
     function openChatSplit() {
         if (!rcReady()) {
             pendingPanel = 'chat';
@@ -205,7 +223,7 @@ const MontemeetRoles = (() => {
             rc.toggleChat(true); // second click closes
             return;
         }
-        if (!rc.isChatOpen) rc.toggleChat(true);
+        if (!rc.isChatOpen) openChatQuiet();
         p?.classList.add('hidden');
         if (p) p.style.width = '';
         if (typeof elemDisplay === 'function') elemDisplay('chat', true);
@@ -223,15 +241,7 @@ const MontemeetRoles = (() => {
             closePanel();
             return;
         }
-        if (!rc.isChatOpen) {
-            const saved = BUTTONS.main.chatButton;
-            BUTTONS.main.chatButton = false; // the stock open path must not show the chat
-            try {
-                await rc.toggleChat(true);
-            } finally {
-                BUTTONS.main.chatButton = saved;
-            }
-        }
+        if (!rc.isChatOpen) await openChatQuiet();
         showList();
     }
 
@@ -246,9 +256,11 @@ const MontemeetRoles = (() => {
         if (partBtn && partBtn.onclick !== toggleParticipantsSplit) partBtn.onclick = toggleParticipantsSplit;
         if (rcReady()) {
             if (!panelSplitDone) {
-                // the list's own X closes the whole panel
-                rc.toggleShowParticipants = function () {
-                    closePanel();
+                // the list's own X closes the whole panel (stock passes true);
+                // chatPin()/chatUnpin() also call this as a no-arg side effect —
+                // those must not touch our split
+                rc.toggleShowParticipants = function (fromUser) {
+                    if (fromUser) closePanel();
                 };
                 panelSplitDone = true;
             }

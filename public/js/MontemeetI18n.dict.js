@@ -48,6 +48,63 @@ window.MontemeetDict = {
         'iOS Audio Routing': { uk: 'Звук на iOS', ru: 'Звук на iOS' },
         'External Microphones': { uk: 'Зовнішні мікрофони', ru: 'Внешние микрофоны' },
 
+        // ---- settings panel labels (plain text nodes) ----
+        'Video Source:': { uk: 'Камера:', ru: 'Камера:' },
+        'Video Quality:': { uk: 'Якість відео:', ru: 'Качество видео:' },
+        'Screen Quality:': { uk: 'Якість екрана:', ru: 'Качество экрана:' },
+        'Screen Optimization:': { uk: 'Оптимізація екрана:', ru: 'Оптимизация экрана:' },
+        'Camera FPS:': { uk: 'Кадри/с камери:', ru: 'Кадры/с камеры:' },
+        'Screen FPS:': { uk: 'Кадри/с екрана:', ru: 'Кадры/с экрана:' },
+        'Microphone:': { uk: 'Мікрофон:', ru: 'Микрофон:' },
+        'Speaker:': { uk: 'Динаміки:', ru: 'Динамики:' },
+        'Virtual background:': { uk: 'Віртуальний фон:', ru: 'Виртуальный фон:' },
+        'Language:': { uk: 'Мова:', ru: 'Язык:' },
+        '🎥 Default': { uk: '🎥 Стандартно', ru: '🎥 Стандартно' },
+        '🖥 Default': { uk: '🖥 Стандартно', ru: '🖥 Стандартно' },
+        '🖥 None': { uk: '🖥 Вимкнено', ru: '🖥 Выключено' },
+        '🖥 Detail': { uk: '🖥 Деталі', ru: '🖥 Детали' },
+        '🖥 Motion': { uk: '🖥 Рух', ru: '🖥 Движение' },
+        'max frame-per-second': { uk: 'максимум кадрів/с', ru: 'максимум кадров/с' },
+        'Shortcuts': { uk: 'Гарячі клавіші', ru: 'Горячие клавиши' },
+        'General Shortcuts': { uk: 'Загальні гарячі клавіші', ru: 'Общие горячие клавиши' },
+
+        // theme select
+        'Default': { uk: 'Стандартна', ru: 'Стандартная' },
+        'Dark': { uk: 'Темна', ru: 'Тёмная' },
+        'Grey': { uk: 'Сіра', ru: 'Серая' },
+        'Green': { uk: 'Зелена', ru: 'Зелёная' },
+        'Blue': { uk: 'Синя', ru: 'Синяя' },
+        'Red': { uk: 'Червона', ru: 'Красная' },
+        'Purple': { uk: 'Фіолетова', ru: 'Фиолетовая' },
+        'Orange': { uk: 'Помаранчева', ru: 'Оранжевая' },
+        'Pink': { uk: 'Рожева', ru: 'Розовая' },
+        'Yellow': { uk: 'Жовта', ru: 'Жёлтая' },
+
+        // per-tile dropdowns (aspect / fit / controls) and bar position
+        'default': { uk: 'стандартно', ru: 'стандартно' },
+        'fill': { uk: 'заповнення', ru: 'заполнение' },
+        'contain': { uk: 'вмістити', ru: 'вместить' },
+        'cover': { uk: 'покриття', ru: 'покрытие' },
+        'scale-down': { uk: 'зменшення', ru: 'уменьшение' },
+        'none': { uk: 'без масштабування', ru: 'без масштабирования' },
+        'on': { uk: 'увімк.', ru: 'вкл.' },
+        'off': { uk: 'вимк.', ru: 'выкл.' },
+        'Vertical': { uk: 'Вертикально', ru: 'Вертикально' },
+        'Horizontal': { uk: 'Горизонтально', ru: 'Горизонтально' },
+        'Top': { uk: 'Зверху', ru: 'Сверху' },
+
+        // ---- pre-join mobile audio guidance (text split by <strong>) ----
+        'iOS automatically routes audio to connected Bluetooth or external devices. Connect your preferred microphone': {
+            uk: "iOS автоматично спрямовує звук на під'єднані Bluetooth чи зовнішні пристрої. Під'єднайте потрібний мікрофон",
+            ru: 'iOS автоматически направляет звук на подключённые Bluetooth или внешние устройства. Подключите нужный микрофон',
+        },
+        'before': { uk: 'ДО', ru: 'ДО' },
+        'joining.': { uk: 'входу.', ru: 'входа.' },
+        'External microphones may require device reconnection to activate.': {
+            uk: "Зовнішні мікрофони можуть потребувати перепід'єднання, щоб запрацювати.",
+            ru: 'Внешние микрофоны могут требовать переподключения, чтобы заработать.',
+        },
+
         // ---- settings panel ----
         'Close': { uk: 'Закрити', ru: 'Закрыть' },
         'Test speaker': { uk: 'Перевірити звук', ru: 'Проверить звук' },
@@ -406,6 +463,7 @@ window.MontemeetDict = {
     },
 
     RULES: [
+        { re: /^(\d+) - frame-per-second$/, uk: '$1 — кадрів/с', ru: '$1 — кадров/с' },
         {
             re: /^(\d+) conversations?$/,
             uk: '$1 розмов(и)',
@@ -573,37 +631,22 @@ window.MontemeetDict = {
         ['#tabVirtualBackgroundBtn p', 'text', { uk: 'Фон', ru: 'Фон' }],
         ['#tabAudioDevicesBtn p', 'text', { uk: 'Звук', ru: 'Звук' }],
         ['#tabLanguagesBtn p', 'text', { uk: 'Мова', ru: 'Язык' }],
-        ['label[for="videoSelect"]', 'text', { uk: 'Камера:', ru: 'Камера:' }],
-        ['label[for="microphoneSelect"]', 'text', { uk: 'Мікрофон:', ru: 'Микрофон:' }],
-        ['label[for="speakerSelect"]', 'text', { uk: 'Динаміки:', ru: 'Динамики:' }],
         ['#labelNoiseSuppression', 'text', { uk: 'Шумозаглушення', ru: 'Шумоподавление' }],
-        ['#speakerTestBtn span', 'text', { uk: 'Перевірити звук', ru: 'Проверить звук' }],
-        ['#videoVirtualBackground label', 'text', { uk: 'Віртуальний фон:', ru: 'Виртуальный фон:' }],
         ['#tabLanguages .title p', 'text', { uk: 'Мова:', ru: 'Язык:' }],
 
         // settings-extra dropdown labels (span inside the buttons)
         ['#noExtraButtons', 'text', { uk: 'Додаткових кнопок немає', ru: 'Дополнительных кнопок нет' }],
-        ['#shareButton span', 'text', { uk: 'Поділитися кімнатою', ru: 'Поделиться комнатой' }],
-        ['#fileShareExtraButton span', 'text', { uk: 'Обмін файлами', ru: 'Обмен файлами' }],
-        ['#snapshotRoomButton span', 'text', { uk: 'Знімок кімнати', ru: 'Снимок комнаты' }],
-        ['#hideMeButton span', 'text', { uk: 'Сховати себе', ru: 'Скрыть себя' }],
-        ['#fullScreenButton span', 'text', { uk: 'На весь екран', ru: 'Во весь экран' }],
-        ['#aboutButton span', 'text', { uk: 'Про застосунок', ru: 'О программе' }],
-        ['#exitLeaveBtn span', 'text', { uk: 'Вийти з кімнати', ru: 'Выйти из комнаты' }],
         ['#exitLeaveAllBtn span', 'text', { uk: 'Завершити для всіх', ru: 'Завершить для всех' }],
 
         // chat panel
-        ['#chatShareRoomBtn span', 'text', { uk: 'Запросити', ru: 'Пригласить' }],
         ['#searchParticipantsFromList', 'placeholder', { uk: 'Пошук розмов', ru: 'Поиск бесед' }],
         ['#chatMessage', 'placeholder', { uk: 'Напишіть повідомлення…', ru: 'Напишите сообщение…' }],
         ['.chat-input-hint', 'text', { uk: 'Enter — надіслати, Shift+Enter — новий рядок.', ru: 'Enter — отправить, Shift+Enter — новая строка.' }],
-        ['#chatEmptyNotice h4', 'text', { uk: 'Почніть розмову', ru: 'Начните беседу' }],
         ['#chatEmptyNotice p', 'text', { uk: 'Тут поки немає повідомлень. Напишіть перше!', ru: 'Здесь пока нет сообщений. Напишите первое!' }],
 
         // lobby (moderator side + participant templates)
         ['#lobbyHeaderTitle', 'text', { uk: 'Зала очікування', ru: 'Зал ожидания' }],
         ['.lobby-header-subtitle', 'text', { uk: 'Прийміть або відхиліть гостей, що очікують', ru: 'Примите или отклоните ожидающих гостей' }],
-        ['#popupLobbyWaitJoinTemplate .lobby-popup-title, .lobby-popup-title', 'text', { uk: 'Очікуємо підтвердження', ru: 'Ожидаем подтверждения' }],
 
         // file transfer cards
         ['.file-transfer-kicker', 'text', { uk: 'Передача файлу', ru: 'Передача файла' }],
@@ -613,7 +656,6 @@ window.MontemeetDict = {
         ['#sendAbortBtn span', 'text', { uk: 'Перервати', ru: 'Прервать' }],
 
         // breakout mini-bar (participant-visible)
-        ['#initUser input#usernameInput', 'placeholder', { uk: "Введіть своє ім'я", ru: 'Введите своё имя' }],
     ],
 
     TOOLTIPS: [

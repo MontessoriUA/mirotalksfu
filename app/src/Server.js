@@ -3237,6 +3237,9 @@ function startServer() {
             switch (data.action) {
                 case 'broadcasting':
                     if (!isPresenter) return;
+                    // Montemeet: lessons never broadcast; the presenter's localStorage
+                    // push at join would only toast every student "BROADCASTING Off"
+                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
                     room.setIsBroadcasting(data.room_broadcasting);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
@@ -3282,11 +3285,16 @@ function startServer() {
                     break;
                 case 'hostOnlyRecordingOn':
                     if (!isPresenter) return;
+                    // Montemeet: cabinet policy owns this flag in lesson rooms; the client
+                    // pushes its localStorage copy at presenter join — a broadcast would
+                    // toast every student for nothing
+                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
                     room.setHostOnlyRecording(true);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
                 case 'hostOnlyRecordingOff':
                     if (!isPresenter) return;
+                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
                     room.setHostOnlyRecording(false);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
