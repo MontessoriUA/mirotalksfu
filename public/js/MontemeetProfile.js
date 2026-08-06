@@ -82,6 +82,7 @@ const MontemeetProfile = (() => {
         layout: () => (profile && profile.layout) || null,
         roles: () => (profile && profile.roles) || null,
         overrides: () => (profile && profile.overrides) || null,
+        style: () => (profile && profile.style) || null,
         isMusic: () => !!(profile && profile.audio && profile.audio.noiseSuppression === false),
     };
 })();

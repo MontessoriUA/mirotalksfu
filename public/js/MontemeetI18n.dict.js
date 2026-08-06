@@ -67,6 +67,19 @@ window.MontemeetDict = {
         'max frame-per-second': { uk: 'максимум кадрів/с', ru: 'максимум кадров/с' },
         'Shortcuts': { uk: 'Гарячі клавіші', ru: 'Горячие клавиши' },
         'General Shortcuts': { uk: 'Загальні гарячі клавіші', ru: 'Общие горячие клавиши' },
+        'Start Recording': { uk: 'Почати запис', ru: 'Начать запись' },
+        'Stop Recording': { uk: 'Зупинити запис', ru: 'Остановить запись' },
+        'Accepted: any file type': { uk: 'Приймаються файли будь-якого типу', ru: 'Принимаются файлы любого типа' },
+        'Show on msg': { uk: 'Відкривати при повідомленні', ru: 'Открывать при сообщении' },
+        'Speech msg': { uk: 'Озвучувати повідомлення', ru: 'Озвучивать сообщения' },
+        'Toggle bg': { uk: 'Змінити тло', ru: 'Сменить фон' },
+        'Save messages': { uk: 'Зберегти повідомлення', ru: 'Сохранить сообщения' },
+        'Clean messages': { uk: 'Очистити чат', ru: 'Очистить чат' },
+        'No need for apps, simply capture the QR code with your mobile camera Or Invite someone else to join by sending them the following URL': {
+            uk: 'Застосунок не потрібен — просто наведіть камеру телефону на QR-код. Або надішліть комусь це посилання-запрошення:',
+            ru: 'Приложение не нужно — просто наведите камеру телефона на QR-код. Или отправьте кому-то эту ссылку-приглашение:',
+        },
+        'Онлайн-уроки и концерты': { uk: 'Онлайн-уроки та концерти', en: 'Online lessons and concerts' },
 
         // theme select
         'Default': { uk: 'Стандартна', ru: 'Стандартная' },

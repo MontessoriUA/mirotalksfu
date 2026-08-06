@@ -60,6 +60,7 @@ function forRoom(roomId) {
         roomOverrides = {},
         devicePriority = null,
         googleClientId = null,
+        style = null,
     } = load() || {};
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -77,6 +78,7 @@ function forRoom(roomId) {
         overrides: has(roomOverrides, roomId) ? roomOverrides[roomId] : null,
         devicePriority, // installation-wide (e.g. SplitCam on school computers)
         googleClientId: googleClientId || null, // One Tap name prefill (optional)
+        style: style || null, // conference appearance, forced identically on everyone
     };
 }
 

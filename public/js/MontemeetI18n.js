@@ -51,14 +51,18 @@ const MontemeetI18n = (() => {
     function tr(text) {
         if (typeof text !== 'string' || !text) return text;
         const norm = text.replace(/ /g, ' ');
-        const key = norm.trim();
+        // long copy wraps across indented lines — keys match on collapsed
+        // single spaces, the node's outer whitespace survives
+        const key = norm.trim().replace(/\s+/g, ' ');
         if (!key || key.length > 400) return text;
+        const lead = /^\s*/.exec(norm)[0];
+        const trail = /\s*$/.exec(norm.slice(lead.length))[0];
         const hit = D.MSG[key];
-        if (hit && hit[lang] != null) return norm.replace(key, hit[lang]);
+        if (hit && hit[lang] != null) return lead + hit[lang] + trail;
         for (const rule of D.RULES) {
             const m = rule.re.exec(key);
             if (m && rule[lang]) {
-                return norm.replace(key, rule[lang].replace(/\$(\d)/g, (_, n) => m[Number(n)] ?? ''));
+                return lead + rule[lang].replace(/\$(\d)/g, (_, n) => m[Number(n)] ?? '') + trail;
             }
         }
         return text;

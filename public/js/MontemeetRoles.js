@@ -193,21 +193,18 @@ const MontemeetRoles = (() => {
         if (rc.isChatOpen) rc.toggleChat(true);
     }
 
-    // open the stock chat with its side effects muted: the toolbar flag lets the
-    // fromParticipants guard pass, and the desktop auto-pin stays off — its
-    // chatPin() force-syncs the participants list (which closed our panel right
-    // after opening) and can toast "Please unpin..." warnings. The pin stays
-    // available manually via the chat header icon.
+    // open the stock chat with the toolbar flag muted so the fromParticipants
+    // guard passes. The desktop auto-pin is deliberately LEFT ON: chat and the
+    // participants list dock to the side instead of covering the room center
+    // (Ivan, 2026-08-06). The fromUser-gated toggleShowParticipants override
+    // keeps chatPin()'s plist side effect away from our split.
     async function openChatQuiet() {
         const savedBtn = BUTTONS.main.chatButton;
-        const savedPin = typeof isChatPinEnabled !== 'undefined' ? isChatPinEnabled : null;
         BUTTONS.main.chatButton = false;
-        if (savedPin !== null) isChatPinEnabled = false;
         try {
             await rc.toggleChat(true);
         } finally {
             BUTTONS.main.chatButton = savedBtn;
-            if (savedPin !== null) isChatPinEnabled = savedPin;
         }
     }
 
@@ -254,6 +251,17 @@ const MontemeetRoles = (() => {
         const partBtn = document.getElementById('participantsButton');
         if (chatBtn && chatBtn.onclick !== openChatSplit) chatBtn.onclick = openChatSplit;
         if (partBtn && partBtn.onclick !== toggleParticipantsSplit) partBtn.onclick = toggleParticipantsSplit;
+        // chat is ALWAYS pinned to the side (Ivan, 2026-08-06): force the flag
+        // over whatever localStorage restored, persist it, and hide the switch —
+        // the header pin button is already off via BUTTONS.chat.chatPinButton
+        if (typeof isChatPinEnabled !== 'undefined' && !isChatPinEnabled) {
+            isChatPinEnabled = true;
+            if (typeof localStorageSettings !== 'undefined' && typeof lS !== 'undefined') {
+                localStorageSettings.chat_pin = true;
+                lS.setSettings(localStorageSettings);
+            }
+        }
+        hideSettingRow('switchChatPin');
         if (rcReady()) {
             if (!panelSplitDone) {
                 // the list's own X closes the whole panel (stock passes true);
@@ -535,6 +543,74 @@ const MontemeetRoles = (() => {
             /* no profile -> stock behavior */
         }
     })();
+
+    // ------------------------------------------------------------------
+    // Notification noise filter (Ivan, 2026-08-06): a student must not get a
+    // toast for the teacher's routine actions — whiteboard open/close/lock,
+    // editor, shared video, follow-me, moderator switches, other students'
+    // raised hands. Important ones (mute/eject/lobby/files/recording consent)
+    // pass through untouched. Installed on DOMContentLoaded so these wrappers
+    // sit OUTSIDE the i18n ones and match the raw stock strings.
+    const NOISE_RE = [
+        /whiteboard action:/,
+        /\b(open|close) editor\b/,
+        /(cleared|locked|unlocked) the editor/,
+        /(opened|closed) the video/,
+        /Everyone Follows Me/,
+        /has raised the hand/,
+    ];
+    const MOD_MSG_TYPES = new Set([
+        'audio_cant_unmute',
+        'video_cant_unhide',
+        'screen_cant_share',
+        'chat_cant_privately',
+        'chat_cant_publicly',
+        'chat_cant_chatgpt',
+        'media_cant_sharing',
+        'polls_cant_create',
+    ]);
+
+    function mmStudentInLesson() {
+        try {
+            if (MontemeetProfile.roles() !== 'lesson') return false;
+        } catch (e) {
+            return false;
+        }
+        return !(typeof isPresenter !== 'undefined' && isPresenter);
+    }
+
+    function noisyForStudent(message) {
+        return typeof message === 'string' && mmStudentInLesson() && NOISE_RE.some((re) => re.test(message));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof window.userLog === 'function') {
+            const orig = window.userLog;
+            window.userLog = (icon, message, ...rest) => {
+                if (noisyForStudent(message)) return;
+                return orig(icon, message, ...rest);
+            };
+        }
+        if (window.RoomClient && RoomClient.prototype) {
+            const proto = RoomClient.prototype;
+            if (typeof proto.userLog === 'function') {
+                const orig = proto.userLog;
+                proto.userLog = function (icon, message, ...rest) {
+                    if (noisyForStudent(message)) return;
+                    return orig.call(this, icon, message, ...rest);
+                };
+            }
+            // moderator policy toasts arrive on every presenter (re)join push —
+            // kill the whole call (sound('switch') included) for students
+            if (typeof proto.roomMessage === 'function') {
+                const orig = proto.roomMessage;
+                proto.roomMessage = function (type, ...rest) {
+                    if (MOD_MSG_TYPES.has(type) && mmStudentInLesson()) return;
+                    return orig.call(this, type, ...rest);
+                };
+            }
+        }
+    });
 
     return { apply };
 })();
