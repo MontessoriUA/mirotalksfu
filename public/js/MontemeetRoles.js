@@ -400,6 +400,9 @@ const MontemeetRoles = (() => {
         hideSettingRow('videoQuality');
         hideSettingRow('videoFps');
         hideSettingRow('screenFps');
+        // not changeable anyway: switching it mid-share throws getDisplayMedia
+        // "must be called from a user gesture" (Ivan, 2026-08-06)
+        hideSettingRow('screenQuality');
         // orphan divider left at the bottom of the audio tab after the trims
         const audioTab = document.getElementById('tabAudioDevices');
         const lastHr = audioTab ? [...audioTab.querySelectorAll('hr')].pop() : null;
