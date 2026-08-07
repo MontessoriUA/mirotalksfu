@@ -128,4 +128,15 @@ function endsOnTeacherLeave(roomId) {
     return !!lessonPolicies.endOnTeacherLeave && isLessonRoom(roomId);
 }
 
-module.exports = { forRoom, applyToRoom, endsOnTeacherLeave, isLessonRoom };
+// The single link: one URL for everyone. The teacher is recognised by the email
+// their SSO login puts in the request, so no separate secret address is needed.
+// Deliberately NOT part of forRoom(): that object is served to every visitor at
+// GET /profile/:roomId, and the teacher's address has no business being public.
+function isPresenterEmail(roomId, email) {
+    if (!email) return false;
+    const { presenterEmails = {} } = load() || {};
+    const expected = presenterEmails[roomId];
+    return !!expected && expected.toLowerCase() === String(email).trim().toLowerCase();
+}
+
+module.exports = { forRoom, applyToRoom, endsOnTeacherLeave, isLessonRoom, isPresenterEmail };

@@ -2523,9 +2523,16 @@ function startServer() {
             // grant or revoke the role by accident. A signed presenter token
             // (the cabinet's own «Перейти в комнату» link) also grants the role —
             // name matching stays as the tokenless fallback for now.
+            // The single link: the teacher opens the very same URL as the students
+            // and is recognised by the email their Google login puts in the request.
+            // The header is set by nginx from the verified SSO session — a client
+            // cannot send it, the reverse proxy always overwrites it.
+            const mmSsoEmail = socket.handshake?.headers?.['x-forwarded-email'];
+            const mmSsoPresenter = montemeetProfiles.isPresenterEmail(socket.room_id, mmSsoEmail);
+
             const mmPresenterName = montemeetProfiles.forRoom(socket.room_id)?.presenterName;
             if (mmPresenterName) {
-                presenter.is_presenter = (peer_token && is_presenter) || peer_name === mmPresenterName;
+                presenter.is_presenter = mmSsoPresenter || (peer_token && is_presenter) || peer_name === mmPresenterName;
                 if (presenter.is_presenter) {
                     presenters[socket.room_id][socket.id] = presenter;
                 }
