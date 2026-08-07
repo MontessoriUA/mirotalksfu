@@ -143,16 +143,27 @@ body.montemeet-concert #plist.hidden ~ #chat {
     width: 100% !important;
     margin-left: 0 !important;
 }
+/* «звук компьютера» на танцах: подпрыгивает как иконка в доке макоси —
+   цветовую пульсацию было почти не видно на тёмном фоне (Иван, 2026-08-08) */
 #montemeetPcSoundBtn.montemeet-attention {
-    animation: montemeet-pulse 1.6s ease-in-out infinite;
+    animation: montemeet-bounce 1.9s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+    color: lime;
+    transform-origin: bottom center;
 }
-@keyframes montemeet-pulse {
+@keyframes montemeet-bounce {
     0%,
+    38%,
     100% {
-        color: white;
+        transform: translateY(0);
     }
-    50% {
-        color: lime;
+    12% {
+        transform: translateY(-11px) scaleY(1.06);
+    }
+    22% {
+        transform: translateY(-4px);
+    }
+    30% {
+        transform: translateY(-2px) scaleY(0.98);
     }
 }
 

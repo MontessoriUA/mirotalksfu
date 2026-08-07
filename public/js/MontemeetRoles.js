@@ -247,6 +247,11 @@ const MontemeetRoles = (() => {
     openChatSplit._mm = true;
     toggleParticipantsSplit._mm = true;
 
+    // попап со ссылкой на комнату сразу, без системного окна обмена
+    function openShareDirect() {
+        if (typeof shareRoom === 'function') shareRoom(false);
+    }
+
     function splitParticipantsFromChat() {
         // re-assert our handlers (the stock init may overwrite them at any point)
         const chatBtn = document.getElementById('chatButton');
@@ -266,13 +271,14 @@ const MontemeetRoles = (() => {
         hideSettingRow('switchChatPin');
         // «Поделиться»: стоковый обработчик зовёт системное окно обмена (на маке
         // это отдельный список действий поверх страницы) и показывает QR по
-        // наведению. Нужен один клик → сразу наш попап со ссылкой
+        // наведению. Нужен один клик → сразу наш попап со ссылкой.
+        // Пере-навешиваем на каждом тике: стоковый handleButtons() переустанавливает
+        // свои обработчики уже после нашей первой попытки.
         const shareBtn = document.getElementById('shareButton');
-        if (shareBtn && !shareBtn._mmShare) {
-            shareBtn.onclick = () => shareRoom(false);
+        if (shareBtn && shareBtn.onclick !== openShareDirect) {
+            shareBtn.onclick = openShareDirect;
             shareBtn.onmouseenter = null;
             shareBtn.onmouseleave = null;
-            shareBtn._mmShare = true;
         }
         if (rcReady()) {
             if (!panelSplitDone) {
