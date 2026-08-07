@@ -110,6 +110,8 @@ async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow =
         // without this the fake-audio-capture FILE silently yields silence
         '--disable-features=AudioServiceOutOfProcess,AudioServiceSandbox',
     ];
+    // headless Linux (a server run) has no usable sandbox namespace
+    if (process.platform === 'linux') args.push('--no-sandbox', '--disable-dev-shm-usage');
     // getUserMedia needs a secure context: plain http is only trusted for
     // localhost, so a remote http stand has to be whitelisted explicitly
     if (BASE.startsWith('http://') && !/\/\/(localhost|127\.)/.test(BASE)) {
