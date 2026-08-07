@@ -43,6 +43,27 @@ const IPv4 = getIPv4();
 
 const RTC_MIN_PORT = parseInt(process.env.SFU_MIN_PORT) || 40000;
 const RTC_MAX_PORT = parseInt(process.env.SFU_MAX_PORT) || 40100;
+
+// Montemeet: SFU_ANNOUNCED_IP may list several addresses, comma-separated —
+// each becomes its own ICE candidate. A participant on the internet and one
+// inside the school then each find a working path to the same server, and a
+// multi-WAN site can advertise every public line at once.
+const ANNOUNCED_ADDRESSES = String(process.env.SFU_ANNOUNCED_IP || '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean);
+
+function mmListenInfos(min, max) {
+    const addresses = ANNOUNCED_ADDRESSES.length ? ANNOUNCED_ADDRESSES : [IPv4];
+    return addresses.flatMap((announcedAddress) =>
+        ['udp', 'tcp'].map((protocol) => ({
+            protocol,
+            ip: LISTEN_IP,
+            announcedAddress,
+            portRange: { min, max },
+        }))
+    );
+}
 const NUM_CPUS = os.cpus().length;
 const NUM_WORKERS = Math.min(process.env.SFU_NUM_WORKERS || NUM_CPUS, NUM_CPUS);
 
@@ -1806,40 +1827,7 @@ module.exports = {
         webRtcServerActive: process.env.SFU_SERVER === 'true', // Enable if SFU_SERVER=true
         webRtcServerOptions: {
             // Network interfaces and ports for ICE candidates
-            listenInfos: [
-                /**
-                 * UDP Configuration
-                 * Preferred for media transport (lower latency)
-                 * Kubernetes implications:
-                 * - Each Pod needs unique ports if sharing host network
-                 * - Consider using hostPort when not using LoadBalancer
-                 */
-                {
-                    protocol: 'udp',
-                    ip: LISTEN_IP, // Local IP to bind to
-                    announcedAddress: IPv4, // Public IP sent to clients
-                    portRange: {
-                        min: RTC_MIN_PORT,
-                        max: RTC_MIN_PORT + NUM_WORKERS, // Port range per worker
-                    },
-                },
-                /**
-                 * TCP Configuration
-                 * Fallback for restrictive networks (higher latency)
-                 * Kubernetes implications:
-                 * - Helps with networks blocking UDP
-                 * - May require separate Service definition in k8s
-                 */
-                {
-                    protocol: 'tcp',
-                    ip: LISTEN_IP,
-                    announcedAddress: IPv4,
-                    portRange: {
-                        min: RTC_MIN_PORT,
-                        max: RTC_MIN_PORT + NUM_WORKERS,
-                    },
-                },
-            ],
+            listenInfos: mmListenInfos(RTC_MIN_PORT, RTC_MAX_PORT),
         },
 
         /**
@@ -1860,38 +1848,7 @@ module.exports = {
          */
         webRtcTransport: {
             // Network interfaces for media transmission
-            listenInfos: [
-                /**
-                 * UDP Transport Settings
-                 * Kubernetes implications:
-                 * - Needs hostNetwork or privileged Pod for port access
-                 * - Consider port range size based on expected scale
-                 */
-                {
-                    protocol: 'udp',
-                    ip: LISTEN_IP,
-                    announcedAddress: IPv4,
-                    portRange: {
-                        min: RTC_MIN_PORT,
-                        max: RTC_MAX_PORT, // Wider range than WebRtcServer
-                    },
-                },
-                /**
-                 * TCP Transport Settings
-                 * Kubernetes implications:
-                 * - Less efficient but more compatible
-                 * - May require different Service configuration
-                 */
-                {
-                    protocol: 'tcp',
-                    ip: LISTEN_IP,
-                    announcedAddress: IPv4,
-                    portRange: {
-                        min: RTC_MIN_PORT,
-                        max: RTC_MAX_PORT,
-                    },
-                },
-            ],
+            listenInfos: mmListenInfos(RTC_MIN_PORT, RTC_MAX_PORT),
 
             iceConsentTimeout: 35, // Timeout for ICE consent (seconds)
 
