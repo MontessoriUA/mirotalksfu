@@ -14,8 +14,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const BASE = 'https://localhost:3010';
+// overridable so the same suite can be pointed at a real deployment:
+//   MM_TEST_BASE=http://192.168.35.11 node dev-speaker-test.mjs
+const CHROME = process.env.MM_TEST_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const BASE = process.env.MM_TEST_BASE || 'https://localhost:3010';
 const ROOM = 'montemeet-smoke';
 const FIXTURES = path.join(import.meta.dirname, 'dev-fixtures');
 
@@ -108,6 +110,11 @@ async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow =
         // without this the fake-audio-capture FILE silently yields silence
         '--disable-features=AudioServiceOutOfProcess,AudioServiceSandbox',
     ];
+    // getUserMedia needs a secure context: plain http is only trusted for
+    // localhost, so a remote http stand has to be whitelisted explicitly
+    if (BASE.startsWith('http://') && !/\/\/(localhost|127\.)/.test(BASE)) {
+        args.push(`--unsafely-treat-insecure-origin-as-secure=${BASE}`, '--disable-site-isolation-trials');
+    }
     if (audioFile) args.splice(1, 0, `--use-file-for-fake-audio-capture=${audioFile}`);
     const browser = await puppeteer.launch({
         executablePath: CHROME,
