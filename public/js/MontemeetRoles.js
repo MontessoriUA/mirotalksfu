@@ -191,6 +191,7 @@ const MontemeetRoles = (() => {
         rc.isParticipantsOpen = false;
         plistEl()?.classList.add('hidden');
         if (rc.isChatOpen) rc.toggleChat(true);
+        rc.syncChatToolbarButtons?.();
     }
 
     // open the stock chat with the toolbar flag muted so the fromParticipants
@@ -225,6 +226,7 @@ const MontemeetRoles = (() => {
         if (p) p.style.width = '';
         if (typeof elemDisplay === 'function') elemDisplay('chat', true);
         rc.isParticipantsOpen = false;
+        rc.syncChatToolbarButtons?.(); // иначе зелёной остаётся кнопка списка
     }
 
     async function toggleParticipantsSplit() {
@@ -262,6 +264,16 @@ const MontemeetRoles = (() => {
             }
         }
         hideSettingRow('switchChatPin');
+        // «Поделиться»: стоковый обработчик зовёт системное окно обмена (на маке
+        // это отдельный список действий поверх страницы) и показывает QR по
+        // наведению. Нужен один клик → сразу наш попап со ссылкой
+        const shareBtn = document.getElementById('shareButton');
+        if (shareBtn && !shareBtn._mmShare) {
+            shareBtn.onclick = () => shareRoom(false);
+            shareBtn.onmouseenter = null;
+            shareBtn.onmouseleave = null;
+            shareBtn._mmShare = true;
+        }
         if (rcReady()) {
             if (!panelSplitDone) {
                 // the list's own X closes the whole panel (stock passes true);
