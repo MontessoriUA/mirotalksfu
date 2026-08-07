@@ -273,18 +273,22 @@ const slackSigningSecret = config?.integrations?.slack?.signingSecret || '';
 
 const app = express();
 
-const options = {
-    cert: fs.readFileSync(path.join(__dirname, config?.server?.ssl.cert || '../ssl/cert.pem'), 'utf-8'),
-    key: fs.readFileSync(path.join(__dirname, config?.server?.ssl.key || '../ssl/key.pem'), 'utf-8'),
-};
+// Montemeet: plain HTTP when TLS terminates in front (nginx on prod) or is not
+// needed at all (localhost). The certificates are read only when actually used —
+// stock read them eagerly, which crashed a perfectly valid http-only install.
+const httpOnly = process.env.SERVER_HTTP_ONLY === 'true';
+
+const options = httpOnly
+    ? {}
+    : {
+          cert: fs.readFileSync(path.join(__dirname, config?.server?.ssl.cert || '../ssl/cert.pem'), 'utf-8'),
+          key: fs.readFileSync(path.join(__dirname, config?.server?.ssl.key || '../ssl/key.pem'), 'utf-8'),
+      };
 
 const corsOptions = {
     origin: config.server?.cors?.origin || '*',
     methods: config.server?.cors?.methods || ['GET', 'POST'],
 };
-
-// Montemeet: plain HTTP for local development (TLS terminates elsewhere or is not needed on localhost)
-const httpOnly = process.env.SERVER_HTTP_ONLY === 'true';
 
 const server = httpOnly ? http.createServer(app) : httpolyglot.createServer(options, app);
 
@@ -2197,7 +2201,9 @@ function startServer() {
     // START SERVER
     // ####################################################
 
-    server.listen(config?.server?.listen?.port || 3010, () => {
+    // Montemeet: honor SERVER_LISTEN_IP (stock ignored it and always bound every
+    // interface) — behind nginx the app must be reachable on loopback only
+    server.listen(config?.server?.listen?.port || 3010, config?.server?.listen?.ip || '0.0.0.0', () => {
         log.log(
             `%c
     
