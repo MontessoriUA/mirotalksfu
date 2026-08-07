@@ -107,8 +107,10 @@ async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow =
         '--autoplay-policy=no-user-gesture-required',
         '--mute-audio',
         '--ignore-certificate-errors',
-        // without this the fake-audio-capture FILE silently yields silence
-        '--disable-features=AudioServiceOutOfProcess,AudioServiceSandbox',
+        // AudioService*: without this the fake-audio-capture FILE yields silence.
+        // Https*: Chrome 141+ silently upgrades http navigations to https, which
+        // kills any run against an http-only stand (ERR_CONNECTION_REFUSED).
+        '--disable-features=AudioServiceOutOfProcess,AudioServiceSandbox,HttpsUpgrades,HttpsFirstBalancedModeAutoEnable',
     ];
     // headless Linux (a server run) has no usable sandbox namespace
     if (process.platform === 'linux') args.push('--no-sandbox', '--disable-dev-shm-usage');
