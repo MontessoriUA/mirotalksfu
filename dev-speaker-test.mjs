@@ -91,6 +91,14 @@ function ensureFixtures() {
             ...speechSegments(8, 440),
             { seconds: 22, freq: 0 },
         ]),
+        // Концертному сценарию нужен запас тишины В НАЧАЛЕ: пока три браузера
+        // поднимутся и договорятся, проходит около трёх секунд, и с пятью
+        // секундами разбега замер «по умолчанию» попадал ровно на первую ноту.
+        concertTurn: make('silence12-speech8-silence20.wav', [
+            { seconds: 12, freq: 0 },
+            ...speechSegments(8, 440),
+            { seconds: 20, freq: 0 },
+        ]),
     };
 }
 
@@ -209,17 +217,22 @@ async function runFocusScenario(seconds) {
 
     // enable auto-focus AFTER the join flow settled — the settings restore from
     // localStorage would otherwise overwrite the checkbox we just flipped
-    const debug = await observer.page.evaluate(() => {
+    const debug = await observer.page.evaluate(async () => {
         const el = document.getElementById('switchDominantSpeakerFocus');
         if (el) el.checked = true;
         // Observer заходит первым, поэтому он ПРЕЗЕНТЕР, и в комнате урока ему
         // восстанавливают режим вида. Стоковый автофокус работает только когда
         // наш авто-режим выключен — раньше это выходило само собой, теперь
         // просим сетку явно, иначе сценарий проверяет не тот механизм.
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        for (let i = 0; i < 40 && !document.getElementById('montemeetSpeakerViewBtn'); i++) await sleep(200);
+        await sleep(2000); // дать улечься переходу «двое → трое»
         for (let i = 0; i < 4 && MontemeetLayout.view() !== 'grid'; i++) {
             document.getElementById('montemeetSpeakerViewBtn')?.click();
+            await sleep(200);
         }
         return {
+            view: MontemeetLayout.view(),
             checkboxFound: !!el,
             roomDominantFlag: typeof rc !== 'undefined' ? rc.dominantSpeaker : null,
             layoutOwner: typeof MontemeetLayout !== 'undefined',
@@ -314,7 +327,7 @@ async function runAnchorScenario() {
 
 // Concert scenario (stage 2.3, ТЗ §5). Three peers, three perspectives:
 //   Zal    — presenter/Host (the hall), silent, own tile hidden, grid by default;
-//   Guest1 — sings at ~5-13s (dominant), otherwise silent;
+//   Guest1 — sings at ~9-17s of the measurement (dominant), otherwise silent;
 //   Guest2 — silent guest, must watch the Зал by default.
 // Expectations: silence -> Host: grid, Guests: focus on Зал; Guest1 speaking ->
 // Host & Guest2 focus Guest1, while Guest1 himself keeps watching the Зал
@@ -323,7 +336,7 @@ async function runConcertScenario() {
     const room = 'montemeet-concert';
     const zal = await launchPeer('Zal', fixtures.silence, { room });
     await delay(3000);
-    const guest1 = await launchPeer('Guest1', fixtures.guestTurn, { room });
+    const guest1 = await launchPeer('Guest1', fixtures.concertTurn, { room });
     const guest2 = await launchPeer('Guest2', fixtures.silence, { room });
     await delay(2000);
 
@@ -363,9 +376,9 @@ async function runConcertScenario() {
     await guest1.browser.close();
     await guest2.browser.close();
 
-    const early = samples.filter((s) => s.t <= 4);
-    const mid = samples.filter((s) => s.t >= 10 && s.t <= 16);
-    const late = samples.filter((s) => s.t >= 24);
+    const early = samples.filter((s) => s.t <= 6); // до первой ноты
+    const mid = samples.filter((s) => s.t >= 12 && s.t <= 18); // выступление
+    const late = samples.filter((s) => s.t >= 24); // тишина после него
     return {
         scenario: 'concert',
         hidden,
