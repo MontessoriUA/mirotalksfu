@@ -689,12 +689,23 @@ async function enumerateVideoDevices(stream) {
             // «камеры» вместо двух, и переключение могло уходить на дубль той же.
             // Оставляем по одной записи на группу устройств, как это делают
             // Meet и Zoom (Иван, 2026-08-09).
-            const seenGroups = new Set();
-            const cams = devices.filter((d) => {
-                if (d.kind !== 'videoinput') return false;
-                const key = d.groupId || d.deviceId;
-                if (seenGroups.has(key)) return false;
-                seenGroups.add(key);
+            // Группируем по стороне съёмки: на телефонах несколько сенсоров с
+            // одной стороны (основной, ультраширокий, теле) — человеку нужна
+            // «передняя» и «задняя», как в Meet и Zoom. Порядок сохраняем: первым
+            // идёт основной сенсор стороны.
+            const seenSide = new Set();
+            const sideOf = (label) => {
+                const l = String(label || '').toLowerCase();
+                if (/front|user|фронт|передн/.test(l)) return 'front';
+                if (/back|rear|environment|задн|тыл/.test(l)) return 'back';
+                return null;
+            };
+            const all = devices.filter((d) => d.kind === 'videoinput');
+            const sided = all.filter((d) => sideOf(d.label));
+            const cams = (sided.length >= 2 ? sided : all).filter((d) => {
+                const key = sideOf(d.label) || d.groupId || d.deviceId;
+                if (seenSide.has(key)) return false;
+                seenSide.add(key);
                 return true;
             });
             return cams.forEach(async (device) => {
