@@ -373,8 +373,9 @@ body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
 
 /* Сетка на телефоне: плитки одного размера 16:9 в один столбец со сплошной
    прокруткой — иначе при большой группе часть карточек уходила за экран
-   и добраться до них было нельзя (Иван, 2026-08-09) */
-@media screen and (max-width: 1024px) {
+   и добраться до них было нельзя (Иван, 2026-08-09).
+   Признак сенсорного экрана обязателен: узкое окно на компьютере — не телефон */
+@media screen and (max-width: 1024px) and (hover: none) and (pointer: coarse) {
     body.montemeet-teacher:not(.montemeet-solo) #videoMediaContainer,
     body.montemeet-student:not(.montemeet-solo) #videoMediaContainer {
         display: block !important;
