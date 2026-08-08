@@ -510,11 +510,6 @@ const MontemeetLayout = (() => {
                         }
                     }
                 }
-                if (!lastDom && speakerView !== 'grid') {
-                    setTimeout(() => {
-                        if (speakerView !== 'grid' && dom === null) setSpeakerViewTo(speakerView);
-                    }, 900);
-                }
                 if (lastDom) {
                     dom = lastDom;
                     lastActivityTs = Date.now();
