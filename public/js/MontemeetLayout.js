@@ -162,6 +162,12 @@ const MontemeetLayout = (() => {
     function ensureDefault() {
         if (!anchorMode || typeof rc === 'undefined' || !rc) return;
         if (soloActive) return; // the 1:1 layout owns the screen
+        // Якорь — правило для СТУДЕНТОВ. Педагог смотрит на класс, а не на
+        // другого педагога и тем более не на свою же вторую вкладку: у него для
+        // этого есть собственные режимы вида. Раньше второй презентер в комнате
+        // молча раскрывался у первого на весь экран, хотя кнопка показывала
+        // сетку (Иван, 2026-08-09).
+        if (isHost()) return;
         const id = anchorVideoId(); // prefers the anchor's screen share
         if (anchorView === 'pin' && !rc.isMobileDevice) {
             if (manualPinActive() || current() !== null) return;
@@ -564,7 +570,12 @@ const MontemeetLayout = (() => {
         btn.style.color = 'lime';
     }
 
-    function setSpeakerViewTo(view) {
+    // seed=true — режим включил ЧЕЛОВЕК, ему нужен отклик сразу: показываем
+    // крупно последнего говорившего, а если таких не было — первого участника
+    // с включённой камерой. seed=false — режим просто восстановлен (загрузка
+    // страницы, возврат из 1:1): пока никто не заговорил, на экране сетка,
+    // как и задумано для группового урока.
+    function setSpeakerViewTo(view, seed = true) {
         speakerView = VIEW_CYCLE.includes(view) ? view : 'grid';
         try {
             localStorage.setItem('MONTEMEET_SPEAKER_VIEW', speakerView);
@@ -583,15 +594,13 @@ const MontemeetLayout = (() => {
                     apply: applyGroupSpeaker,
                 });
             }
-            // don't wait for the next speech — start from the LAST speaker,
-            // or from the first remote participant when nobody spoke yet.
             // Плитки могут ещё строиться (перезаход, телефон): если кандидата
             // нет, помечаем задачу и добираем его на следующем проходе, иначе
-            // режим включён, а крупного видео нет до первой реплики.
-            if (dom === null) {
-                const seed = seedDom();
-                if (seed) {
-                    dom = lastDom = seed;
+            // нажатие кнопки осталось бы без всякого отклика.
+            if (seed && dom === null) {
+                const picked = seedDom();
+                if (picked) {
+                    dom = lastDom = picked;
                     lastActivityTs = Date.now();
                 }
                 seedPending = dom === null;
@@ -879,7 +888,7 @@ const MontemeetLayout = (() => {
         }
         // без запомненного выбора — говорящий крупно (sticky), не сетка и не
         // авто (Иван, 2026-08-06); отключённый админкой режим тоже отбрасываем
-        setSpeakerViewTo(viewCycle().includes(saved) ? saved : 'sticky');
+        setSpeakerViewTo(viewCycle().includes(saved) ? saved : 'sticky', false);
     }
 
     (async () => {
@@ -950,5 +959,6 @@ const MontemeetLayout = (() => {
         noteActivity,
         syncPinnedClass,
         managedRoom,
+        view: () => speakerView, // текущий режим вида педагога (регрессии, отладка)
     };
 })();

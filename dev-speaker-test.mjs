@@ -63,7 +63,7 @@ function speechSegments(seconds, baseFreq) {
     let t = 0;
     let i = 0;
     while (t < seconds) {
-        const on = 0.15 + (0.05 * ((i * 7) % 3));
+        const on = 0.15 + 0.05 * ((i * 7) % 3);
         const off = 0.08 + 0.02 * ((i * 5) % 4);
         const freq = Math.round(baseFreq * (0.85 + 0.075 * ((i * 3) % 5)));
         segs.push({ seconds: on, freq }, { seconds: off, freq: 0 });
@@ -444,7 +444,12 @@ async function runGroupSpeakerScenario() {
             btn.click();
             return true;
         });
-    const clicked = await clickCycle(teacher); // grid → sticky
+    // Стартовый режим больше не подразумеваем: педагогу его восстанавливают из
+    // прошлого выбора, так что «первый клик = grid → sticky» держалось на удаче.
+    // Прокликиваем до сетки, а дальше идём по циклу осознанно.
+    const viewOf = (p) => p.page.evaluate(() => MontemeetLayout.view());
+    for (let i = 0; i < 4 && (await viewOf(teacher)) !== 'grid'; i++) await clickCycle(teacher);
+    const clicked = (await clickCycle(teacher)) && (await viewOf(teacher)) === 'sticky'; // grid → sticky
 
     const pinnedOn = (p) =>
         p.page.evaluate(
@@ -462,7 +467,8 @@ async function runGroupSpeakerScenario() {
         await delay(2000);
         samples.push({
             t: Math.round((Date.now() - started) / 1000),
-            teacherPin: (await pinnedOn(teacher)) === ids.student1 ? 'student1' : ((await pinnedOn(teacher)) ? 'other' : null),
+            teacherPin:
+                (await pinnedOn(teacher)) === ids.student1 ? 'student1' : (await pinnedOn(teacher)) ? 'other' : null,
         });
     }
 
