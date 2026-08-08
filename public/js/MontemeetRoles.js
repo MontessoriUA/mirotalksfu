@@ -262,9 +262,15 @@ const MontemeetRoles = (() => {
     // подтягивается ещё и из localStorage соседней вкладки, и попап всё равно
     // всплывал. Заходим иначе: правим имя на месте и повторяем сам join —
     // до входа в комнату ничего не построено, повтор ничего не ломает.
+    // RoomClient объявлен как class на верхнем уровне скрипта, а такие имена
+    // живут в лексическом окружении, а НЕ в window: проверка window.RoomClient
+    // не срабатывала никогда, и перехват просто не ставился.
+    const roomClientProto = () =>
+        typeof RoomClient !== 'undefined' && RoomClient.prototype?.userNameAlreadyInRoom ? RoomClient.prototype : null;
+
     function autoRenameOnConflict() {
-        if (!window.RoomClient || !RoomClient.prototype.userNameAlreadyInRoom) return;
-        const proto = RoomClient.prototype;
+        const proto = roomClientProto();
+        if (!proto) return;
         if (proto._mmRename) return;
         proto._mmRename = true;
         const stock = proto.userNameAlreadyInRoom;
@@ -747,7 +753,7 @@ const MontemeetRoles = (() => {
     // перехваты, которые обязаны существовать ДО входа в комнату
     (function waitForRoomClient(tries = 0) {
         autoRenameOnConflict();
-        if (window.RoomClient?.prototype?._mmRename || tries > 200) return;
+        if (roomClientProto()?._mmRename || tries > 200) return;
         setTimeout(() => waitForRoomClient(tries + 1), 20);
     })();
     document.addEventListener('DOMContentLoaded', autoRenameOnConflict);

@@ -572,6 +572,46 @@ async function runSoloScenario() {
     };
 }
 
+// Занятое имя: второй участник с тем же именем должен молча получить номер и
+// войти, а не упереться в модальное окно «Username already in use».
+async function runNameClashScenario() {
+    const room = 'montemeet-group';
+    const first = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const second = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(8000);
+
+    const state = (p) =>
+        p.page.evaluate(() => ({
+            name: typeof rc !== 'undefined' ? rc.peer_name : null,
+            joined: typeof rc !== 'undefined' && !!rc.peer_id,
+            // сток показывает занятое имя через SweetAlert
+            popup: !!document.querySelector('.swal2-container'),
+        }));
+    const firstState = await state(first);
+    const secondState = await state(second);
+    // обе стороны должны видеть двух участников, а не одного
+    const peersSeen = await first.page.evaluate(
+        () => document.querySelectorAll('#videoMediaContainer .Camera, [id$="__videoOff"]').length
+    );
+
+    await first.browser.close();
+    await second.browser.close();
+
+    return {
+        scenario: 'name-clash',
+        firstState,
+        secondState,
+        peersSeen,
+        checks: {
+            firstKeepsName: firstState.name === 'Teacher',
+            secondNumbered: secondState.name === 'Teacher (2)',
+            noPopup: !secondState.popup,
+            secondJoined: secondState.joined && peersSeen >= 2,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -618,6 +658,11 @@ if (which === 'group-speaker' || which === 'all') {
 }
 if (which === 'solo-lesson' || which === 'all') {
     const r = await runSoloScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'name-clash' || which === 'all') {
+    const r = await runNameClashScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
