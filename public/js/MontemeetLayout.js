@@ -1,6 +1,5 @@
 'use strict';
 
-
 /*
  * Montemeet: single owner for PROGRAMMATIC layout control (stage 2.1).
  *
@@ -83,12 +82,61 @@ const MontemeetLayout = (() => {
     let anchorMode = null;
     let anchorView = 'focus';
 
+    // rc.peers — снимок состава на момент входа: вошедший раньше никогда не
+    // узнает из него о вошедших позже, а после перезахода педагога там ещё
+    // висит его прежний peer. Поэтому карту обновляем с сервера каждый раз,
+    // когда состав участников в DOM изменился (вход, выход, перезаход).
+    let peersKey = '';
+    let peersSyncing = false;
+    function syncPeerMap(after) {
+        if (typeof rc === 'undefined' || !rc?.getRoomInfo || peersSyncing) return;
+        const key = [...livePeerIds()].sort().join(',');
+        if (key === peersKey) return;
+        peersSyncing = true;
+        rc.getRoomInfo()
+            .then((info) => {
+                if (!info?.peers) return;
+                rc.peers = new Map(JSON.parse(info.peers));
+                // ключ берём на момент ответа: состав мог смениться и в полёте
+                peersKey = [...livePeerIds()].sort().join(',');
+                if (typeof after === 'function') after();
+            })
+            .catch(() => {
+                /* следующий тик попробует снова */
+            })
+            .finally(() => {
+                peersSyncing = false;
+            });
+    }
+
+    // Якорь — АКТИВНЫЙ презентер, а не первый попавшийся в карте: педагог может
+    // сидеть в двух вкладках, а после перезахода в комнате какое-то время
+    // остаются оба его peer'а. Порядок предпочтения: демонстрация экрана →
+    // включённая камера → кто из них говорил последним → кто угодно.
+    const lastSpokeAt = new Map(); // peerId -> ts
+
+    function anchorScore(peerId) {
+        if (peerScreenVideo(peerId)) return 3;
+        if (rc.getVideoElementByPeerId(peerId)) return 2;
+        return 1;
+    }
+
     function anchorPeerId() {
         if (typeof rc === 'undefined' || !rc?.peers) return null;
+        const live = livePeerIds();
+        const me = selfId();
+        const candidates = [];
         for (const [peerId, peer] of rc.peers) {
-            if (peerId !== rc.peer_id && peer?.peer_info?.peer_presenter) return peerId;
+            if (peerId === me || !live.has(peerId)) continue;
+            if (peer?.peer_info?.peer_presenter) candidates.push(peerId);
         }
-        return null;
+        if (candidates.length < 2) return candidates[0] ?? null;
+        // сортировка в JS стабильная — при полном равенстве останется тот,
+        // кто вошёл раньше, и якорь не будет дёргаться туда-сюда
+        candidates.sort(
+            (a, b) => anchorScore(b) - anchorScore(a) || (lastSpokeAt.get(b) || 0) - (lastSpokeAt.get(a) || 0)
+        );
+        return candidates[0];
     }
 
     function anchorVideoId() {
@@ -99,6 +147,15 @@ const MontemeetLayout = (() => {
         if (screenEl) return screenEl.id;
         const videoEl = rc.getVideoElementByPeerId(peerId);
         return videoEl ? videoEl.id : null;
+    }
+
+    // Единая точка перекладки: концерт, авто-режим педагога или якорь комнаты.
+    // Вызывается и по изменениям DOM, и после обновления карты участников.
+    function applyCurrent() {
+        if (soloActive) return;
+        if (concertRoom) applyConcert();
+        else if (auto) auto.apply();
+        else ensureDefault();
     }
 
     // Show the anchor if the room is anchored and nothing else claims the screen
@@ -173,6 +230,7 @@ const MontemeetLayout = (() => {
     function disengageAuto() {
         auto = null;
         dom = null;
+        seedPending = false;
         if (pending) clearTimeout(pending.timer);
         pending = null;
     }
@@ -188,6 +246,7 @@ const MontemeetLayout = (() => {
                 if (!auto || !pending) return;
                 dom = pending.peerId;
                 lastDom = dom;
+                seedPending = false; // настоящий говорящий важнее подобранного
                 pending = null;
                 auto.apply();
             }, auto.holdMs),
@@ -200,6 +259,9 @@ const MontemeetLayout = (() => {
     // speaks again after a silence reset, no new dominant event ever arrives —
     // the audio-level stream is what re-elects them.
     function noteActivity(peer_id, volume) {
+        // отметку о речи ведём всегда, а не только в авто-режимах: по ней
+        // выбирается активный якорь, когда презентеров в комнате двое
+        if (peer_id && (volume ?? 0) >= (auto?.minVolume ?? 2)) lastSpokeAt.set(peer_id, Date.now());
         if (!auto) return;
         if ((volume ?? 0) < auto.minVolume) return;
         lastActivityTs = Date.now();
@@ -208,6 +270,7 @@ const MontemeetLayout = (() => {
 
     // dominantSpeaker event → same hold machinery
     function onDominant(peer_id) {
+        if (peer_id) lastSpokeAt.set(peer_id, Date.now());
         if (!auto || !peer_id) return;
         lastActivityTs = Date.now();
         holdCandidate(peer_id);
@@ -425,6 +488,7 @@ const MontemeetLayout = (() => {
     let layoutCfg = null;
     let programmaticPinId = null; // pinnedVideoPlayerId set by US (manual pins win)
     let lastDom = null; // last non-null dominant — engaging sticky/auto starts from them
+    let seedPending = false; // режим включён, но кандидата ещё не нашли (плитки не готовы)
     let manualState = null; // { prevView } while a hand-made pin is on screen
 
     function manualPinActive() {
@@ -446,10 +510,32 @@ const MontemeetLayout = (() => {
         document.body.classList.toggle('montemeet-manualpin', !!manualState);
     }
 
+    // Кого показать крупно, пока никто не заговорил: последний говоривший, если
+    // он ещё в комнате, иначе первый участник с ВКЛЮЧЁННОЙ камерой (плитка без
+    // видео крупно бесполезна). Себя не выбираем — на себя не смотрят.
+    function seedDom() {
+        const live = livePeerIds();
+        if (lastDom && lastDom !== selfId() && live.has(lastDom)) return lastDom;
+        for (const el of document.querySelectorAll('video[name]')) {
+            const p = el.getAttribute('name');
+            if (p && p !== selfId() && live.has(p)) return p;
+        }
+        return null;
+    }
+
     async function applyGroupSpeaker() {
         if (typeof rc === 'undefined') return;
         if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // the teacher pinned someone by hand — obey
+        // режим включили раньше, чем построились плитки — добираем кандидата
+        if (dom === null && seedPending) {
+            const seed = seedDom();
+            if (seed) {
+                seedPending = false;
+                dom = lastDom = seed;
+                lastActivityTs = Date.now();
+            }
+        }
         // Q2(в): the screen share is the FACE of its owner — focus still picks
         // the SPEAKER, and pinByPeer shows their screen instead of the camera
         // when they have one (a muted sharer never hijacks the view)
@@ -499,22 +585,16 @@ const MontemeetLayout = (() => {
             }
             // don't wait for the next speech — start from the LAST speaker,
             // or from the first remote participant when nobody spoke yet.
-            // На телефоне плитки строятся позже, поэтому если кандидата ещё
-            // нет — повторяем попытку, а не оставляем режим пустым.
+            // Плитки могут ещё строиться (перезаход, телефон): если кандидата
+            // нет, помечаем задачу и добираем его на следующем проходе, иначе
+            // режим включён, а крупного видео нет до первой реплики.
             if (dom === null) {
-                if (!lastDom) {
-                    for (const el of document.querySelectorAll('video[name]')) {
-                        const p = el.getAttribute('name');
-                        if (p && p !== selfId()) {
-                            lastDom = p;
-                            break;
-                        }
-                    }
-                }
-                if (lastDom) {
-                    dom = lastDom;
+                const seed = seedDom();
+                if (seed) {
+                    dom = lastDom = seed;
                     lastActivityTs = Date.now();
                 }
+                seedPending = dom === null;
             }
             applyGroupSpeaker();
         }
@@ -605,6 +685,7 @@ const MontemeetLayout = (() => {
         document.body.classList.toggle('montemeet-solo', soloActive);
         if (soloActive) {
             if (auto && auto.apply === applyGroupSpeaker) disengageAuto();
+            preSoloView = speakerView; // вернём его, когда придёт третий
             speakerView = 'grid';
             updateSpeakerViewButton();
             unpin();
@@ -616,7 +697,8 @@ const MontemeetLayout = (() => {
                 focusOff();
             } else if (anchorView === 'pin' && !rc.isMobileDevice) {
                 focusOff();
-                ensureDefault();
+                // педагог возвращается в свой режим, остальные — к якорю
+                isHost() ? restoreSpeakerView() : ensureDefault();
             }
             // focus view keeps an existing focus (companion/anchor or the new speaker)
         }
@@ -651,7 +733,8 @@ const MontemeetLayout = (() => {
         if (selfTile && container.firstElementChild !== selfTile) {
             container.insertBefore(selfTile, container.firstElementChild);
         }
-        const anchorNode = selfTile && selfTile.parentElement === container ? selfTile.nextSibling : container.firstChild;
+        const anchorNode =
+            selfTile && selfTile.parentElement === container ? selfTile.nextSibling : container.firstChild;
         for (const tile of tiles) {
             if (tile === selfTile || tile.dataset.mmSeen) continue;
             tile.dataset.mmSeen = '1';
@@ -773,26 +856,30 @@ const MontemeetLayout = (() => {
         btn.id = 'montemeetSpeakerViewBtn';
         btn.addEventListener('click', cycleSpeakerView);
         bar.appendChild(btn);
-        // restore the teacher's last chosen view (lesson rooms only — the
-        // button never exists at concerts, so the memory cannot leak there)
-        try {
-            // no remembered choice → default to the speaker view (sticky):
-            // not the grid and not auto (Ivan, 2026-08-06)
-            const stored = localStorage.getItem('MONTEMEET_SPEAKER_VIEW');
-            const saved = stored && VIEW_CYCLE.includes(stored) ? stored : 'sticky';
-            if (saved !== 'grid' && !soloActive) {
-                speakerView = saved;
-                engageAuto({
-                    holdMs: layoutCfg?.holdMs ?? 1500,
-                    silenceMs: layoutCfg?.silenceMs ?? 4000,
-                    minVolume: layoutCfg?.minVolume ?? 2,
-                    apply: applyGroupSpeaker,
-                });
-            }
-        } catch (e) {
-            /* localStorage unavailable */
-        }
+        restoreSpeakerView();
         updateSpeakerViewButton();
+    }
+
+    // Восстановление вида педагога: после перезагрузки и после выхода из
+    // режима 1:1. Раньше это жило внутри создания кнопки и только выставляло
+    // переменную — режим оставался пустым до первой чужой реплики, а кнопка
+    // могла показывать одно, экран другое (Иван, 2026-08-09). Теперь идём через
+    // setSpeakerViewTo: он же выберет, кого показать крупно прямо сейчас.
+    let preSoloView = null;
+    function restoreSpeakerView() {
+        if (soloActive || concertRoom || !isHost() || anchorView !== 'pin') return;
+        let saved = preSoloView;
+        preSoloView = null;
+        if (!saved) {
+            try {
+                saved = localStorage.getItem('MONTEMEET_SPEAKER_VIEW');
+            } catch (e) {
+                /* localStorage unavailable */
+            }
+        }
+        // без запомненного выбора — говорящий крупно (sticky), не сетка и не
+        // авто (Иван, 2026-08-06); отключённый админкой режим тоже отбрасываем
+        setSpeakerViewTo(viewCycle().includes(saved) ? saved : 'sticky');
     }
 
     (async () => {
@@ -832,14 +919,11 @@ const MontemeetLayout = (() => {
                         maybeCreateSplashButton();
                         syncConcertSplash();
                     }
+                    // состав сменился — подтянуть карту участников и переложить
+                    // ещё раз уже с ней (ответ приходит после этого прохода)
+                    syncPeerMap(applyCurrent);
                     if (soloActive) return;
-                    if (isConcert) {
-                        applyConcert();
-                    } else if (auto) {
-                        auto.apply();
-                    } else {
-                        ensureDefault();
-                    }
+                    applyCurrent();
                     // structural changes may have flipped strip classes after the
                     // stock resize ran — one more pass keeps tile sizes honest
                     if (typeof resizeVideoMedia === 'function') resizeVideoMedia();

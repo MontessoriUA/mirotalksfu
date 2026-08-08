@@ -1,6 +1,5 @@
 'use strict';
 
-
 /*
  * Montemeet: role presets — trim the UI per the Appendix A decision table
  * (MASTERPLAN.md). First pass: the main toolbar. The settings panel and the
@@ -259,7 +258,10 @@ const MontemeetRoles = (() => {
     // модальное окно и отправляет менять имя вручную, мы просто добавляем номер
     // и заходим (Иван, 2026-08-09). Имя за нами не закреплено: два «Ваня» в
     // комнате — обычное дело, различать их должен номер, а не отказ во входе.
-    let nameRetried = false;
+    // Перезагружать страницу с новым именем в адресе оказалось ненадёжно: имя
+    // подтягивается ещё и из localStorage соседней вкладки, и попап всё равно
+    // всплывал. Заходим иначе: правим имя на месте и повторяем сам join —
+    // до входа в комнату ничего не построено, повтор ничего не ломает.
     function autoRenameOnConflict() {
         if (!window.RoomClient || !RoomClient.prototype.userNameAlreadyInRoom) return;
         const proto = RoomClient.prototype;
@@ -267,17 +269,22 @@ const MontemeetRoles = (() => {
         proto._mmRename = true;
         const stock = proto.userNameAlreadyInRoom;
         proto.userNameAlreadyInRoom = function () {
-            if (nameRetried) return stock.call(this); // второй отказ подряд — как в стоке
-            nameRetried = true;
-            const url = new URL(window.location.href);
-            const base = String(url.searchParams.get('name') || this.peer_name || '').replace(/\s*\(\d+\)$/, '');
-            const prev = /\((\d+)\)$/.exec(String(url.searchParams.get('name') || ''));
-            const next = prev ? Number(prev[1]) + 1 : 2;
-            url.searchParams.set('name', base + ' (' + next + ')');
+            const tries = (this._mmNameTry = (this._mmNameTry || 0) + 1);
+            if (tries > 20) return stock.call(this); // не смогли подобрать — как в стоке
+            const base = String(this.peer_name || this.peer_info?.peer_name || '').replace(/\s*\(\d+\)$/, '');
+            const name = base + ' (' + (tries + 1) + ')';
+            this.peer_name = name;
+            if (this.peer_info) this.peer_info.peer_name = name;
             try {
-                window.localStorage.peer_name = base + ' (' + next + ')';
-            } catch (e) {}
-            window.location.replace(url.toString());
+                // Room.js держит имя ещё и в своей глобальной переменной —
+                // без неё чат и запись подписывались бы прежним именем
+                if (typeof peer_name !== 'undefined') peer_name = name;
+            } catch (e) {
+                /* переменной нет — не страшно */
+            }
+            // в localStorage остаётся исходное имя: номер — свойство этой
+            // вкладки, а не человека, и в следующий раз подберётся заново
+            return this.join({ room_id: this.room_id, peer_info: this.peer_info });
         };
     }
 
@@ -372,7 +379,12 @@ const MontemeetRoles = (() => {
         } catch (err) {
             console.warn('Montemeet: swap camera failed', err);
             if (typeof userLog === 'function') {
-                userLog('warning', mmT('Камера занята другим приложением — закройте его и попробуйте снова'), 'top-end', 5000);
+                userLog(
+                    'warning',
+                    mmT('Камера занята другим приложением — закройте его и попробуйте снова'),
+                    'top-end',
+                    5000
+                );
             }
         } finally {
             restore();
@@ -444,7 +456,9 @@ const MontemeetRoles = (() => {
         if (!btn) return;
         const on = pcSoundActive();
         btn.classList.toggle('montemeet-on', on); // CSS !important beats stock button colors
-        btn.title = on ? mmT('Звук компьютера: транслируется (клик — выключить)') : mmT('Транслировать звук компьютера');
+        btn.title = on
+            ? mmT('Звук компьютера: транслируется (клик — выключить)')
+            : mmT('Транслировать звук компьютера');
         if (on) btn.classList.remove('montemeet-attention');
     }
 
@@ -469,7 +483,9 @@ const MontemeetRoles = (() => {
                     userLog(
                         'warning',
                         isMac
-                            ? mmT('На macOS звук доступен только из вкладки Chrome: выберите ВКЛАДКУ с плеером и включите «Также предоставить доступ к аудио вкладки»')
+                            ? mmT(
+                                  'На macOS звук доступен только из вкладки Chrome: выберите ВКЛАДКУ с плеером и включите «Также предоставить доступ к аудио вкладки»'
+                              )
                             : mmT('Отметьте галку «Предоставить доступ к системному звуку» в диалоге браузера'),
                         'top-end',
                         8000
@@ -499,7 +515,8 @@ const MontemeetRoles = (() => {
         btn.innerHTML =
             '<svg viewBox="0 0 22 19" width="27" height="23" fill="currentColor"><rect x="1" y="1" width="20" height="14.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 17h5l1 1.6h-7z"/><path d="M15.3 3.8 9.4 5.1v5a2.3 2.3 0 1 0 1.3 2.07V7.8l3.3-.73v2.6a2.3 2.3 0 1 0 1.3 2.07z"/></svg>';
         btn.addEventListener('click', togglePcSound);
-        const anchorBtn = document.getElementById('montemeetFileShareBtn') || document.getElementById('participantsButton');
+        const anchorBtn =
+            document.getElementById('montemeetFileShareBtn') || document.getElementById('participantsButton');
         if (anchorBtn && anchorBtn.parentElement === bar) {
             bar.insertBefore(btn, anchorBtn.nextSibling);
         } else {
@@ -551,7 +568,12 @@ const MontemeetRoles = (() => {
             if (el && el.style.display !== 'none') el.style.display = 'none';
             // обёртка split-btn остаётся в потоке и ловит нажатия своей стрелкой
             const wrap = el?.closest('.split-btn');
-            if (wrap && ![...wrap.querySelectorAll('button')].some((b) => b.style.display !== 'none' && !b.classList.contains('hidden'))) {
+            if (
+                wrap &&
+                ![...wrap.querySelectorAll('button')].some(
+                    (b) => b.style.display !== 'none' && !b.classList.contains('hidden')
+                )
+            ) {
                 wrap.style.display = 'none';
             }
         }
@@ -643,7 +665,12 @@ const MontemeetRoles = (() => {
             const initTrim = setInterval(() => {
                 const eye = document.getElementById('initAudioVideoButton');
                 if (!eye) return;
-                for (const id of ['initAudioVideoButton', 'initStartScreenButton', 'initVideoMirrorButton', 'initVirtualBackgroundButton']) {
+                for (const id of [
+                    'initAudioVideoButton',
+                    'initStartScreenButton',
+                    'initVideoMirrorButton',
+                    'initVirtualBackgroundButton',
+                ]) {
                     const el = document.getElementById(id);
                     if (el) el.style.display = 'none';
                 }
