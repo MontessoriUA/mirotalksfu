@@ -716,8 +716,27 @@ const MontemeetRoles = (() => {
     document.addEventListener('DOMContentLoaded', disableSurvey);
 
     // перехваты, которые обязаны существовать ДО входа в комнату
-    autoRenameOnConflict();
+    (function waitForRoomClient(tries = 0) {
+        autoRenameOnConflict();
+        if (window.RoomClient?.prototype?._mmRename || tries > 200) return;
+        setTimeout(() => waitForRoomClient(tries + 1), 20);
+    })();
     document.addEventListener('DOMContentLoaded', autoRenameOnConflict);
+
+    // Переключились в другое приложение и вернулись — браузер успел заморозить
+    // вкладку и порвать связь. Сток показывает баннер и ждёт нажатия; пробуем
+    // переподключиться сами (Иван, 2026-08-09).
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        setTimeout(() => {
+            try {
+                if (typeof rc === 'undefined' || !rc || !rc.socket) return;
+                if (rc.socket.connected) return;
+                console.log('Montemeet: соединение потеряно за время в фоне, переподключаемся');
+                rc.socket.connect();
+            } catch (e) {}
+        }, 400);
+    });
 
     // ------------------------------------------------------------------
     // Notification noise filter (Ivan, 2026-08-06): a student must not get a
