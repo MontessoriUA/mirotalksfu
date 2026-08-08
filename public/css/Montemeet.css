@@ -198,9 +198,13 @@ body.montemeet-concert-pip .montemeet-self-pip {
 }
 
 /* Скрытая панель не должна ловить нажатия: сток прячет её прозрачностью, и тап
-   по пустому месту внизу экрана попадал по невидимой кнопке */
-body:not(.montemeet-bar-visible) #bottomButtons {
-    pointer-events: none !important;
+   по пустому месту внизу экрана попадал по невидимой кнопке.
+   Только на сенсорных экранах: на компьютере панель показывается по наведению,
+   и запрет ломал бы наведение мышью (а заодно и клики автотеста) */
+@media (hover: none) and (pointer: coarse) {
+    body:not(.montemeet-bar-visible) #bottomButtons {
+        pointer-events: none !important;
+    }
 }
 
 /* Своя картинка в углу на телефоне: меньше и выше панели кнопок */
