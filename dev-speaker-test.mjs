@@ -572,6 +572,52 @@ async function runSoloScenario() {
     };
 }
 
+// Тот, кого показывали крупно, вышел из встречи (Иван, 2026-08-10). Режим по
+// кнопке остаётся прежним, поэтому и на экране должен остаться кто-то крупно —
+// раньше «липкий» вид молча оставался ни с кем и показывал сетку. Группа после
+// ухода должна остаться группой, иначе включится раскладка 1:1.
+async function runLeaverScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const loud = await launchPeer('Student1', fixtures.speech, { room });
+    const rest = [await launchPeer('Student2', fixtures.silence, { room })];
+    rest.push(await launchPeer('Student3', fixtures.silence, { room }));
+    await delay(9000);
+
+    const viewOf = (p) => p.page.evaluate(() => MontemeetLayout.view());
+    const clickCycle = (p) => p.page.evaluate(() => !!document.getElementById('montemeetSpeakerViewBtn')?.click());
+    for (let i = 0; i < 4 && (await viewOf(teacher)) !== 'sticky'; i++) await clickCycle(teacher);
+    await delay(8000);
+
+    const bigOn = (p) =>
+        p.page.evaluate(
+            () =>
+                document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ??
+                document.querySelector('#videoMediaContainer [focus-mode] video[name]')?.getAttribute('name') ??
+                null
+        );
+    const loudId = await loud.page.evaluate(() => rc.peer_id);
+    const before = { big: await bigOn(teacher), view: await viewOf(teacher) };
+    await loud.browser.close();
+    await delay(10000);
+    const after = { big: await bigOn(teacher), view: await viewOf(teacher) };
+
+    await teacher.browser.close();
+    for (const p of rest) await p.browser.close();
+
+    return {
+        scenario: 'leaver',
+        before,
+        after,
+        checks: {
+            speakerShownBefore: before.big === loudId && before.view === 'sticky',
+            modeKept: after.view === 'sticky',
+            someoneElseShown: !!after.big && after.big !== loudId,
+        },
+    };
+}
+
 // Занятое имя: второй участник с тем же именем должен молча получить номер и
 // войти, а не упереться в модальное окно «Username already in use».
 async function runNameClashScenario() {
@@ -658,6 +704,11 @@ if (which === 'group-speaker' || which === 'all') {
 }
 if (which === 'solo-lesson' || which === 'all') {
     const r = await runSoloScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'leaver' || which === 'all') {
+    const r = await runLeaverScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }

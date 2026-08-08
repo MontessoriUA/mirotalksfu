@@ -149,9 +149,60 @@ const MontemeetLayout = (() => {
         return videoEl ? videoEl.id : null;
     }
 
+    // Тот, кого показывали крупно, вышел из встречи. Ссылки на него надо
+    // забыть, иначе «липкий» режим остаётся ни с кем: закреплять некого, и на
+    // экране молча висит сетка, хотя кнопка показывает говорящего крупно
+    // (Иван, 2026-08-10). «Авто» в этом случае по своим правилам и должен
+    // вернуть сетку — тишина, говорить больше некому.
+    function pruneDeparted() {
+        if (typeof rc === 'undefined' || !rc) return;
+        const live = livePeerIds();
+        for (const id of lastSpokeAt.keys()) if (!live.has(id)) lastSpokeAt.delete(id);
+        if (pending && !live.has(pending.peerId)) {
+            clearTimeout(pending.timer);
+            pending = null;
+        }
+        if (lastDom && !live.has(lastDom)) lastDom = null;
+        if (dom && !live.has(dom)) {
+            dom = null;
+            if (auto && auto.apply === applyGroupSpeaker && speakerView === 'sticky') seedPending = true;
+        }
+    }
+
+    // Флаг «показываем одного крупно» живёт отдельно от пометки на самой плитке.
+    // Если плитка исчезла в обход обычного пути, флаг остаётся поднятым, а
+    // остальные плитки — скрытыми: на экране одна картинка, и убрать её нечем,
+    // потому что снимать фокус уже не с чего (Иван, 2026-08-10).
+    function healFocusState() {
+        if (typeof rc === 'undefined' || !rc?.videoMediaContainer) return;
+        if (typeof isHideALLVideosActive === 'undefined') return;
+        const marked = rc.videoMediaContainer.querySelector('[focus-mode]');
+        if (!isHideALLVideosActive) {
+            // обратный случай: пометка осталась на плитке при опущенном флаге.
+            // Для глаза это незаметно, но вёрстка по ней перестраивается —
+            // на телефоне сетка теряла прокрутку и плитки уезжали за экран.
+            if (marked) {
+                marked.removeAttribute('focus-mode');
+                marked.style.width = '';
+                marked.style.height = '';
+            }
+            return;
+        }
+        if (marked) return;
+        isHideALLVideosActive = false;
+        for (const child of rc.videoMediaContainer.children) {
+            // зал на концерте прячет свою плитку сам — её не возвращаем
+            if (concertRoom && isHost() && child.classList?.contains('montemeet-self')) continue;
+            child.style.display = 'block';
+        }
+        for (const btn of document.querySelectorAll('.focusMode')) btn.style.color = 'white';
+    }
+
     // Единая точка перекладки: концерт, авто-режим педагога или якорь комнаты.
     // Вызывается и по изменениям DOM, и после обновления карты участников.
     function applyCurrent() {
+        healFocusState();
+        pruneDeparted();
         if (soloActive) return;
         if (concertRoom) applyConcert();
         else if (auto) auto.apply();
@@ -591,6 +642,9 @@ const MontemeetLayout = (() => {
         if (speakerView === 'grid') {
             disengageAuto();
             unpin();
+            // на телефоне «крупно» — это фокус, а не закрепление: если он почему-то
+            // не снялся, сетка так и не появится, пока не дождёмся общего прохода
+            healFocusState();
         } else {
             if (!auto || auto.apply !== applyGroupSpeaker) {
                 engageAuto({
