@@ -23,6 +23,10 @@ const FIXTURES = path.join(import.meta.dirname, 'dev-fixtures');
 
 const UA =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36';
+// телефон: от него зависит и ветка раскладки (закрепление против фокуса), и
+// признак сенсорного экрана, по которому включается мобильная вёрстка сетки
+const PHONE_UA =
+    'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36';
 
 // ---------- WAV fixtures (48 kHz mono 16-bit PCM) ----------
 
@@ -109,7 +113,11 @@ function delay(ms) {
     return new Promise((r) => setTimeout(r, ms));
 }
 
-async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow = false, room = ROOM } = {}) {
+async function launchPeer(
+    name,
+    audioFile,
+    { audio = 1, video = 1, focusFollow = false, room = ROOM, phone = false } = {}
+) {
     const args = [
         '--use-fake-device-for-media-stream',
         '--use-fake-ui-for-media-stream',
@@ -136,7 +144,9 @@ async function launchPeer(name, audioFile, { audio = 1, video = 1, focusFollow =
         args,
     });
     const page = await browser.newPage();
-    await page.setUserAgent(UA);
+    await page.setUserAgent(phone ? PHONE_UA : UA);
+    if (phone)
+        await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
     // Collect dominantSpeaker events via the client handler's console.log
     // ('Dominant Speaker', data) — resolving the logged object through puppeteer.
     const events = [];
@@ -639,6 +649,74 @@ async function runLeaverScenario() {
     };
 }
 
+// Круг режимов у педагога на телефоне: сетка → говорящий крупно → авто →
+// сетка (Иван, 2026-08-10). Сток при снятии фокуса пересчитывает сетку раньше,
+// чем возвращает скрытые плитки, и та, что была крупной, остаётся размером
+// «я тут один» — на экране она висит сверху, остальные жмутся под ней.
+async function runViewCycleScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room, phone: true });
+    await delay(3000);
+    const students = [];
+    for (const n of ['Student1', 'Student2', 'Student3']) {
+        students.push(await launchPeer(n, fixtures.silence, { room }));
+        await delay(1200);
+    }
+    await delay(9000);
+
+    const cycle = (p) =>
+        p.page.evaluate(async () => {
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            const seen = [];
+            for (let i = 0; i < 4; i++) {
+                document.getElementById('montemeetSpeakerViewBtn')?.click();
+                await sleep(700);
+                seen.push(MontemeetLayout.view());
+            }
+            return seen;
+        });
+    const seen = await cycle(teacher);
+    // добираем до сетки, чем бы круг ни закончился
+    await teacher.page.evaluate(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        for (let i = 0; i < 4 && MontemeetLayout.view() !== 'grid'; i++) {
+            document.getElementById('montemeetSpeakerViewBtn')?.click();
+            await sleep(500);
+        }
+    });
+    await delay(3000);
+
+    const grid = await teacher.page.evaluate(() => {
+        const c = document.getElementById('videoMediaContainer');
+        const tiles = [...c.querySelectorAll(':scope > div.Camera')].filter((t) => t.style.display !== 'none');
+        const widths = tiles.map((t) => Math.round(t.getBoundingClientRect().width));
+        return {
+            view: MontemeetLayout.view(),
+            marked: !!c.querySelector('[focus-mode]'),
+            hidden: [...c.children].filter((el) => el.style.display === 'none').length,
+            widths,
+            containerWidth: Math.round(c.getBoundingClientRect().width),
+        };
+    });
+
+    await teacher.browser.close();
+    for (const p of students) await p.browser.close();
+
+    const widest = Math.max(...grid.widths, 0);
+    const narrowest = Math.min(...grid.widths, Infinity);
+    return {
+        scenario: 'view-cycle',
+        seen,
+        grid,
+        checks: {
+            cycleWorks: seen.length === 4 && new Set(seen).size >= 2,
+            backToGrid: grid.view === 'grid' && !grid.marked && grid.hidden === 0,
+            // ни одна плитка не шире контейнера и не крупнее соседей
+            noStuckTile: grid.widths.length >= 3 && widest <= grid.containerWidth + 2 && widest - narrowest <= 4,
+        },
+    };
+}
+
 // Занятое имя: второй участник с тем же именем должен молча получить номер и
 // войти, а не упереться в модальное окно «Username already in use».
 async function runNameClashScenario() {
@@ -730,6 +808,11 @@ if (which === 'solo-lesson' || which === 'all') {
 }
 if (which === 'leaver' || which === 'all') {
     const r = await runLeaverScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'view-cycle' || which === 'all') {
+    const r = await runViewCycleScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
