@@ -91,11 +91,12 @@ function ensureFixtures() {
             ...speechSegments(8, 440),
             { seconds: 22, freq: 0 },
         ]),
-        // Концертному сценарию нужен запас тишины В НАЧАЛЕ: пока три браузера
-        // поднимутся и договорятся, проходит около трёх секунд, и с пятью
-        // секундами разбега замер «по умолчанию» попадал ровно на первую ноту.
-        concertTurn: make('silence12-speech8-silence20.wav', [
-            { seconds: 12, freq: 0 },
+        // Концертному сценарию нужен изрядный запас тишины В НАЧАЛЕ: от запуска
+        // браузера до первого замера проходит от трёх до двенадцати секунд, и
+        // разбег гуляет вместе с загрузкой машины. Двадцать пять секунд тишины
+        // держат «до выступления» тишиной при любом разбеге.
+        concertTurn: make('silence25-speech8-silence20.wav', [
+            { seconds: 25, freq: 0 },
             ...speechSegments(8, 440),
             { seconds: 20, freq: 0 },
         ]),
@@ -356,7 +357,7 @@ async function runConcertScenario() {
 
     const samples = [];
     const started = Date.now();
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 24; i++) {
         await delay(2000);
         samples.push({
             t: Math.round((Date.now() - started) / 1000),
@@ -371,18 +372,28 @@ async function runConcertScenario() {
     await guest1.browser.close();
     await guest2.browser.close();
 
-    const early = samples.filter((s) => s.t <= 6); // до первой ноты
-    const mid = samples.filter((s) => s.t >= 12 && s.t <= 18); // выступление
-    const late = samples.filter((s) => s.t >= 24); // тишина после него
+    // Окна не назначаем по часам: между запуском браузера и первым замером
+    // проходит от трёх до двенадцати секунд, и на загруженной машине «до
+    // выступления» попадало ровно в выступление (Иван, 2026-08-10). Границы
+    // берём из самих данных — по тому, когда зал показал гостя.
+    const from = samples.findIndex((s) => s.zalSees === 'guest1');
+    const to = samples.findLastIndex((s) => s.zalSees === 'guest1');
+    const before = from > 0 ? samples.slice(0, from) : [];
+    const after = to >= 0 ? samples.slice(to + 1) : [];
+    const defaults = (s) => s.zalSees === null && s.guest2Sees === 'zal';
     return {
         scenario: 'concert',
         hidden,
         samples,
+        window: { from, to },
         checks: {
-            earlyDefaults: early.some((s) => s.zalSees === null && s.guest2Sees === 'zal'),
-            guestTakeover: mid.some((s) => s.zalSees === 'guest1' && s.guest2Sees === 'guest1'),
+            // прямо перед выступлением: зал показывает сетку, молчащий гость
+            // смотрит на зал. Самые первые замеры не берём — там ещё строятся
+            // плитки, и это не про раскладку
+            earlyDefaults: before.length >= 2 && before.slice(-2).every(defaults),
+            guestTakeover: from >= 0 && samples.slice(from, to + 1).some((s) => s.guest2Sees === 'guest1'),
             performerWatchesZal: samples.every((s) => s.guest1Sees === 'zal' || s.guest1Sees === null),
-            backToDefaults: late.length > 0 && late.every((s) => s.zalSees === null && s.guest2Sees === 'zal'),
+            backToDefaults: after.length >= 2 && after.every(defaults),
             // the HALL (TV) never sees itself; a guest DOES see themselves in
             // the strip since 2026-08-06 (Ivan's decision, like at lessons)
             selfVisibility: hidden.zal === true && hidden.guest2 === false,
