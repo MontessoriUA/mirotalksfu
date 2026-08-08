@@ -394,7 +394,8 @@ const MontemeetLayout = (() => {
     //   'auto'   — the active speaker pinned, silence returns the grid.
     // The button's icon shows what the NEXT click will give (Ivan, 2026-08-04).
 
-    const VIEW_CYCLE = ['grid', 'sticky', 'auto'];
+    // «Авто» можно отключить из админки — тогда у педагога остаются сетка и фокус
+    const VIEW_CYCLE = MontemeetProfile.style()?.autoView === false ? ['grid', 'sticky'] : ['grid', 'sticky', 'auto'];
     // The button shows the CURRENT state (Ivan, 2026-08-05), always lime.
     const VIEW_ICON = {
         // grid: four cells

@@ -725,6 +725,18 @@ const MontemeetRoles = (() => {
     })();
     document.addEventListener('DOMContentLoaded', autoRenameOnConflict);
 
+    // Панель кнопок то показывается, то прячется. Отмечаем её состояние на body:
+    // по нему CSS поднимает своё превью над панелью и — главное — запрещает
+    // нажатия по невидимой панели, иначе тап по пустому месту внизу экрана
+    // выключал камеру (Иван, 2026-08-09).
+    setInterval(() => {
+        const bar = document.getElementById('bottomButtons');
+        if (!bar) return;
+        const cs = getComputedStyle(bar);
+        const visible = cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.05;
+        document.body.classList.toggle('montemeet-bar-visible', visible);
+    }, 250);
+
     // Переключились в другое приложение и вернулись — браузер успел заморозить
     // вкладку и порвать связь. Сток показывает баннер и ждёт нажатия; пробуем
     // переподключиться сами (Иван, 2026-08-09).
