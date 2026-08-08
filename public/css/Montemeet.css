@@ -181,7 +181,8 @@ body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {
  * (the stock focus mode hides siblings with inline display:none — the
  * !important below wins it back for the own tile only).
  */
-body.montemeet-solo .montemeet-self-pip {
+body.montemeet-solo .montemeet-self-pip,
+body.montemeet-concert-pip .montemeet-self-pip {
     display: block !important;
     position: fixed !important;
     right: 16px;
@@ -204,7 +205,8 @@ body:not(.montemeet-bar-visible) #bottomButtons {
 
 /* Своя картинка в углу на телефоне: меньше и выше панели кнопок */
 @media screen and (max-width: 1024px) {
-    body.montemeet-solo .montemeet-self-pip {
+    body.montemeet-solo .montemeet-self-pip,
+body.montemeet-concert-pip .montemeet-self-pip {
         width: 118px !important;
         right: 10px;
         bottom: 20px;
@@ -212,16 +214,19 @@ body:not(.montemeet-bar-visible) #bottomButtons {
         transition: bottom 0.25s ease-in-out;
     }
     /* панель открыта — приподнимаем, закрылась — возвращаем на место */
-    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip {
+    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
+body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
         bottom: 92px;
     }
 }
 @media screen and (max-width: 380px) {
-    body.montemeet-solo .montemeet-self-pip {
+    body.montemeet-solo .montemeet-self-pip,
+body.montemeet-concert-pip .montemeet-self-pip {
         width: 96px !important;
         bottom: 16px;
     }
-    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip {
+    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
+body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
         bottom: 84px;
     }
 }

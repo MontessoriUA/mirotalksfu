@@ -294,6 +294,7 @@ const MontemeetLayout = (() => {
     }
 
     function unpin() {
+        if (rc?.isMobileDevice) return focusOff();
         if (typeof rc === 'undefined' || !rc.isVideoPinned || !rc.pinnedVideoPlayerId) return;
         const camId = containerId(rc.pinnedVideoPlayerId);
         silentClick(document.getElementById(rc.pinnedVideoPlayerId + '__pin'));
@@ -314,6 +315,7 @@ const MontemeetLayout = (() => {
 
     function pinByVideoEl(videoEl) {
         if (!videoEl) return false;
+        if (rc?.isMobileDevice) return focusOn(videoEl.id) !== false;
         if (rc.isVideoPinned) {
             if (rc.pinnedVideoPlayerId === videoEl.id) return true;
             if (manualPinActive()) return false; // never fight a manual pin
@@ -342,6 +344,11 @@ const MontemeetLayout = (() => {
     }
 
     function hideSelf() {
+        if (concertRoom && rc?.isMobileDevice && !isHost()) {
+            document.body.classList.add('montemeet-concert-pip');
+            markSelfPip();
+            return;
+        }
         const videoEl = rc?.getVideoElementByPeerId?.(selfId());
         const container = videoEl ? document.getElementById(videoEl.id + '__video') : null;
         if (container && container.style.display !== 'none') {

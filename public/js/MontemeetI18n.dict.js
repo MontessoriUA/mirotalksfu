@@ -83,6 +83,12 @@ window.MontemeetDict = {
             uk: 'Камера зайнята іншим застосунком — закрийте його і спробуйте ще раз',
             en: 'The camera is busy in another app — close it and try again',
         },
+        'Consumer Transport': { uk: "З'єднання з кімнатою", ru: 'Соединение с комнатой' },
+        'Producer Transport': { uk: "З'єднання з кімнатою", ru: 'Соединение с комнатой' },
+        'Unable to reconnect. Please check your network.': {
+            uk: "Не вдалося відновити зв'язок. Перевірте інтернет і зайдіть у кімнату ще раз.",
+            ru: 'Не удалось восстановить связь. Проверьте интернет и зайдите в комнату ещё раз.',
+        },
         'Закрыть доску': { uk: 'Закрити дошку', en: 'Close the whiteboard' },
         'Онлайн-уроки и концерты': { uk: 'Онлайн-уроки та концерти', en: 'Online lessons and concerts' },
 
