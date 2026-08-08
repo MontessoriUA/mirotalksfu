@@ -547,6 +547,11 @@ const MontemeetRoles = (() => {
         for (const id of [...list, ...HIDE_SETTINGS_TABS, ...HIDE_CHAT_EXTRAS]) {
             const el = document.getElementById(id);
             if (el && el.style.display !== 'none') el.style.display = 'none';
+            // обёртка split-btn остаётся в потоке и ловит нажатия своей стрелкой
+            const wrap = el?.closest('.split-btn');
+            if (wrap && ![...wrap.querySelectorAll('button')].some((b) => b.style.display !== 'none' && !b.classList.contains('hidden'))) {
+                wrap.style.display = 'none';
+            }
         }
         hideSettingRow('switchDominantSpeakerFocus');
         hideSettingRow('switchPushToTalk');

@@ -300,8 +300,10 @@ body.montemeet-solo .montemeet-self-pip {
         margin-left: auto !important;
         flex: none !important;
     }
-    /* полотно занимает всё, что осталось после выросшей шапки */
-    #whiteboard {
+    /* полотно занимает всё, что осталось после выросшей шапки.
+       ВАЖНО: только у открытой доски — иначе display перебивает .hidden
+       и доска не закрывается вовсе */
+    #whiteboard:not(.hidden) {
         display: flex !important;
         flex-direction: column !important;
         max-height: 96dvh !important;

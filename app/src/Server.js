@@ -889,6 +889,11 @@ function startServer() {
 
     // set new room name and join
     app.get('/newroom', OIDCAuth, (req, res) => {
+        // Montemeet: комнаты заводит кабинет, стоковая страница «новая комната»
+        // на проде не нужна — выход из pre-join вёл именно сюда (Иван, 2026-08-09)
+        if (process.env.REDIRECT_ENABLED === 'true' && process.env.REDIRECT_URL) {
+            return res.redirect(process.env.REDIRECT_URL);
+        }
         //log.info('/newroom - hostCfg ----->', hostCfg);
 
         if (!OIDC.enabled && hostCfg.protected) {
