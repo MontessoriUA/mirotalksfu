@@ -5136,7 +5136,7 @@ function startServer() {
 
     // Montemeet: кого педагог уже пустил в комнату — чтобы переподключение после
 // обрыва не требовало повторного подтверждения. Живёт в памяти, чистится сама.
-const MONTEMEET_LOBBY_PASS_MS = 20 * 60 * 1000;
+const MONTEMEET_LOBBY_PASS_MS = 10 * 60 * 1000;
 const montemeetLobbyPass = new Map(); // roomId -> Map(peer_uuid -> expiresAt)
 
 function montemeetRememberAdmitted(roomId, uuid) {

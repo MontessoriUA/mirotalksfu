@@ -489,6 +489,8 @@ const MontemeetRoles = (() => {
     function ensurePcSoundButton() {
         if (pcSoundBtnDone || MontemeetProfile.roles() !== 'lesson') return;
         if (!(typeof isPresenter !== 'undefined' && isPresenter)) return;
+        // системный звук браузеру на телефоне недоступен — кнопка была бы мёртвой
+        if (rc?.isMobileDevice) return;
         const bar = document.getElementById('bottomButtons');
         if (!bar || typeof rc === 'undefined' || !rc) return;
         const btn = document.createElement('button');

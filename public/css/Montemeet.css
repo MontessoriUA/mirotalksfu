@@ -196,6 +196,22 @@ body.montemeet-solo .montemeet-self-pip {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
+/* Своя картинка в углу на телефоне: меньше и выше панели кнопок */
+@media screen and (max-width: 1024px) {
+    body.montemeet-solo .montemeet-self-pip {
+        width: 118px !important;
+        right: 10px;
+        bottom: 84px;
+        border-radius: 12px;
+    }
+}
+@media screen and (max-width: 380px) {
+    body.montemeet-solo .montemeet-self-pip {
+        width: 96px !important;
+        bottom: 78px;
+    }
+}
+
 /* Мобильный тулбар: сток ужимает кнопки до 38px, а ниже 360px — до 28px,
    потому что в стоке их полтора десятка. У нас набор урезан ролями, места
    хватает — возвращаем комфортный размер нажатия (Иван, 2026-08-09).

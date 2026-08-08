@@ -576,7 +576,10 @@ const MontemeetLayout = (() => {
     function syncSolo() {
         if (!anchorMode || typeof rc === 'undefined' || !rc) return;
         const peerCount = livePeerIds().size;
-        const shouldSolo = peerCount === 2 && !rc.isMobileDevice;
+        // Телефон больше не исключение: на индивидуальном уроке собеседник
+        // крупно, своя картинка — в углу, как на компьютере (Иван, 2026-08-09).
+        // Раньше мобильные проваливались в сетку, а себя не было видно вовсе.
+        const shouldSolo = peerCount === 2;
         const btn = document.getElementById('montemeetSpeakerViewBtn');
         // the view button makes sense only with an actual group (3+): hidden
         // when the teacher sits alone and in the solo 1:1 layout
@@ -749,7 +752,7 @@ const MontemeetLayout = (() => {
     // isPresenter settles after join, so creation is retried on DOM changes.
     function maybeCreateSpeakerViewButton() {
         if (anchorView !== 'pin' || !isHost() || concertRoom) return;
-        if (typeof rc === 'undefined' || !rc || rc.isMobileDevice) return;
+        if (typeof rc === 'undefined' || !rc) return;
         if (document.getElementById('montemeetSpeakerViewBtn')) return;
         const bar = document.getElementById('bottomButtons');
         if (!bar) return;
