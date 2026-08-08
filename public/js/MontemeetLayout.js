@@ -401,8 +401,10 @@ const MontemeetLayout = (() => {
     //   'auto'   — the active speaker pinned, silence returns the grid.
     // The button's icon shows what the NEXT click will give (Ivan, 2026-08-04).
 
-    // «Авто» можно отключить из админки — тогда у педагога остаются сетка и фокус
-    const VIEW_CYCLE = MontemeetProfile.style()?.autoView === false ? ['grid', 'sticky'] : ['grid', 'sticky', 'auto'];
+    // «Авто» можно отключить из админки. Считаем на каждом обращении: профиль
+    // приходит с сервера асинхронно, при загрузке модуля его ещё нет.
+    const viewCycle = () =>
+        MontemeetProfile.style()?.autoView === false ? ['grid', 'sticky'] : ['grid', 'sticky', 'auto'];
     // The button shows the CURRENT state (Ivan, 2026-08-05), always lime.
     const VIEW_ICON = {
         // grid: four cells
@@ -476,7 +478,7 @@ const MontemeetLayout = (() => {
     }
 
     function setSpeakerViewTo(view) {
-        speakerView = VIEW_CYCLE.includes(view) ? view : 'grid';
+        speakerView = viewCycle().includes(view) ? view : 'grid';
         try {
             localStorage.setItem('MONTEMEET_SPEAKER_VIEW', speakerView);
         } catch (e) {
@@ -495,7 +497,9 @@ const MontemeetLayout = (() => {
                 });
             }
             // don't wait for the next speech — start from the LAST speaker,
-            // or from the first remote participant when nobody spoke yet
+            // or from the first remote participant when nobody spoke yet.
+            // На телефоне плитки строятся позже, поэтому если кандидата ещё
+            // нет — повторяем попытку, а не оставляем режим пустым.
             if (dom === null) {
                 if (!lastDom) {
                     for (const el of document.querySelectorAll('video[name]')) {
@@ -505,6 +509,11 @@ const MontemeetLayout = (() => {
                             break;
                         }
                     }
+                }
+                if (!lastDom && speakerView !== 'grid') {
+                    setTimeout(() => {
+                        if (speakerView !== 'grid' && dom === null) setSpeakerViewTo(speakerView);
+                    }, 900);
                 }
                 if (lastDom) {
                     dom = lastDom;
@@ -525,7 +534,7 @@ const MontemeetLayout = (() => {
             setSpeakerViewTo(prev);
             return;
         }
-        setSpeakerViewTo(VIEW_CYCLE[(VIEW_CYCLE.indexOf(speakerView) + 1) % VIEW_CYCLE.length]);
+        setSpeakerViewTo(viewCycle()[(viewCycle().indexOf(speakerView) + 1) % viewCycle().length]);
     }
 
     // ---------- solo (1:1) layout, Google-Meet style (Ivan, 2026-08-05) ----------
@@ -774,7 +783,7 @@ const MontemeetLayout = (() => {
             // no remembered choice → default to the speaker view (sticky):
             // not the grid and not auto (Ivan, 2026-08-06)
             const stored = localStorage.getItem('MONTEMEET_SPEAKER_VIEW');
-            const saved = stored && VIEW_CYCLE.includes(stored) ? stored : 'sticky';
+            const saved = stored && viewCycle().includes(stored) ? stored : 'sticky';
             if (saved !== 'grid' && !soloActive) {
                 speakerView = saved;
                 engageAuto({

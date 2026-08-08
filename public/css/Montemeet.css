@@ -356,3 +356,55 @@ body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
         min-height: 0 !important;
     }
 }
+
+/* Своя картинка ещё выше над панелью кнопок (Иван, 2026-08-09) */
+@media screen and (max-width: 1024px) {
+    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
+    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
+        bottom: 145px;
+    }
+}
+@media screen and (max-width: 380px) {
+    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
+    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
+        bottom: 128px;
+    }
+}
+
+/* Сетка на телефоне: плитки одного размера 16:9 в один столбец со сплошной
+   прокруткой — иначе при большой группе часть карточек уходила за экран
+   и добраться до них было нельзя (Иван, 2026-08-09) */
+@media screen and (max-width: 1024px) {
+    body.montemeet-teacher:not(.montemeet-solo) #videoMediaContainer,
+    body.montemeet-student:not(.montemeet-solo) #videoMediaContainer {
+        display: block !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        padding: 8px 8px 120px !important;
+    }
+    body.montemeet-teacher:not(.montemeet-solo) #videoMediaContainer > div.Camera,
+    body.montemeet-student:not(.montemeet-solo) #videoMediaContainer > div.Camera {
+        position: relative !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        aspect-ratio: 16 / 9 !important;
+        margin: 0 0 8px !important;
+        transform: none !important;
+        left: auto !important;
+        top: auto !important;
+    }
+    body.montemeet-teacher:not(.montemeet-solo) #videoMediaContainer > div.Camera video,
+    body.montemeet-student:not(.montemeet-solo) #videoMediaContainer > div.Camera video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+    }
+    /* в режиме фокуса прокрутка не нужна — там одна крупная картинка */
+    body.montemeet-teacher #videoMediaContainer:has([focus-mode]),
+    body.montemeet-student #videoMediaContainer:has([focus-mode]) {
+        display: flex !important;
+        overflow: hidden !important;
+        padding: 0 !important;
+    }
+}
