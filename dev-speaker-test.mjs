@@ -689,13 +689,21 @@ async function runViewCycleScenario() {
     const grid = await teacher.page.evaluate(() => {
         const c = document.getElementById('videoMediaContainer');
         const tiles = [...c.querySelectorAll(':scope > div.Camera')].filter((t) => t.style.display !== 'none');
-        const widths = tiles.map((t) => Math.round(t.getBoundingClientRect().width));
+        const box = (t) => t.getBoundingClientRect();
+        const pin = document.getElementById('videoPinMediaContainer');
         return {
             view: MontemeetLayout.view(),
             marked: !!c.querySelector('[focus-mode]'),
             hidden: [...c.children].filter((el) => el.style.display === 'none').length,
-            widths,
+            widths: tiles.map((t) => Math.round(box(t).width)),
+            heights: tiles.map((t) => Math.round(box(t).height)),
+            // мерить надо ПРОСТАВЛЕННЫЕ размеры, а не отрисованные: мобильная
+            // вёрстка перебивает их своими, и на эмуляторе залипшая плитка
+            // выглядит нормальной, хотя размер у неё «я тут один»
+            inlineWidths: tiles.map((t) => parseInt(t.style.width, 10) || 0),
+            pinShown: !!pin && getComputedStyle(pin).display !== 'none',
             containerWidth: Math.round(c.getBoundingClientRect().width),
+            viewportHeight: window.innerHeight,
         };
     });
 
@@ -704,6 +712,10 @@ async function runViewCycleScenario() {
 
     const widest = Math.max(...grid.widths, 0);
     const narrowest = Math.min(...grid.widths, Infinity);
+    const tallest = Math.max(...grid.heights, 0);
+    const shortest = Math.min(...grid.heights, Infinity);
+    const setWide = Math.max(...grid.inlineWidths, 0);
+    const setNarrow = Math.min(...grid.inlineWidths, Infinity);
     return {
         scenario: 'view-cycle',
         seen,
@@ -712,7 +724,16 @@ async function runViewCycleScenario() {
             cycleWorks: seen.length === 4 && new Set(seen).size >= 2,
             backToGrid: grid.view === 'grid' && !grid.marked && grid.hidden === 0,
             // ни одна плитка не шире контейнера и не крупнее соседей
-            noStuckTile: grid.widths.length >= 3 && widest <= grid.containerWidth + 2 && widest - narrowest <= 4,
+            // ни одна плитка не шире контейнера, не выше соседей и не осталась
+            // с проставленным размером «я тут один»
+            noStuckTile:
+                grid.widths.length >= 3 &&
+                widest <= grid.containerWidth + 2 &&
+                widest - narrowest <= 4 &&
+                tallest - shortest <= 4 &&
+                setWide - setNarrow <= 4 &&
+                setWide <= grid.containerWidth + 2 &&
+                !grid.pinShown,
         },
     };
 }
