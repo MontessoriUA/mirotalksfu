@@ -255,6 +255,32 @@ const MontemeetRoles = (() => {
     openChatSplit._mm = true;
     toggleParticipantsSplit._mm = true;
 
+    // Занятое имя — не повод останавливать человека на пороге: сток открывает
+    // модальное окно и отправляет менять имя вручную, мы просто добавляем номер
+    // и заходим (Иван, 2026-08-09). Имя за нами не закреплено: два «Ваня» в
+    // комнате — обычное дело, различать их должен номер, а не отказ во входе.
+    let nameRetried = false;
+    function autoRenameOnConflict() {
+        if (!window.RoomClient || !RoomClient.prototype.userNameAlreadyInRoom) return;
+        const proto = RoomClient.prototype;
+        if (proto._mmRename) return;
+        proto._mmRename = true;
+        const stock = proto.userNameAlreadyInRoom;
+        proto.userNameAlreadyInRoom = function () {
+            if (nameRetried) return stock.call(this); // второй отказ подряд — как в стоке
+            nameRetried = true;
+            const url = new URL(window.location.href);
+            const base = String(url.searchParams.get('name') || this.peer_name || '').replace(/\s*\(\d+\)$/, '');
+            const prev = /\((\d+)\)$/.exec(String(url.searchParams.get('name') || ''));
+            const next = prev ? Number(prev[1]) + 1 : 2;
+            url.searchParams.set('name', base + ' (' + next + ')');
+            try {
+                window.localStorage.peer_name = base + ' (' + next + ')';
+            } catch (e) {}
+            window.location.replace(url.toString());
+        };
+    }
+
     // Любое выпадающее меню закрывается кликом мимо. Сток закрывает так только
     // меню выхода, остальные (выбор устройств, доп. настройки) висят открытыми,
     // пока не нажмёшь ту же стрелку (Иван, 2026-08-09).
@@ -284,21 +310,45 @@ const MontemeetRoles = (() => {
     // отпускает её позже — а превью в видеоэлементе продолжает её держать.
     // Гасим ВСЕ живые видеодорожки, отцепляем их от элементов и ждём дольше.
     async function swapCameraSafely() {
-        try {
-            if (typeof isHideMeActive !== 'undefined' && isHideMeActive) rc.handleHideMe();
-            for (const el of document.querySelectorAll('video')) {
+        const stopOwnVideo = () => {
+            const own = rc.getVideoElementByPeerId?.(rc.peer_id);
+            const els = [own, document.getElementById('myVideo'), document.getElementById('videoPreview')].filter(Boolean);
+            for (const el of els) {
                 const src = el.srcObject;
-                if (!src || typeof src.getVideoTracks !== 'function') continue;
-                if (!el.id || !el.id.includes(rc.peer_id)) continue; // только свои
-                src.getVideoTracks().forEach((t) => t.stop());
+                if (src && typeof src.getVideoTracks === 'function') {
+                    src.getVideoTracks().forEach((t) => {
+                        try {
+                            t.stop();
+                        } catch (e) {}
+                    });
+                }
                 el.srcObject = null;
             }
+            const prod = rc.producer instanceof Map ? rc.producer.get(RoomClient.mediaType.video) : null;
+            try {
+                prod?.track?.stop();
+            } catch (e) {}
+        };
+
+        try {
+            if (typeof isHideMeActive !== 'undefined' && isHideMeActive) rc.handleHideMe();
+            stopOwnVideo();
             rc.closeProducer(RoomClient.mediaType.video, 'montemeet-swap');
-            await new Promise((r) => setTimeout(r, 900));
-            await rc.produce(RoomClient.mediaType.video, null, true);
+            stopOwnVideo();
+            await new Promise((r) => setTimeout(r, 1200));
+            try {
+                await rc.produce(RoomClient.mediaType.video, null, true);
+            } catch (first) {
+                // устройство ещё занято: ждём дольше и пробуем ещё раз БЕЗ
+                // повторного переворота — иначе вернёмся на ту же камеру
+                console.warn('Montemeet: camera busy, retrying', first?.name || first);
+                stopOwnVideo();
+                await new Promise((r) => setTimeout(r, 2000));
+                await rc.produce(RoomClient.mediaType.video, null, false);
+            }
         } catch (err) {
-            console.warn('Montemeet: swap camera failed, falling back to stock', err);
-            rc.closeThenProduce(RoomClient.mediaType.video, null, true);
+            console.warn('Montemeet: swap camera failed', err);
+            if (typeof userLog === 'function') userLog('warning', mmT('Камера занята другим приложением — закройте его и попробуйте снова'), 'top-end', 5000);
         }
     }
 
@@ -330,6 +380,7 @@ const MontemeetRoles = (() => {
         // Пере-навешиваем на каждом тике: стоковый handleButtons() переустанавливает
         // свои обработчики уже после нашей первой попытки.
         closeMenusOnOutsideClick();
+        autoRenameOnConflict();
         const swapBtn = document.getElementById('swapCameraButton');
         if (swapBtn && swapBtn.onclick !== swapCameraSafely) swapBtn.onclick = swapCameraSafely;
         const shareBtn = document.getElementById('shareButton');
