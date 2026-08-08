@@ -262,3 +262,20 @@ body.montemeet-solo .montemeet-self-pip {
         height: 44px !important;
     }
 }
+
+/* Заставка сцены концерта: появляется и уходит плавно (Иван, 2026-08-09) */
+.montemeet-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    background-color: #000;
+    background-position: center;
+    background-size: contain;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 0.45s ease-in-out;
+    pointer-events: none;
+}
+.montemeet-splash.is-on {
+    opacity: 1;
+}

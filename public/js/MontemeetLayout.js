@@ -703,15 +703,46 @@ const MontemeetLayout = (() => {
             const cam = v.closest('.Camera');
             return !cam || cam.style.display !== 'none';
         });
+        // Заставка закрывает сцену, пока НИКТО не выступает. Раньше её гасило
+        // само появление чужой камеры — молчащий гость с включённым видео убирал
+        // заставку, хотя на сцене по-прежнему пусто (Иван, 2026-08-09).
+        // Теперь смотрим на выступающего: есть подтверждённый говорящий или
+        // ручной пин — сцена занята, иначе показываем заставку.
+        const performing = !!dom || manualPinActive();
+        const wantSplash = !splashForced && !performing;
         let el = document.getElementById('montemeetSplash');
-        if (others.length === 0 && !el) {
+        if (wantSplash && !el) {
             el = document.createElement('div');
             el.id = 'montemeetSplash';
-            el.style.cssText = `position:fixed;inset:0;z-index:6;background:#000 url('${url}') center/contain no-repeat;`;
+            el.className = 'montemeet-splash';
+            el.style.backgroundImage = `url('${url}')`;
             document.body.appendChild(el);
-        } else if (others.length > 0 && el) {
-            el.remove();
+            requestAnimationFrame(() => el.classList.add('is-on')); // плавное появление
+        } else if (!wantSplash && el) {
+            el.classList.remove('is-on');
+            const doomed = el;
+            setTimeout(() => doomed.remove(), 400);
         }
+    }
+
+    // Педагог может убрать заставку вручную — например, чтобы показать зал
+    // до начала выступлений (Иван, 2026-08-09).
+    let splashForced = false;
+    function maybeCreateSplashButton() {
+        if (!concertRoom || !isHost() || !layoutCfg?.splash) return;
+        if (document.getElementById('montemeetSplashBtn')) return;
+        const bar = document.getElementById('bottomButtons');
+        if (!bar) return;
+        const btn = document.createElement('button');
+        btn.id = 'montemeetSplashBtn';
+        btn.innerHTML = '<i class="fas fa-image"></i>';
+        btn.title = typeof window.mmT === 'function' ? window.mmT('Заставка сцены') : 'Заставка сцены';
+        btn.addEventListener('click', () => {
+            splashForced = !splashForced;
+            btn.style.color = splashForced ? 'lime' : '';
+            syncConcertSplash();
+        });
+        bar.appendChild(btn);
     }
 
     // The button appears only for the presenter in pin-view rooms on desktop;
@@ -781,7 +812,10 @@ const MontemeetLayout = (() => {
                     syncManualPinState();
                     orderStrip();
                     syncSolo();
-                    if (isConcert) syncConcertSplash();
+                    if (isConcert) {
+                        maybeCreateSplashButton();
+                        syncConcertSplash();
+                    }
                     if (soloActive) return;
                     if (isConcert) {
                         applyConcert();

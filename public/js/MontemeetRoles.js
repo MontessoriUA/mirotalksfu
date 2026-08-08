@@ -288,21 +288,22 @@ const MontemeetRoles = (() => {
     function closeMenusOnOutsideClick() {
         if (outsideClickDone) return;
         outsideClickDone = true;
-        document.addEventListener(
-            'pointerdown',
-            (e) => {
-                for (const menu of document.querySelectorAll('.dropdown-menu, .navbar-dropdown-content')) {
-                    const open = !menu.classList.contains('hidden') && menu.offsetParent !== null;
-                    if (!open) continue;
-                    const holder = menu.closest('.dropdown') || menu.parentElement;
-                    if (holder && !holder.contains(e.target)) {
-                        menu.classList.add('hidden');
-                        menu.classList.remove('show');
-                    }
+        const closeAll = (target, insideToo) => {
+            for (const menu of document.querySelectorAll('.dropdown-menu, .navbar-dropdown-content')) {
+                const open = !menu.classList.contains('hidden') && menu.offsetParent !== null;
+                if (!open) continue;
+                const holder = menu.closest('.dropdown') || menu.parentElement;
+                const outside = holder && !holder.contains(target);
+                // клик мимо закрывает всегда; клик по пункту меню — тоже, иначе
+                // меню висит поверх того, что этим пунктом открыли (Иван, 2026-08-09)
+                if (outside || (insideToo && menu.contains(target))) {
+                    menu.classList.add('hidden');
+                    menu.classList.remove('show');
                 }
-            },
-            true
-        );
+            }
+        };
+        document.addEventListener('pointerdown', (e) => closeAll(e.target, false), true);
+        document.addEventListener('click', (e) => setTimeout(() => closeAll(e.target, true), 0), true);
     }
 
     // Смена камеры на телефоне падала с «устройство уже используется»: сток
