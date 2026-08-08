@@ -310,18 +310,41 @@ const MontemeetRoles = (() => {
     // закрывает продюсера и через секунду просит новую камеру, но андроид
     // отпускает её позже — а превью в видеоэлементе продолжает её держать.
     // Гасим ВСЕ живые видеодорожки, отцепляем их от элементов и ждём дольше.
+    // Смена камеры на телефоне. Ключевое отличие от стока: камеру отпускаем
+    // ЯВНО и до запроса новой — андроид не отдаёт устройство по факту закрытия
+    // передачи, пока живы дорожки в элементах превью (Иван, 2026-08-09).
+    let swapBusy = false;
     async function swapCameraSafely() {
-        const stopOwnVideo = () => {
-            const own = rc.getVideoElementByPeerId?.(rc.peer_id);
-            const els = [own, document.getElementById('myVideo'), document.getElementById('videoPreview')].filter(Boolean);
-            for (const el of els) {
+        if (swapBusy) return;
+        swapBusy = true;
+        const btn = document.getElementById('swapCameraButton');
+        const restore = () => {
+            swapBusy = false;
+            if (!btn) return;
+            btn.disabled = false;
+            btn.style.opacity = '';
+            btn.blur(); // иначе на телефоне остаётся «нажатой»
+        };
+        if (btn) {
+            btn.disabled = true;
+            btn.style.opacity = '0.55';
+        }
+
+        const releaseCamera = () => {
+            const seen = new Set();
+            for (const el of document.querySelectorAll('video')) {
                 const src = el.srcObject;
-                if (src && typeof src.getVideoTracks === 'function') {
-                    src.getVideoTracks().forEach((t) => {
-                        try {
-                            t.stop();
-                        } catch (e) {}
-                    });
+                if (!src || typeof src.getVideoTracks !== 'function') continue;
+                // только СВОИ дорожки: чужие приходят от консьюмеров
+                const own = el.id && rc.peer_id && el.id.includes(rc.peer_id);
+                const preview = el.id === 'myVideo' || el.id === 'videoPreview';
+                if (!own && !preview) continue;
+                for (const t of src.getVideoTracks()) {
+                    if (seen.has(t)) continue;
+                    seen.add(t);
+                    try {
+                        t.stop();
+                    } catch (e) {}
                 }
                 el.srcObject = null;
             }
@@ -333,23 +356,26 @@ const MontemeetRoles = (() => {
 
         try {
             if (typeof isHideMeActive !== 'undefined' && isHideMeActive) rc.handleHideMe();
-            stopOwnVideo();
+            releaseCamera();
             rc.closeProducer(RoomClient.mediaType.video, 'montemeet-swap');
-            stopOwnVideo();
-            await new Promise((r) => setTimeout(r, 1200));
+            releaseCamera();
+            await new Promise((r) => setTimeout(r, 1500));
             try {
                 await rc.produce(RoomClient.mediaType.video, null, true);
             } catch (first) {
-                // устройство ещё занято: ждём дольше и пробуем ещё раз БЕЗ
-                // повторного переворота — иначе вернёмся на ту же камеру
-                console.warn('Montemeet: camera busy, retrying', first?.name || first);
-                stopOwnVideo();
-                await new Promise((r) => setTimeout(r, 2000));
+                console.warn('Montemeet: camera still busy, one more try', first?.name || first);
+                releaseCamera();
+                await new Promise((r) => setTimeout(r, 2500));
+                // без повторного переворота: getCameraConstraints уже сменил сторону
                 await rc.produce(RoomClient.mediaType.video, null, false);
             }
         } catch (err) {
             console.warn('Montemeet: swap camera failed', err);
-            if (typeof userLog === 'function') userLog('warning', mmT('Камера занята другим приложением — закройте его и попробуйте снова'), 'top-end', 5000);
+            if (typeof userLog === 'function') {
+                userLog('warning', mmT('Камера занята другим приложением — закройте его и попробуйте снова'), 'top-end', 5000);
+            }
+        } finally {
+            restore();
         }
     }
 
