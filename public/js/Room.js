@@ -683,19 +683,30 @@ async function enumerateVideoDevices(stream) {
 
     await navigator.mediaDevices
         .enumerateDevices()
-        .then((devices) =>
-            devices.forEach(async (device) => {
+        .then((devices) => {
+            // Montemeet: телефон отдаёт по несколько записей на одну физическую
+            // камеру (разные режимы одного сенсора) — в списке получались четыре
+            // «камеры» вместо двух, и переключение могло уходить на дубль той же.
+            // Оставляем по одной записи на группу устройств, как это делают
+            // Meet и Zoom (Иван, 2026-08-09).
+            const seenGroups = new Set();
+            const cams = devices.filter((d) => {
+                if (d.kind !== 'videoinput') return false;
+                const key = d.groupId || d.deviceId;
+                if (seenGroups.has(key)) return false;
+                seenGroups.add(key);
+                return true;
+            });
+            return cams.forEach(async (device) => {
                 let el,
                     eli = null;
-                if ('videoinput' === device.kind) {
-                    if (videoSelect) el = videoSelect;
-                    if (initVideoSelect) eli = initVideoSelect;
-                    lS.DEVICES_COUNT.video++;
-                }
+                if (videoSelect) el = videoSelect;
+                if (initVideoSelect) eli = initVideoSelect;
+                lS.DEVICES_COUNT.video++;
                 if (!el) return;
                 await addChild(device, [el, eli]);
-            })
-        )
+            });
+        })
         .then(async () => {
             await stopTracks(stream);
             isEnumerateVideoDevices = true;
