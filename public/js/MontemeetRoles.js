@@ -178,7 +178,12 @@ const MontemeetRoles = (() => {
         return typeof rc !== 'undefined' && rc && typeof rc.toggleChat === 'function';
     }
 
+    function markPanelOpen(open) {
+        document.body.classList.toggle('montemeet-panel-open', !!open);
+    }
+
     function showList() {
+        markPanelOpen(true);
         const p = plistEl();
         p?.classList.remove('hidden');
         if (p) p.style.width = '100%';
@@ -188,6 +193,7 @@ const MontemeetRoles = (() => {
     }
 
     function closePanel() {
+        markPanelOpen(false);
         rc.isParticipantsOpen = false;
         plistEl()?.classList.add('hidden');
         if (rc.isChatOpen) rc.toggleChat(true);
@@ -218,6 +224,7 @@ const MontemeetRoles = (() => {
         const p = plistEl();
         const chatAlone = rc.isChatOpen && p?.classList.contains('hidden');
         if (chatAlone) {
+            markPanelOpen(false);
             rc.toggleChat(true); // second click closes
             return;
         }
@@ -225,6 +232,7 @@ const MontemeetRoles = (() => {
         p?.classList.add('hidden');
         if (p) p.style.width = '';
         if (typeof elemDisplay === 'function') elemDisplay('chat', true);
+        markPanelOpen(true);
         rc.isParticipantsOpen = false;
         rc.syncChatToolbarButtons?.(); // иначе зелёной остаётся кнопка списка
     }
@@ -246,6 +254,53 @@ const MontemeetRoles = (() => {
 
     openChatSplit._mm = true;
     toggleParticipantsSplit._mm = true;
+
+    // Любое выпадающее меню закрывается кликом мимо. Сток закрывает так только
+    // меню выхода, остальные (выбор устройств, доп. настройки) висят открытыми,
+    // пока не нажмёшь ту же стрелку (Иван, 2026-08-09).
+    let outsideClickDone = false;
+    function closeMenusOnOutsideClick() {
+        if (outsideClickDone) return;
+        outsideClickDone = true;
+        document.addEventListener(
+            'pointerdown',
+            (e) => {
+                for (const menu of document.querySelectorAll('.dropdown-menu, .navbar-dropdown-content')) {
+                    const open = !menu.classList.contains('hidden') && menu.offsetParent !== null;
+                    if (!open) continue;
+                    const holder = menu.closest('.dropdown') || menu.parentElement;
+                    if (holder && !holder.contains(e.target)) {
+                        menu.classList.add('hidden');
+                        menu.classList.remove('show');
+                    }
+                }
+            },
+            true
+        );
+    }
+
+    // Смена камеры на телефоне падала с «устройство уже используется»: сток
+    // закрывает продюсера и через секунду просит новую камеру, но андроид
+    // отпускает её позже — а превью в видеоэлементе продолжает её держать.
+    // Гасим ВСЕ живые видеодорожки, отцепляем их от элементов и ждём дольше.
+    async function swapCameraSafely() {
+        try {
+            if (typeof isHideMeActive !== 'undefined' && isHideMeActive) rc.handleHideMe();
+            for (const el of document.querySelectorAll('video')) {
+                const src = el.srcObject;
+                if (!src || typeof src.getVideoTracks !== 'function') continue;
+                if (!el.id || !el.id.includes(rc.peer_id)) continue; // только свои
+                src.getVideoTracks().forEach((t) => t.stop());
+                el.srcObject = null;
+            }
+            rc.closeProducer(RoomClient.mediaType.video, 'montemeet-swap');
+            await new Promise((r) => setTimeout(r, 900));
+            await rc.produce(RoomClient.mediaType.video, null, true);
+        } catch (err) {
+            console.warn('Montemeet: swap camera failed, falling back to stock', err);
+            rc.closeThenProduce(RoomClient.mediaType.video, null, true);
+        }
+    }
 
     // попап со ссылкой на комнату сразу, без системного окна обмена
     function openShareDirect() {
@@ -274,6 +329,9 @@ const MontemeetRoles = (() => {
         // наведению. Нужен один клик → сразу наш попап со ссылкой.
         // Пере-навешиваем на каждом тике: стоковый handleButtons() переустанавливает
         // свои обработчики уже после нашей первой попытки.
+        closeMenusOnOutsideClick();
+        const swapBtn = document.getElementById('swapCameraButton');
+        if (swapBtn && swapBtn.onclick !== swapCameraSafely) swapBtn.onclick = swapCameraSafely;
         const shareBtn = document.getElementById('shareButton');
         if (shareBtn && shareBtn.onclick !== openShareDirect) {
             shareBtn.onclick = openShareDirect;

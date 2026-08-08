@@ -228,6 +228,28 @@ body.montemeet-solo .montemeet-self-pip {
     }
 }
 
+/* Панель занимает всю ширину экрана, а не узкий островок посередине —
+   кнопки распределяются равномерно и попадать в них проще (Иван, 2026-08-09) */
+@media screen and (max-width: 1024px) {
+    body.montemeet-teacher #bottomButtons,
+    body.montemeet-student #bottomButtons {
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        transform: translateY(var(--bottom-btns-translate-Y, 0)) !important;
+        justify-content: space-evenly !important;
+        box-sizing: border-box !important;
+        border-radius: 0 !important;
+    }
+
+    /* открытый чат или список участников: тулбар не должен лежать поверх поля
+       ввода и мешать листать список */
+    body.montemeet-panel-open #bottomButtons {
+        display: none !important;
+    }
+}
+
 @media screen and (max-width: 380px) {
     body.montemeet-teacher #bottomButtons button,
     body.montemeet-student #bottomButtons button {
