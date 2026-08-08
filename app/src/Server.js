@@ -2581,7 +2581,13 @@ function startServer() {
                 return cb('isLocked');
             }
 
-            if ((room.isLobbyEnabled() || room.isGlobalLobbyEnabled()) && !isPresenter) {
+            const mmPass = montemeetLobbyPass.get(socket.room_id);
+            const mmPassedBefore = !!(peer_uuid && mmPass && (mmPass.get(peer_uuid) || 0) > Date.now());
+            if (mmPassedBefore) {
+                log.debug('[Join] - Montemeet: возврат уже принятого участника, лобби пропускаем', { peer_name });
+            }
+
+            if ((room.isLobbyEnabled() || room.isGlobalLobbyEnabled()) && !isPresenter && !mmPassedBefore) {
                 log.debug(
                     'The user is currently waiting to join the room because the lobby is enabled, and they are not a presenter'
                 );
@@ -3372,6 +3378,10 @@ function startServer() {
                 for (const peer_id of pears_id) {
                     const peer = room.getPeer(peer_id);
                     if (!peer.peer_lobby) continue;
+
+                    // Montemeet: пропуск на случай обрыва связи — мобильный
+                    // браузер рвёт сессию при уходе в другое приложение
+                    montemeetRememberAdmitted(room.id, peer.peer_info?.peer_uuid);
 
                     peer.updatePeerInfo({ type: 'lobby', status: false });
 
@@ -4867,6 +4877,7 @@ function startServer() {
                 stopRTMPActiveStreams(isPresenter, room);
 
                 roomList.delete(socket.room_id);
+                montemeetLobbyPass.delete(socket.room_id); // комната закрылась — пропуска больше не действуют
 
                 delete presenters[socket.room_id];
 
@@ -4937,6 +4948,7 @@ function startServer() {
                 stopRTMPActiveStreams(isPresenter, room);
 
                 roomList.delete(socket.room_id);
+                montemeetLobbyPass.delete(socket.room_id); // комната закрылась — пропуска больше не действуют
 
                 delete presenters[socket.room_id];
 
@@ -5122,7 +5134,21 @@ function startServer() {
         return JSON.parse(JSON.stringify(value));
     }
 
-    function isPeerPresenter(room_id, peer_id, peer_name, peer_uuid) {
+    // Montemeet: кого педагог уже пустил в комнату — чтобы переподключение после
+// обрыва не требовало повторного подтверждения. Живёт в памяти, чистится сама.
+const MONTEMEET_LOBBY_PASS_MS = 20 * 60 * 1000;
+const montemeetLobbyPass = new Map(); // roomId -> Map(peer_uuid -> expiresAt)
+
+function montemeetRememberAdmitted(roomId, uuid) {
+    if (!roomId || !uuid) return;
+    if (!montemeetLobbyPass.has(roomId)) montemeetLobbyPass.set(roomId, new Map());
+    const room = montemeetLobbyPass.get(roomId);
+    const now = Date.now();
+    for (const [key, expires] of room) if (expires < now) room.delete(key);
+    room.set(uuid, now + MONTEMEET_LOBBY_PASS_MS);
+}
+
+function isPeerPresenter(room_id, peer_id, peer_name, peer_uuid) {
         try {
             // 1. Direct lookup by peer_id (server-assigned socket.id — not user-controlled)
             const storedPresenter = presenters[room_id]?.[peer_id];
@@ -5606,6 +5632,7 @@ async function gracefulShutdown(signal) {
                 }
 
                 roomList.delete(roomId);
+                montemeetLobbyPass.delete(roomId);
             } catch (err) {
                 log.error(`Error closing room ${roomId}:`, err.message);
             }
