@@ -337,7 +337,7 @@ const MontemeetRoles = (() => {
                 if (!src || typeof src.getVideoTracks !== 'function') continue;
                 // только СВОИ дорожки: чужие приходят от консьюмеров
                 const own = el.id && rc.peer_id && el.id.includes(rc.peer_id);
-                const preview = el.id === 'myVideo' || el.id === 'videoPreview';
+                const preview = ['initVideo', 'myVideo', 'videoPreview', 'previewVideo'].includes(el.id);
                 if (!own && !preview) continue;
                 for (const t of src.getVideoTracks()) {
                     if (seen.has(t)) continue;
@@ -704,6 +704,16 @@ const MontemeetRoles = (() => {
             /* no profile -> stock behavior */
         }
     })();
+
+    // «Оставить отзыв» при выходе нам не нужен ни в каком виде
+    function disableSurvey() {
+        try {
+            if (typeof survey !== 'undefined' && survey) survey.enabled = false;
+            window.survey = { enabled: false, url: '' };
+        } catch (e) {}
+    }
+    disableSurvey();
+    document.addEventListener('DOMContentLoaded', disableSurvey);
 
     // перехваты, которые обязаны существовать ДО входа в комнату
     autoRenameOnConflict();
