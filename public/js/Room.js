@@ -630,9 +630,34 @@ async function initRoom() {
 
 async function initEnumerateDevices() {
     console.log('01 ----> init Enumerate Devices');
-    await initEnumerateVideoDevices();
-    await initEnumerateAudioDevices();
+    // Montemeet: один запрос на камеру И микрофон вместо двух подряд. Мобильный
+    // Chrome спрашивает разрешение на каждый вызов getUserMedia отдельно, и
+    // человек на входе получал два окна одно за другим (Иван, 2026-08-09).
+    // Если совместный запрос не проходит (нет камеры, занято приложение) —
+    // возвращаемся к раздельному, как в стоке.
+    if (!(await initEnumerateDevicesTogether())) {
+        await initEnumerateVideoDevices();
+        await initEnumerateAudioDevices();
+    }
     await initRoom();
+}
+
+async function initEnumerateDevicesTogether() {
+    let both = null;
+    try {
+        both = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    } catch (e) {
+        return false;
+    }
+    // дорожки общие, поэтому остановка видео не трогает микрофон: индикатор
+    // громкости на экране входа продолжает работать
+    await enumerateVideoDevices(new MediaStream(both.getVideoTracks()));
+    isVideoAllowed = true;
+    const audioStream = new MediaStream(both.getAudioTracks());
+    await enumerateAudioDevices(audioStream);
+    await getMicrophoneVolumeIndicator(audioStream);
+    isAudioAllowed = true;
+    return true;
 }
 
 async function refreshMyAudioVideoDevices() {

@@ -2526,21 +2526,27 @@ function startServer() {
             // Montemeet: deterministic presenter — the registry names the room's
             // teacher, so joining order, re-joins and ghost peers can never
             // grant or revoke the role by accident. A signed presenter token
-            // (the cabinet's own «Перейти в комнату» link) also grants the role —
-            // name matching stays as the tokenless fallback for now.
+            // (the cabinet's own «Перейти в комнату» link) also grants the role.
             // The single link: the teacher opens the very same URL as the students
             // and is recognised by the email their Google login puts in the request.
             // The header is set by nginx from the verified SSO session — a client
             // cannot send it, the reverse proxy always overwrites it.
+            //
+            // Совпадение имени осталось запасным путём ТОЛЬКО для комнат без
+            // SSO-владельца. Там, где владелец задан, назваться именем педагога
+            // больше не значит стать им: студенту достаточно было войти раньше
+            // педагога и повторить его имя, чтобы получить права ведущего.
             const mmSsoEmail = socket.handshake?.headers?.['x-forwarded-email'];
             const mmSsoPresenter = montemeetProfiles.isPresenterEmail(socket.room_id, mmSsoEmail);
 
             const mmPresenterName = montemeetProfiles.forRoom(socket.room_id)?.presenterName;
             if (mmPresenterName) {
-                presenter.is_presenter = mmSsoPresenter || (peer_token && is_presenter) || peer_name === mmPresenterName;
-                if (presenter.is_presenter) {
-                    presenters[socket.room_id][socket.id] = presenter;
-                }
+                const mmNameFallback =
+                    !montemeetProfiles.hasPresenterEmail(socket.room_id) && peer_name === mmPresenterName;
+                presenter.is_presenter = mmSsoPresenter || (peer_token && is_presenter) || mmNameFallback;
+                // запись заводим ВСЕГДА: без неё проверка прав уходит дальше по
+                // стоковой цепочке, где ведущим делает уже просто имя из списка
+                presenters[socket.room_id][socket.id] = presenter;
             } else if (
                 hostCfg?.presenters?.list?.includes(peer_name) ||
                 (!isBreakoutRoom &&
@@ -5135,20 +5141,20 @@ function startServer() {
     }
 
     // Montemeet: кого педагог уже пустил в комнату — чтобы переподключение после
-// обрыва не требовало повторного подтверждения. Живёт в памяти, чистится сама.
-const MONTEMEET_LOBBY_PASS_MS = 10 * 60 * 1000;
-const montemeetLobbyPass = new Map(); // roomId -> Map(peer_uuid -> expiresAt)
+    // обрыва не требовало повторного подтверждения. Живёт в памяти, чистится сама.
+    const MONTEMEET_LOBBY_PASS_MS = 10 * 60 * 1000;
+    const montemeetLobbyPass = new Map(); // roomId -> Map(peer_uuid -> expiresAt)
 
-function montemeetRememberAdmitted(roomId, uuid) {
-    if (!roomId || !uuid) return;
-    if (!montemeetLobbyPass.has(roomId)) montemeetLobbyPass.set(roomId, new Map());
-    const room = montemeetLobbyPass.get(roomId);
-    const now = Date.now();
-    for (const [key, expires] of room) if (expires < now) room.delete(key);
-    room.set(uuid, now + MONTEMEET_LOBBY_PASS_MS);
-}
+    function montemeetRememberAdmitted(roomId, uuid) {
+        if (!roomId || !uuid) return;
+        if (!montemeetLobbyPass.has(roomId)) montemeetLobbyPass.set(roomId, new Map());
+        const room = montemeetLobbyPass.get(roomId);
+        const now = Date.now();
+        for (const [key, expires] of room) if (expires < now) room.delete(key);
+        room.set(uuid, now + MONTEMEET_LOBBY_PASS_MS);
+    }
 
-function isPeerPresenter(room_id, peer_id, peer_name, peer_uuid) {
+    function isPeerPresenter(room_id, peer_id, peer_name, peer_uuid) {
         try {
             // 1. Direct lookup by peer_id (server-assigned socket.id — not user-controlled)
             const storedPresenter = presenters[room_id]?.[peer_id];

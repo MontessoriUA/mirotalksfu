@@ -139,4 +139,12 @@ function isPresenterEmail(roomId, email) {
     return !!expected && expected.toLowerCase() === String(email).trim().toLowerCase();
 }
 
-module.exports = { forRoom, applyToRoom, endsOnTeacherLeave, isLessonRoom, isPresenterEmail };
+// Есть ли у комнаты SSO-владелец. Если есть, имя перестаёт быть пропуском в
+// педагоги: вход по логину и по ссылке из кабинета никуда не делись, а
+// назваться чужим именем больше не значит получить права.
+function hasPresenterEmail(roomId) {
+    const { presenterEmails = {} } = load() || {};
+    return !!presenterEmails[roomId];
+}
+
+module.exports = { forRoom, applyToRoom, endsOnTeacherLeave, isLessonRoom, isPresenterEmail, hasPresenterEmail };
