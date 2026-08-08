@@ -147,4 +147,63 @@ function hasPresenterEmail(roomId) {
     return !!presenterEmails[roomId];
 }
 
-module.exports = { forRoom, applyToRoom, endsOnTeacherLeave, isLessonRoom, isPresenterEmail, hasPresenterEmail };
+// Пропуск педагога от кабинета.
+//
+// Роль держалась на одном заголовке от SSO, который проставляется при каждом
+// рукопожатии сокета. Стоит сессии на миг оказаться недействительной — при
+// переподключении, после сна вкладки, по истечении сессии — и педагог посреди
+// урока молча становился студентом (Иван, 2026-08-10, Safari).
+//
+// Кабинет и конференция живут на одном адресе, поэтому кабинет кладёт в куку
+// подписанный пропуск: комната, почта и срок. Кука HttpOnly, в адресной строке
+// её нет — ни прочитать со страницы, ни переслать одноклассникам. Почту из
+// пропуска всё равно сверяем с реестром, так что снятый в кабинете педагог
+// теряет права сразу, не дожидаясь конца срока.
+const crypto = require('crypto');
+const GRANT_COOKIE = 'mm_grant';
+
+function grantSecret() {
+    return process.env.MONTEMEET_GRANT_SECRET || '';
+}
+
+function readCookie(cookieHeader, name) {
+    for (const part of String(cookieHeader || '').split(';')) {
+        const eq = part.indexOf('=');
+        if (eq < 0) continue;
+        if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+    }
+    return null;
+}
+
+function emailFromGrant(cookieHeader, roomId) {
+    const secret = grantSecret();
+    if (!secret) return null;
+    const raw = readCookie(cookieHeader, GRANT_COOKIE);
+    if (!raw) return null;
+    const dot = raw.lastIndexOf('.');
+    if (dot < 1) return null;
+    const body = raw.slice(0, dot);
+    const sig = raw.slice(dot + 1);
+    const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+    // сравнение постоянного времени: длины могут не совпасть, поэтому сначала они
+    if (sig.length !== expected.length) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+    let payload;
+    try {
+        payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf-8'));
+    } catch (e) {
+        return null;
+    }
+    if (!payload || payload.r !== roomId || !(payload.x > Date.now())) return null;
+    return payload.e || null;
+}
+
+module.exports = {
+    forRoom,
+    applyToRoom,
+    endsOnTeacherLeave,
+    isLessonRoom,
+    isPresenterEmail,
+    hasPresenterEmail,
+    emailFromGrant,
+};

@@ -64,7 +64,20 @@ const MontemeetLayout = (() => {
         if (cur === null) return true;
         if (id !== null && cur !== id) return true;
         rc.toggleFocusMode(containerId(cur), focusBtn(cur));
+        regrid();
         return current() === null;
+    }
+
+    // Сток снимает фокус так: сначала пересчитывает сетку, и только потом
+    // возвращает скрытые плитки. В момент пересчёта видимой остаётся ровно
+    // одна — та, что была крупной, — и он раскладывает её по правилу «я тут
+    // один», то есть шире экрана. Остальные появляются уже под ней, и картинка
+    // «залипает»: наш общий проход запускается по изменению состава, а смена
+    // режима состав не меняет (Иван, 2026-08-10). Пересчитываем сами, когда все
+    // плитки снова на месте.
+    function regrid() {
+        if (typeof resizeVideoMedia !== 'function') return;
+        resizeVideoMedia();
     }
 
     // ---------- room anchor (stage 2.2 + 2.4) ----------
@@ -196,6 +209,7 @@ const MontemeetLayout = (() => {
             child.style.display = 'block';
         }
         for (const btn of document.querySelectorAll('.focusMode')) btn.style.color = 'white';
+        regrid();
     }
 
     // Единая точка перекладки: концерт, авто-режим педагога или якорь комнаты.
@@ -947,8 +961,10 @@ const MontemeetLayout = (() => {
             }
         }
         // без запомненного выбора — говорящий крупно (sticky), не сетка и не
-        // авто (Иван, 2026-08-06); отключённый админкой режим тоже отбрасываем
-        setSpeakerViewTo(viewCycle().includes(saved) ? saved : 'sticky', false);
+        // авто (Иван, 2026-08-06); отключённый админкой режим тоже отбрасываем.
+        // Показать кого-то надо сразу: восстановленный режим, при котором на
+        // экране сетка до первой реплики, читается как поломка (Иван, 2026-08-10)
+        setSpeakerViewTo(viewCycle().includes(saved) ? saved : 'sticky');
     }
 
     (async () => {

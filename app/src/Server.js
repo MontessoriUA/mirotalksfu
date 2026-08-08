@@ -2537,7 +2537,12 @@ function startServer() {
             // больше не значит стать им: студенту достаточно было войти раньше
             // педагога и повторить его имя, чтобы получить права ведущего.
             const mmSsoEmail = socket.handshake?.headers?.['x-forwarded-email'];
-            const mmSsoPresenter = montemeetProfiles.isPresenterEmail(socket.room_id, mmSsoEmail);
+            // пропуск от кабинета — второй путь к той же почте, на случай если
+            // заголовка в этот раз не пришло (сессия истекла, вкладка спала)
+            const mmGrantEmail = montemeetProfiles.emailFromGrant(socket.handshake?.headers?.cookie, socket.room_id);
+            const mmSsoPresenter =
+                montemeetProfiles.isPresenterEmail(socket.room_id, mmSsoEmail) ||
+                montemeetProfiles.isPresenterEmail(socket.room_id, mmGrantEmail);
 
             const mmPresenterName = montemeetProfiles.forRoom(socket.room_id)?.presenterName;
             if (mmPresenterName) {

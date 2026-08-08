@@ -210,7 +210,7 @@ body.montemeet-concert-pip .montemeet-self-pip {
 /* Своя картинка в углу на телефоне: меньше и выше панели кнопок */
 @media screen and (max-width: 1024px) {
     body.montemeet-solo .montemeet-self-pip,
-body.montemeet-concert-pip .montemeet-self-pip {
+    body.montemeet-concert-pip .montemeet-self-pip {
         width: 118px !important;
         right: 10px;
         bottom: 20px;
@@ -219,18 +219,18 @@ body.montemeet-concert-pip .montemeet-self-pip {
     }
     /* панель открыта — приподнимаем, закрылась — возвращаем на место */
     body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
-body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
+    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
         bottom: 92px;
     }
 }
 @media screen and (max-width: 380px) {
     body.montemeet-solo .montemeet-self-pip,
-body.montemeet-concert-pip .montemeet-self-pip {
+    body.montemeet-concert-pip .montemeet-self-pip {
         width: 96px !important;
         bottom: 16px;
     }
     body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
-body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
+    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
         bottom: 84px;
     }
 }
@@ -412,4 +412,26 @@ body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
         overflow: hidden !important;
         padding: 0 !important;
     }
+}
+
+/* Заголовок ожидания: сток задаёт жёсткие 60px, и «Завантаження» на телефоне
+   не помещается и обрезается. Размер теперь по ширине экрана, а длинное слово
+   при самом узком экране переносится, а не уезжает (Иван, 2026-08-10). */
+#loadingDiv {
+    max-width: 96vw;
+    box-sizing: border-box;
+}
+#loadingDiv h1 {
+    font-size: clamp(26px, 8vw, 60px) !important;
+    max-width: 100%;
+    margin: 0 auto;
+    overflow-wrap: anywhere;
+    line-height: 1.15;
+}
+
+/* Панель кнопок проявлялась целую секунду — слишком задумчиво для действия,
+   которое делают десятки раз за урок. Вдвое быстрее (Иван, 2026-08-10). */
+#bottomButtons.fadein {
+    animation-duration: 0.45s !important;
+    -webkit-animation-duration: 0.45s !important;
 }

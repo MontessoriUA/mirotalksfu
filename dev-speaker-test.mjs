@@ -414,6 +414,16 @@ async function runGroupScenario() {
     await delay(6000);
 
     const teacherId = await teacher.page.evaluate(() => rc.peer_id);
+    // Педагогу режим восстанавливается из прошлого выбора, поэтому «сетку»
+    // просим явно: проверяем именно её, а не то, с чего он случайно начал
+    await teacher.page.evaluate(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        for (let i = 0; i < 4 && MontemeetLayout.view() !== 'grid'; i++) {
+            document.getElementById('montemeetSpeakerViewBtn')?.click();
+            await sleep(300);
+        }
+    });
+    await delay(3000);
     const view = (p) =>
         p.page.evaluate(() => ({
             pinned: rc.isVideoPinned === true,

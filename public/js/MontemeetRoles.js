@@ -294,6 +294,45 @@ const MontemeetRoles = (() => {
         };
     }
 
+    // Чат и список участников лежат в одной стоковой панели, и любое открытие
+    // чата — по кнопке, по своему же отправленному сообщению, по входящему —
+    // показывает их рядом: чат ужимается по ширине, а список висит слева,
+    // хотя его никто не звал (Иван, 2026-08-10). Список показываем только
+    // тогда, когда его попросили кнопкой участников.
+    function chatWithoutParticipants() {
+        const proto = roomClientProto();
+        if (!proto || proto._mmChatSolo) return;
+        proto._mmChatSolo = true;
+        const stock = proto.toggleChat;
+        proto.toggleChat = async function (fromParticipants = false) {
+            const res = await stock.call(this, fromParticipants);
+            if (this.isChatOpen && !this.isParticipantsOpen) {
+                const p = document.getElementById('plist');
+                p?.classList.add('hidden');
+                if (p) p.style.width = '';
+            }
+            return res;
+        };
+    }
+
+    // Заявку из лобби разбирает тот педагог, кто успел первым, а у остальных
+    // всплывашка «такой-то хочет присоединиться» продолжала висеть, хотя
+    // решать уже нечего (Иван, 2026-08-10). Список опустел — гасим и её.
+    function dismissLobbyToast() {
+        const proto = roomClientProto();
+        if (!proto || proto._mmLobbyToast) return;
+        proto._mmLobbyToast = true;
+        const stock = proto.lobbyRemovePear;
+        proto.lobbyRemovePear = function (peer_id) {
+            const res = stock.call(this, peer_id);
+            if (this.lobbyParticipantsCount() === 0 && typeof Swal !== 'undefined' && Swal.isVisible?.()) {
+                // закрываем только всплывашку, а не модальные окна с вопросами
+                if (Swal.getPopup()?.classList.contains('swal2-toast')) Swal.close();
+            }
+            return res;
+        };
+    }
+
     // Любое выпадающее меню закрывается кликом мимо. Сток закрывает так только
     // меню выхода, остальные (выбор устройств, доп. настройки) висят открытыми,
     // пока не нажмёшь ту же стрелку (Иван, 2026-08-09).
@@ -751,12 +790,17 @@ const MontemeetRoles = (() => {
     document.addEventListener('DOMContentLoaded', disableSurvey);
 
     // перехваты, которые обязаны существовать ДО входа в комнату
-    (function waitForRoomClient(tries = 0) {
+    function patchRoomClient() {
         autoRenameOnConflict();
+        chatWithoutParticipants();
+        dismissLobbyToast();
+    }
+    (function waitForRoomClient(tries = 0) {
+        patchRoomClient();
         if (roomClientProto()?._mmRename || tries > 200) return;
         setTimeout(() => waitForRoomClient(tries + 1), 20);
     })();
-    document.addEventListener('DOMContentLoaded', autoRenameOnConflict);
+    document.addEventListener('DOMContentLoaded', patchRoomClient);
 
     // Панель кнопок то показывается, то прячется. Отмечаем её состояние на body:
     // по нему CSS поднимает своё превью над панелью и — главное — запрещает
