@@ -207,32 +207,27 @@ async function runScenario(title, zalFile, guestFile, seconds) {
 
 // Focus scenario: the Observer runs the stock dominant-speaker auto-focus and
 // we assert that the [focus-mode] attribute follows whoever is speaking.
+//
+// Комната здесь БЕЗ профиля (по шаблону «*» — обычная комната): сценарий
+// проверяет стоковый механизм, а в комнате урока видом распоряжается наша
+// раскладка — педагог закреплён, и стоковый автофокус спорит с закреплением.
+// Раньше сценарий шёл в комнате урока и проходил лишь потому, что вошедший
+// первым не узнавал о педагоге из своего снимка состава (Иван, 2026-08-09).
 async function runFocusScenario(seconds) {
-    const observer = await launchPeer('Observer', null, { audio: 0, video: 0 });
+    const room = 'montemeet-plain';
+    const observer = await launchPeer('Observer', null, { audio: 0, video: 0, room });
     await delay(2000);
-    const zal = await launchPeer('Zal', fixtures.speechThenSilence);
+    const zal = await launchPeer('Zal', fixtures.speechThenSilence, { room });
     await delay(3000);
-    const guest = await launchPeer('Guest1', fixtures.silenceThenSpeech);
+    const guest = await launchPeer('Guest1', fixtures.silenceThenSpeech, { room });
     await delay(1000);
 
     // enable auto-focus AFTER the join flow settled — the settings restore from
     // localStorage would otherwise overwrite the checkbox we just flipped
-    const debug = await observer.page.evaluate(async () => {
+    const debug = await observer.page.evaluate(() => {
         const el = document.getElementById('switchDominantSpeakerFocus');
         if (el) el.checked = true;
-        // Observer заходит первым, поэтому он ПРЕЗЕНТЕР, и в комнате урока ему
-        // восстанавливают режим вида. Стоковый автофокус работает только когда
-        // наш авто-режим выключен — раньше это выходило само собой, теперь
-        // просим сетку явно, иначе сценарий проверяет не тот механизм.
-        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-        for (let i = 0; i < 40 && !document.getElementById('montemeetSpeakerViewBtn'); i++) await sleep(200);
-        await sleep(2000); // дать улечься переходу «двое → трое»
-        for (let i = 0; i < 4 && MontemeetLayout.view() !== 'grid'; i++) {
-            document.getElementById('montemeetSpeakerViewBtn')?.click();
-            await sleep(200);
-        }
         return {
-            view: MontemeetLayout.view(),
             checkboxFound: !!el,
             roomDominantFlag: typeof rc !== 'undefined' ? rc.dominantSpeaker : null,
             layoutOwner: typeof MontemeetLayout !== 'undefined',
