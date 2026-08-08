@@ -401,10 +401,11 @@ const MontemeetLayout = (() => {
     //   'auto'   — the active speaker pinned, silence returns the grid.
     // The button's icon shows what the NEXT click will give (Ivan, 2026-08-04).
 
-    // «Авто» можно отключить из админки. Считаем на каждом обращении: профиль
-    // приходит с сервера асинхронно, при загрузке модуля его ещё нет.
+    const VIEW_CYCLE = ['grid', 'sticky', 'auto'];
+    // «Авто» отключается из админки. Настройка приходит с сервера асинхронно,
+    // поэтому спрашиваем её в момент переключения, а не при загрузке модуля.
     const viewCycle = () =>
-        MontemeetProfile.style()?.autoView === false ? ['grid', 'sticky'] : ['grid', 'sticky', 'auto'];
+        MontemeetProfile.style()?.autoView === false ? VIEW_CYCLE.filter((v) => v !== 'auto') : VIEW_CYCLE;
     // The button shows the CURRENT state (Ivan, 2026-08-05), always lime.
     const VIEW_ICON = {
         // grid: four cells
@@ -478,7 +479,7 @@ const MontemeetLayout = (() => {
     }
 
     function setSpeakerViewTo(view) {
-        speakerView = viewCycle().includes(view) ? view : 'grid';
+        speakerView = VIEW_CYCLE.includes(view) ? view : 'grid';
         try {
             localStorage.setItem('MONTEMEET_SPEAKER_VIEW', speakerView);
         } catch (e) {
@@ -778,7 +779,7 @@ const MontemeetLayout = (() => {
             // no remembered choice → default to the speaker view (sticky):
             // not the grid and not auto (Ivan, 2026-08-06)
             const stored = localStorage.getItem('MONTEMEET_SPEAKER_VIEW');
-            const saved = stored && viewCycle().includes(stored) ? stored : 'sticky';
+            const saved = stored && VIEW_CYCLE.includes(stored) ? stored : 'sticky';
             if (saved !== 'grid' && !soloActive) {
                 speakerView = saved;
                 engageAuto({
