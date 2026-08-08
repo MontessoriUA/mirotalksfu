@@ -572,6 +572,11 @@ const MontemeetRoles = (() => {
     // raised hands. Important ones (mute/eject/lobby/files/recording consent)
     // pass through untouched. Installed on DOMContentLoaded so these wrappers
     // sit OUTSIDE the i18n ones and match the raw stock strings.
+    // служебный шум, не нужный никому и никогда: блокировка экрана срабатывает
+    // на телефоне при каждом гашении экрана и переключении приложения, и сток
+    // рапортует о каждом таком событии попапом (Иван, 2026-08-09)
+    const NOISE_ALWAYS_RE = [/Wake Lock/i];
+
     const NOISE_RE = [
         /whiteboard action:/,
         /\b(open|close) editor\b/,
@@ -601,7 +606,9 @@ const MontemeetRoles = (() => {
     }
 
     function noisyForStudent(message) {
-        return typeof message === 'string' && mmStudentInLesson() && NOISE_RE.some((re) => re.test(message));
+        if (typeof message !== 'string') return false;
+        if (NOISE_ALWAYS_RE.some((re) => re.test(message))) return true;
+        return mmStudentInLesson() && NOISE_RE.some((re) => re.test(message));
     }
 
     document.addEventListener('DOMContentLoaded', () => {
