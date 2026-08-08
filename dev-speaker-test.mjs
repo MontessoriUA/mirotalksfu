@@ -212,6 +212,13 @@ async function runFocusScenario(seconds) {
     const debug = await observer.page.evaluate(() => {
         const el = document.getElementById('switchDominantSpeakerFocus');
         if (el) el.checked = true;
+        // Observer заходит первым, поэтому он ПРЕЗЕНТЕР, и в комнате урока ему
+        // восстанавливают режим вида. Стоковый автофокус работает только когда
+        // наш авто-режим выключен — раньше это выходило само собой, теперь
+        // просим сетку явно, иначе сценарий проверяет не тот механизм.
+        for (let i = 0; i < 4 && MontemeetLayout.view() !== 'grid'; i++) {
+            document.getElementById('montemeetSpeakerViewBtn')?.click();
+        }
         return {
             checkboxFound: !!el,
             roomDominantFlag: typeof rc !== 'undefined' ? rc.dominantSpeaker : null,

@@ -274,10 +274,16 @@ const MontemeetLayout = (() => {
         if (peer_id) holdCandidate(peer_id);
     }
 
-    // dominantSpeaker event → same hold machinery
+    // dominantSpeaker event → same hold machinery.
+    // Верим ему только с подтверждением по уровню звука: mediasoup выбирает
+    // «доминирующего» и в полной тишине, и на старте концерта это молча
+    // раскрывало на весь зал случайного гостя, который ещё не сказал ни слова
+    // (Иван, 2026-08-07). Настоящая речь и без этого события поднимает
+    // кандидата — через noteActivity, поэтому переключения мы не теряем.
+    const DOMINANT_CORROBORATE_MS = 2000;
     function onDominant(peer_id) {
-        if (peer_id) lastSpokeAt.set(peer_id, Date.now());
         if (!auto || !peer_id) return;
+        if (Date.now() - (lastSpokeAt.get(peer_id) || 0) > DOMINANT_CORROBORATE_MS) return;
         lastActivityTs = Date.now();
         holdCandidate(peer_id);
     }
