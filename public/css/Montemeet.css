@@ -279,3 +279,35 @@ body.montemeet-solo .montemeet-self-pip {
 .montemeet-splash.is-on {
     opacity: 1;
 }
+
+/* Тулбар доски: на узких экранах кнопки не влезали в строку и правый край с
+   крестиком уезжал за пределы окна. Переносим на вторую строку и растим саму
+   модалку, а не отнимаем высоту у полотна (Иван, 2026-08-09) */
+@media screen and (max-width: 1024px) {
+    #whiteboardHeader,
+    #whiteboard .whiteboard-header {
+        flex-wrap: wrap !important;
+        row-gap: 6px !important;
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 8px 10px !important;
+    }
+    #whiteboardHeader > *,
+    #whiteboard .whiteboard-header > * {
+        flex-wrap: wrap !important;
+    }
+    #whiteboardCloseBtn {
+        margin-left: auto !important;
+        flex: none !important;
+    }
+    /* полотно занимает всё, что осталось после выросшей шапки */
+    #whiteboard {
+        display: flex !important;
+        flex-direction: column !important;
+        max-height: 96dvh !important;
+    }
+    #whiteboard main {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+    }
+}

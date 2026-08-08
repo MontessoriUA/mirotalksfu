@@ -381,7 +381,6 @@ const MontemeetRoles = (() => {
         // Пере-навешиваем на каждом тике: стоковый handleButtons() переустанавливает
         // свои обработчики уже после нашей первой попытки.
         closeMenusOnOutsideClick();
-        autoRenameOnConflict();
         const swapBtn = document.getElementById('swapCameraButton');
         if (swapBtn && swapBtn.onclick !== swapCameraSafely) swapBtn.onclick = swapCameraSafely;
         const shareBtn = document.getElementById('shareButton');
@@ -674,6 +673,10 @@ const MontemeetRoles = (() => {
             /* no profile -> stock behavior */
         }
     })();
+
+    // перехваты, которые обязаны существовать ДО входа в комнату
+    autoRenameOnConflict();
+    document.addEventListener('DOMContentLoaded', autoRenameOnConflict);
 
     // ------------------------------------------------------------------
     // Notification noise filter (Ivan, 2026-08-06): a student must not get a
