@@ -375,45 +375,6 @@ body.montemeet-concert-pip .montemeet-self-pip {
     }
 }
 
-/* Сетка на телефоне: плитки одного размера 16:9 в один столбец со сплошной
-   прокруткой — иначе при большой группе часть карточек уходила за экран
-   и добраться до них было нельзя (Иван, 2026-08-09).
-   Признак сенсорного экрана обязателен: узкое окно на компьютере — не телефон */
-@media screen and (max-width: 1024px) and (hover: none) and (pointer: coarse) {
-    body.montemeet-teacher:not(.montemeet-solo) #videoMediaContainer,
-    body.montemeet-student:not(.montemeet-solo) #videoMediaContainer {
-        display: block !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch;
-        padding: 8px 8px 120px !important;
-    }
-    body.montemeet-teacher:not(.montemeet-solo) #videoMediaContainer > div.Camera,
-    body.montemeet-student:not(.montemeet-solo) #videoMediaContainer > div.Camera {
-        position: relative !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        height: auto !important;
-        aspect-ratio: 16 / 9 !important;
-        margin: 0 0 8px !important;
-        transform: none !important;
-        left: auto !important;
-        top: auto !important;
-    }
-    body.montemeet-teacher:not(.montemeet-solo) #videoMediaContainer > div.Camera video,
-    body.montemeet-student:not(.montemeet-solo) #videoMediaContainer > div.Camera video {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-    }
-    /* в режиме фокуса прокрутка не нужна — там одна крупная картинка */
-    body.montemeet-teacher #videoMediaContainer:has([focus-mode]),
-    body.montemeet-student #videoMediaContainer:has([focus-mode]) {
-        display: flex !important;
-        overflow: hidden !important;
-        padding: 0 !important;
-    }
-}
-
 /* Заголовок ожидания: сток задаёт жёсткие 60px, и «Завантаження» на телефоне
    не помещается и обрезается. Размер теперь по ширине экрана, а длинное слово
    при самом узком экране переносится, а не уезжает (Иван, 2026-08-10). */
@@ -422,10 +383,12 @@ body.montemeet-concert-pip .montemeet-self-pip {
     box-sizing: border-box;
 }
 #loadingDiv h1 {
-    font-size: clamp(26px, 8vw, 60px) !important;
+    /* переносить слово нельзя — рваное «Завантаження» хуже мелкого, поэтому
+       строка одна, а размер считается от ширины экрана (Иван, 2026-08-10) */
+    font-size: min(60px, 11vw) !important;
+    white-space: nowrap;
     max-width: 100%;
     margin: 0 auto;
-    overflow-wrap: anywhere;
     line-height: 1.15;
 }
 

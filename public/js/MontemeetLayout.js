@@ -510,7 +510,9 @@ const MontemeetLayout = (() => {
         if (manualPinActive()) return; // a hand-made pin always wins
         let shownDom = false;
         if (dom && dom !== selfId()) {
+            const epoch = layoutEpoch;
             shownDom = concertPinView() ? await pinByPeer(dom) : await focusByPeerPreferScreen(dom);
+            if (epoch !== layoutEpoch) return;
         }
         if (!shownDom) {
             // silence, self is dominant, or the dominant has no video here
@@ -566,6 +568,14 @@ const MontemeetLayout = (() => {
     let programmaticPinId = null; // pinnedVideoPlayerId set by US (manual pins win)
     let lastDom = null; // last non-null dominant — engaging sticky/auto starts from them
     let seedPending = false; // режим включён, но кандидата ещё не нашли (плитки не готовы)
+    // Закрепление и фокус ищут плитку через await, и за это время раскладка
+    // могла смениться: например, педагог входит вторым, режим восстанавливается
+    // и закрепляет собеседника, а следом включается вид 1:1 и ставит на него же
+    // фокус — запоздавшее закрепление ложится поверх (Иван, 2026-08-10, «крупное
+    // на крупное»). Каждая смена состояния метит раскладку новым числом, и
+    // отложенная перекладка проверяет, не устарела ли она.
+    let layoutEpoch = 0;
+    const bumpEpoch = () => ++layoutEpoch;
     let manualState = null; // { prevView } while a hand-made pin is on screen
 
     function manualPinActive() {
@@ -617,7 +627,9 @@ const MontemeetLayout = (() => {
         // the SPEAKER, and pinByPeer shows their screen instead of the camera
         // when they have one (a muted sharer never hijacks the view)
         if (dom && dom !== selfId()) {
+            const epoch = layoutEpoch;
             const ok = await pinByPeer(dom);
+            if (epoch !== layoutEpoch) return; // раскладка успела смениться
             if (ok) return;
         }
         // silence, self speaking, or no video for the dominant:
@@ -648,6 +660,7 @@ const MontemeetLayout = (() => {
     // как и задумано для группового урока.
     function setSpeakerViewTo(view, seed = true) {
         speakerView = VIEW_CYCLE.includes(view) ? view : 'grid';
+        bumpEpoch();
         try {
             localStorage.setItem('MONTEMEET_SPEAKER_VIEW', speakerView);
         } catch (e) {
@@ -741,7 +754,9 @@ const MontemeetLayout = (() => {
     async function applySolo() {
         const companion = companionPeerId();
         if (!companion) return;
+        const epoch = layoutEpoch;
         const videoEl = peerScreenVideo(companion) || (await resolvePeerVideo(companion));
+        if (epoch !== layoutEpoch) return; // вышли из 1:1, пока искали плитку
         if (videoEl) focusOn(videoEl.id);
         markSelfPip();
     }
@@ -765,6 +780,7 @@ const MontemeetLayout = (() => {
             return;
         }
         soloActive = shouldSolo;
+        bumpEpoch();
         document.body.classList.toggle('montemeet-solo', soloActive);
         if (soloActive) {
             if (auto && auto.apply === applyGroupSpeaker) disengageAuto();
@@ -994,12 +1010,15 @@ const MontemeetLayout = (() => {
             const observer = new MutationObserver(() => {
                 clearTimeout(t);
                 t = setTimeout(() => {
-                    maybeCreateSpeakerViewButton();
                     syncPinnedClass();
                     markSelfTile();
+                    // 1:1 определяем ДО восстановления режима: иначе педагог на
+                    // входе успевает включить «говорящего крупно» и закрепить
+                    // собеседника, а следом раскладка 1:1 ставит фокус на него же
+                    syncSolo();
+                    maybeCreateSpeakerViewButton();
                     syncManualPinState();
                     orderStrip();
-                    syncSolo();
                     if (isConcert) {
                         maybeCreateSplashButton();
                         syncConcertSplash();

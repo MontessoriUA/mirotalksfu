@@ -315,21 +315,29 @@ const MontemeetRoles = (() => {
         };
     }
 
-    // Заявку из лобби разбирает тот педагог, кто успел первым, а у остальных
-    // всплывашка «такой-то хочет присоединиться» продолжала висеть, хотя
-    // решать уже нечего (Иван, 2026-08-10). Список опустел — гасим и её.
+    // Заявка из лобби показывалась дважды: всплывашкой «такой-то хочет
+    // присоединиться» и тут же окном с кнопками пустить-не пустить. Окно
+    // появляется и исчезает само и у всех педагогов сразу, а всплывашка висела
+    // и после чужого решения — гасить её надёжно не вышло (Иван, 2026-08-10).
+    // Убираем саму всплывашку: она ничего не добавляла к окну и звуку.
     function dismissLobbyToast() {
         const proto = roomClientProto();
         if (!proto || proto._mmLobbyToast) return;
         proto._mmLobbyToast = true;
-        const stock = proto.lobbyRemovePear;
-        proto.lobbyRemovePear = function (peer_id) {
-            const res = stock.call(this, peer_id);
-            if (this.lobbyParticipantsCount() === 0 && typeof Swal !== 'undefined' && Swal.isVisible?.()) {
-                // закрываем только всплывашку, а не модальные окна с вопросами
-                if (Swal.getPopup()?.classList.contains('swal2-toast')) Swal.close();
+        const stock = proto.lobbyAddPear;
+        proto.lobbyAddPear = function (data) {
+            const quiet = this._mmQuietLog;
+            this._mmQuietLog = true;
+            try {
+                return stock.call(this, data);
+            } finally {
+                this._mmQuietLog = quiet;
             }
-            return res;
+        };
+        const stockLog = proto.userLog;
+        proto.userLog = function (...args) {
+            if (this._mmQuietLog) return;
+            return stockLog.apply(this, args);
         };
     }
 
