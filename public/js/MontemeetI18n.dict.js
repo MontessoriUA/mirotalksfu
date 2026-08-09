@@ -40,8 +40,14 @@ window.MontemeetDict = {
         'Refresh audio/video devices': { uk: 'Оновити список пристроїв', ru: 'Обновить список устройств' },
         'Enter your email or name': { uk: "Введіть своє ім'я", ru: 'Введите своё имя' },
         'Join meeting': { uk: 'Приєднатися', ru: 'Присоединиться' },
-        'Please wait for video to initialize...': { uk: 'Зачекайте, відео запускається…', ru: 'Подождите, видео запускается…' },
-        'Please enter your email or name': { uk: "Введіть ім'я, щоб приєднатися", ru: 'Введите имя, чтобы присоединиться' },
+        'Please wait for video to initialize...': {
+            uk: 'Зачекайте, відео запускається…',
+            ru: 'Подождите, видео запускается…',
+        },
+        'Please enter your email or name': {
+            uk: "Введіть ім'я, щоб приєднатися",
+            ru: 'Введите имя, чтобы присоединиться',
+        },
         'Email must be max 254 char': { uk: 'Email — не довше 254 символів', ru: 'Email — не длиннее 254 символов' },
         'Name must be max 32 char': { uk: "Ім'я — не довше 32 символів", ru: 'Имя — не длиннее 32 символов' },
         'Invalid name!': { uk: "Некоректне ім'я!", ru: 'Некорректное имя!' },
@@ -65,7 +71,7 @@ window.MontemeetDict = {
         '🖥 Detail': { uk: '🖥 Деталі', ru: '🖥 Детали' },
         '🖥 Motion': { uk: '🖥 Рух', ru: '🖥 Движение' },
         'max frame-per-second': { uk: 'максимум кадрів/с', ru: 'максимум кадров/с' },
-        'Shortcuts': { uk: 'Гарячі клавіші', ru: 'Горячие клавиши' },
+        Shortcuts: { uk: 'Гарячі клавіші', ru: 'Горячие клавиши' },
         'General Shortcuts': { uk: 'Загальні гарячі клавіші', ru: 'Общие горячие клавиши' },
         'Start Recording': { uk: 'Почати запис', ru: 'Начать запись' },
         'Stop Recording': { uk: 'Зупинити запис', ru: 'Остановить запись' },
@@ -75,10 +81,11 @@ window.MontemeetDict = {
         'Toggle bg': { uk: 'Змінити тло', ru: 'Сменить фон' },
         'Save messages': { uk: 'Зберегти повідомлення', ru: 'Сохранить сообщения' },
         'Clean messages': { uk: 'Очистити чат', ru: 'Очистить чат' },
-        'No need for apps, simply capture the QR code with your mobile camera Or Invite someone else to join by sending them the following URL': {
-            uk: 'Застосунок не потрібен — просто наведіть камеру телефону на QR-код. Або надішліть комусь це посилання-запрошення:',
-            ru: 'Приложение не нужно — просто наведите камеру телефона на QR-код. Или отправьте кому-то эту ссылку-приглашение:',
-        },
+        'No need for apps, simply capture the QR code with your mobile camera Or Invite someone else to join by sending them the following URL':
+            {
+                uk: 'Застосунок не потрібен — просто наведіть камеру телефону на QR-код. Або надішліть комусь це посилання-запрошення:',
+                ru: 'Приложение не нужно — просто наведите камеру телефона на QR-код. Или отправьте кому-то эту ссылку-приглашение:',
+            },
         'Камера занята другим приложением — закройте его и попробуйте снова': {
             uk: 'Камера зайнята іншим застосунком — закрийте його і спробуйте ще раз',
             en: 'The camera is busy in another app — close it and try again',
@@ -93,36 +100,37 @@ window.MontemeetDict = {
         'Онлайн-уроки и концерты': { uk: 'Онлайн-уроки та концерти', en: 'Online lessons and concerts' },
 
         // theme select
-        'Default': { uk: 'Стандартна', ru: 'Стандартная' },
-        'Dark': { uk: 'Темна', ru: 'Тёмная' },
-        'Grey': { uk: 'Сіра', ru: 'Серая' },
-        'Green': { uk: 'Зелена', ru: 'Зелёная' },
-        'Blue': { uk: 'Синя', ru: 'Синяя' },
-        'Red': { uk: 'Червона', ru: 'Красная' },
-        'Purple': { uk: 'Фіолетова', ru: 'Фиолетовая' },
-        'Orange': { uk: 'Помаранчева', ru: 'Оранжевая' },
-        'Pink': { uk: 'Рожева', ru: 'Розовая' },
-        'Yellow': { uk: 'Жовта', ru: 'Жёлтая' },
+        Default: { uk: 'Стандартна', ru: 'Стандартная' },
+        Dark: { uk: 'Темна', ru: 'Тёмная' },
+        Grey: { uk: 'Сіра', ru: 'Серая' },
+        Green: { uk: 'Зелена', ru: 'Зелёная' },
+        Blue: { uk: 'Синя', ru: 'Синяя' },
+        Red: { uk: 'Червона', ru: 'Красная' },
+        Purple: { uk: 'Фіолетова', ru: 'Фиолетовая' },
+        Orange: { uk: 'Помаранчева', ru: 'Оранжевая' },
+        Pink: { uk: 'Рожева', ru: 'Розовая' },
+        Yellow: { uk: 'Жовта', ru: 'Жёлтая' },
 
         // per-tile dropdowns (aspect / fit / controls) and bar position
-        'default': { uk: 'стандартно', ru: 'стандартно' },
-        'fill': { uk: 'заповнення', ru: 'заполнение' },
-        'contain': { uk: 'вмістити', ru: 'вместить' },
-        'cover': { uk: 'покриття', ru: 'покрытие' },
+        default: { uk: 'стандартно', ru: 'стандартно' },
+        fill: { uk: 'заповнення', ru: 'заполнение' },
+        contain: { uk: 'вмістити', ru: 'вместить' },
+        cover: { uk: 'покриття', ru: 'покрытие' },
         'scale-down': { uk: 'зменшення', ru: 'уменьшение' },
-        'none': { uk: 'без масштабування', ru: 'без масштабирования' },
-        'on': { uk: 'увімк.', ru: 'вкл.' },
-        'off': { uk: 'вимк.', ru: 'выкл.' },
-        'Vertical': { uk: 'Вертикально', ru: 'Вертикально' },
-        'Horizontal': { uk: 'Горизонтально', ru: 'Горизонтально' },
-        'Top': { uk: 'Зверху', ru: 'Сверху' },
+        none: { uk: 'без масштабування', ru: 'без масштабирования' },
+        on: { uk: 'увімк.', ru: 'вкл.' },
+        off: { uk: 'вимк.', ru: 'выкл.' },
+        Vertical: { uk: 'Вертикально', ru: 'Вертикально' },
+        Horizontal: { uk: 'Горизонтально', ru: 'Горизонтально' },
+        Top: { uk: 'Зверху', ru: 'Сверху' },
 
         // ---- pre-join mobile audio guidance (text split by <strong>) ----
-        'iOS automatically routes audio to connected Bluetooth or external devices. Connect your preferred microphone': {
-            uk: "iOS автоматично спрямовує звук на під'єднані Bluetooth чи зовнішні пристрої. Під'єднайте потрібний мікрофон",
-            ru: 'iOS автоматически направляет звук на подключённые Bluetooth или внешние устройства. Подключите нужный микрофон',
-        },
-        'before': { uk: 'ДО', ru: 'ДО' },
+        'iOS automatically routes audio to connected Bluetooth or external devices. Connect your preferred microphone':
+            {
+                uk: "iOS автоматично спрямовує звук на під'єднані Bluetooth чи зовнішні пристрої. Під'єднайте потрібний мікрофон",
+                ru: 'iOS автоматически направляет звук на подключённые Bluetooth или внешние устройства. Подключите нужный микрофон',
+            },
+        before: { uk: 'ДО', ru: 'ДО' },
         'joining.': { uk: 'входу.', ru: 'входа.' },
         'External microphones may require device reconnection to activate.': {
             uk: "Зовнішні мікрофони можуть потребувати перепід'єднання, щоб запрацювати.",
@@ -130,7 +138,7 @@ window.MontemeetDict = {
         },
 
         // ---- settings panel ----
-        'Close': { uk: 'Закрити', ru: 'Закрыть' },
+        Close: { uk: 'Закрити', ru: 'Закрыть' },
         'Test speaker': { uk: 'Перевірити звук', ru: 'Проверить звук' },
         'Test Speaker': { uk: 'Перевірити звук', ru: 'Проверить звук' },
         'Noise Suppression': { uk: 'Шумозаглушення', ru: 'Шумоподавление' },
@@ -139,57 +147,66 @@ window.MontemeetDict = {
             uk: 'Якщо увімкнено, фонові шуми приглушуються — голос звучить чіткіше',
             ru: 'Если включено, фоновые шумы приглушаются — голос звучит чётче',
         },
-        'Room name (click to copy)': { uk: 'Назва кімнати (клік — скопіювати)', ru: 'Имя комнаты (клик — скопировать)' },
+        'Room name (click to copy)': {
+            uk: 'Назва кімнати (клік — скопіювати)',
+            ru: 'Имя комнаты (клик — скопировать)',
+        },
         'Session time': { uk: 'Тривалість сесії', ru: 'Длительность сессии' },
-        'Cameras': { uk: 'Камери', ru: 'Камеры' },
+        Cameras: { uk: 'Камери', ru: 'Камеры' },
         'No cameras found': { uk: 'Камер не знайдено', ru: 'Камеры не найдены' },
         'Open Video Settings': { uk: 'Налаштування відео', ru: 'Настройки видео' },
-        'Microphones': { uk: 'Мікрофони', ru: 'Микрофоны' },
+        Microphones: { uk: 'Мікрофони', ru: 'Микрофоны' },
         'No microphones found': { uk: 'Мікрофонів не знайдено', ru: 'Микрофоны не найдены' },
         'Microphone Effects': { uk: 'Ефекти мікрофона', ru: 'Эффекты микрофона' },
-        'Speakers': { uk: 'Динаміки', ru: 'Динамики' },
-        'Speaker selection not supported': { uk: 'Вибір динаміків не підтримується', ru: 'Выбор динамиков не поддерживается' },
+        Speakers: { uk: 'Динаміки', ru: 'Динамики' },
+        'Speaker selection not supported': {
+            uk: 'Вибір динаміків не підтримується',
+            ru: 'Выбор динамиков не поддерживается',
+        },
         'No speakers found': { uk: 'Динаміків не знайдено', ru: 'Динамики не найдены' },
         'Open Audio Settings': { uk: 'Налаштування звуку', ru: 'Настройки звука' },
-        'Click once to allow changing the speaker': { uk: 'Клікніть один раз, щоб дозволити зміну динаміків', ru: 'Кликните один раз, чтобы разрешить смену динамиков' },
+        'Click once to allow changing the speaker': {
+            uk: 'Клікніть один раз, щоб дозволити зміну динаміків',
+            ru: 'Кликните один раз, чтобы разрешить смену динамиков',
+        },
 
         // ---- settings-extra dropdown ----
         'No extra buttons': { uk: 'Додаткових кнопок немає', ru: 'Дополнительных кнопок нет' },
-        'SHARING': { uk: 'ПОДІЛИТИСЯ', ru: 'ПОДЕЛИТЬСЯ' },
+        SHARING: { uk: 'ПОДІЛИТИСЯ', ru: 'ПОДЕЛИТЬСЯ' },
         'Share Room': { uk: 'Поділитися кімнатою', ru: 'Поделиться комнатой' },
         'File sharing': { uk: 'Обмін файлами', ru: 'Обмен файлами' },
         'RECORDING & CAPTURE': { uk: 'ЗАПИС І ЗНІМКИ', ru: 'ЗАПИСЬ И СНИМКИ' },
-        'Snapshot': { uk: 'Знімок', ru: 'Снимок' },
-        'TOOLS': { uk: 'ІНСТРУМЕНТИ', ru: 'ИНСТРУМЕНТЫ' },
-        'Whiteboard': { uk: 'Дошка', ru: 'Доска' },
-        'Editor': { uk: 'Редактор', ru: 'Редактор' },
-        'Poll': { uk: 'Опитування', ru: 'Опрос' },
+        Snapshot: { uk: 'Знімок', ru: 'Снимок' },
+        TOOLS: { uk: 'ІНСТРУМЕНТИ', ru: 'ИНСТРУМЕНТЫ' },
+        Whiteboard: { uk: 'Дошка', ru: 'Доска' },
+        Editor: { uk: 'Редактор', ru: 'Редактор' },
+        Poll: { uk: 'Опитування', ru: 'Опрос' },
         'Room Emoji': { uk: 'Емодзі кімнати', ru: 'Эмодзи комнаты' },
         'VIEW & SETTINGS': { uk: 'ВИГЛЯД І НАЛАШТУВАННЯ', ru: 'ВИД И НАСТРОЙКИ' },
         'Hide Me': { uk: 'Сховати себе', ru: 'Скрыть себя' },
         'Full Screen': { uk: 'На весь екран', ru: 'Во весь экран' },
         'Full screen': { uk: 'На весь екран', ru: 'Во весь экран' },
-        'About': { uk: 'Про застосунок', ru: 'О программе' },
+        About: { uk: 'Про застосунок', ru: 'О программе' },
         'End room for all': { uk: 'Завершити для всіх', ru: 'Завершить для всех' },
 
         // ---- chat panel ----
-        'Invite': { uk: 'Запросити', ru: 'Пригласить' },
+        Invite: { uk: 'Запросити', ru: 'Пригласить' },
         'Public chat': { uk: 'Загальний чат', ru: 'Общий чат' },
         'Private messages': { uk: 'Особисті повідомлення', ru: 'Личные сообщения' },
-        'Clean': { uk: 'Очистити', ru: 'Очистить' },
-        'Paste': { uk: 'Вставити', ru: 'Вставить' },
-        'Send': { uk: 'Надіслати', ru: 'Отправить' },
-        'Emoji': { uk: 'Емодзі', ru: 'Эмодзи' },
-        'Markdown': { uk: 'Markdown', ru: 'Markdown' },
+        Clean: { uk: 'Очистити', ru: 'Очистить' },
+        Paste: { uk: 'Вставити', ru: 'Вставить' },
+        Send: { uk: 'Надіслати', ru: 'Отправить' },
+        Emoji: { uk: 'Емодзі', ru: 'Эмодзи' },
+        Markdown: { uk: 'Markdown', ru: 'Markdown' },
         'Attach file': { uk: 'Прикріпити файл', ru: 'Прикрепить файл' },
         'Share the file': { uk: 'Надіслати файл', ru: 'Отправить файл' },
         'Clear text': { uk: 'Очистити текст', ru: 'Очистить текст' },
         'Toggle pin': { uk: 'Закріпити/відкріпити', ru: 'Закрепить/открепить' },
-        'Hide': { uk: 'Сховати', ru: 'Скрыть' },
-        'Maximize': { uk: 'Розгорнути', ru: 'Развернуть' },
-        'Minimize': { uk: 'Згорнути', ru: 'Свернуть' },
-        'Delete': { uk: 'Видалити', ru: 'Удалить' },
-        'Copy': { uk: 'Копіювати', ru: 'Копировать' },
+        Hide: { uk: 'Сховати', ru: 'Скрыть' },
+        Maximize: { uk: 'Розгорнути', ru: 'Развернуть' },
+        Minimize: { uk: 'Згорнути', ru: 'Свернуть' },
+        Delete: { uk: 'Видалити', ru: 'Удалить' },
+        Copy: { uk: 'Копіювати', ru: 'Копировать' },
         'Message copied!': { uk: 'Повідомлення скопійовано!', ru: 'Сообщение скопировано!' },
         'No chat messages to clean': { uk: 'Немає повідомлень для очищення', ru: 'Нет сообщений для очистки' },
         'No chat messages to save': { uk: 'Немає повідомлень для збереження', ru: 'Нет сообщений для сохранения' },
@@ -198,12 +215,18 @@ window.MontemeetDict = {
         'Send video': { uk: 'Надіслати відео', ru: 'Отправить видео' },
 
         // ---- participants ----
-        'Mute': { uk: 'Вимкнути мікрофон', ru: 'Выключить микрофон' },
-        'Stop': { uk: 'Зупинити', ru: 'Остановить' },
+        Mute: { uk: 'Вимкнути мікрофон', ru: 'Выключить микрофон' },
+        Stop: { uk: 'Зупинити', ru: 'Остановить' },
         'Mute all participants': { uk: 'Вимкнути мікрофони всім', ru: 'Выключить микрофоны всем' },
         'Hide all participants': { uk: 'Вимкнути камери всім', ru: 'Выключить камеры всем' },
-        'Stop all screens sharing': { uk: 'Зупинити всі демонстрації екрана', ru: 'Остановить все демонстрации экрана' },
-        'Stop screen share to all participants': { uk: 'Зупинити демонстрації екрана всім', ru: 'Остановить демонстрации экрана всем' },
+        'Stop all screens sharing': {
+            uk: 'Зупинити всі демонстрації екрана',
+            ru: 'Остановить все демонстрации экрана',
+        },
+        'Stop screen share to all participants': {
+            uk: 'Зупинити демонстрації екрана всім',
+            ru: 'Остановить демонстрации экрана всем',
+        },
         'Share file to all': { uk: 'Надіслати файл усім', ru: 'Отправить файл всем' },
         'Share audio/video to all': { uk: 'Поділитися аудіо/відео з усіма', ru: 'Поделиться аудио/видео со всеми' },
         'Eject all participants': { uk: 'Відключити всіх учасників', ru: 'Отключить всех участников' },
@@ -216,104 +239,233 @@ window.MontemeetDict = {
         'Get geolocation': { uk: 'Запросити геолокацію', ru: 'Запросить геолокацию' },
         'Ban participant': { uk: 'Заблокувати учасника', ru: 'Заблокировать участника' },
         'Eject participant': { uk: 'Відключити учасника', ru: 'Отключить участника' },
-        'Ban': { uk: 'Заблокувати', ru: 'Заблокировать' },
-        'Eject': { uk: 'Відключити', ru: 'Отключить' },
+        Ban: { uk: 'Заблокувати', ru: 'Заблокировать' },
+        Eject: { uk: 'Відключити', ru: 'Отключить' },
         'Save participants info': { uk: 'Зберегти список учасників', ru: 'Сохранить список участников' },
         'No participants in the room': { uk: 'У кімнаті немає учасників', ru: 'В комнате нет участников' },
-        'No participants in the room except you': { uk: 'У кімнаті немає інших учасників', ru: 'В комнате нет других участников' },
+        'No participants in the room except you': {
+            uk: 'У кімнаті немає інших учасників',
+            ru: 'В комнате нет других участников',
+        },
         'No participants detected': { uk: 'Учасників не виявлено', ru: 'Участники не обнаружены' },
         'Audio status': { uk: 'Стан мікрофона', ru: 'Состояние микрофона' },
         '🔊 Volume': { uk: '🔊 Гучність', ru: '🔊 Громкость' },
 
         // ---- moderator / presenter restrictions ----
-        'The Moderator starts your video in privacy mode': { uk: 'Модератор запускає ваше відео у приватному режимі', ru: 'Модератор запускает ваше видео в приватном режиме' },
-        'The Moderator disabled your audio and video': { uk: 'Модератор вимкнув вам мікрофон і камеру', ru: 'Модератор выключил вам микрофон и камеру' },
-        'The Moderator disabled your audio': { uk: 'Модератор вимкнув вам мікрофон', ru: 'Модератор выключил вам микрофон' },
-        'The Moderator disabled your video': { uk: 'Модератор вимкнув вам камеру', ru: 'Модератор выключил вам камеру' },
-        'The moderator does not allow you to unmute': { uk: 'Модератор не дозволяє вмикати мікрофон', ru: 'Модератор не разрешает включать микрофон' },
-        'The moderator does not allow you to unhide': { uk: 'Модератор не дозволяє вмикати камеру', ru: 'Модератор не разрешает включать камеру' },
-        'The moderator does not allow you to share the screen': { uk: 'Модератор не дозволяє показ екрана', ru: 'Модератор не разрешает показ экрана' },
-        'The moderator does not allow you close this media': { uk: 'Модератор не дозволяє закрити це медіа', ru: 'Модератор не разрешает закрыть это медиа' },
-        'The moderator does not allow you to share any media': { uk: 'Модератор не дозволяє ділитися медіа', ru: 'Модератор не разрешает делиться медиа' },
-        'The moderator does not allow you to chat publicly': { uk: 'Модератор не дозволяє писати в загальний чат', ru: 'Модератор не разрешает писать в общий чат' },
-        'The moderator does not allow you to chat privately': { uk: 'Модератор не дозволяє особисті повідомлення', ru: 'Модератор не разрешает личные сообщения' },
-        'The moderator does not allow you to chat with ChatGPT': { uk: 'Модератор не дозволяє чат із ChatGPT', ru: 'Модератор не разрешает чат с ChatGPT' },
-        'The moderator does not allow you to chat with DeepSeek': { uk: 'Модератор не дозволяє чат із DeepSeek', ru: 'Модератор не разрешает чат с DeepSeek' },
-        'The presenter has disabled your ability to enable audio': { uk: 'Педагог вимкнув можливість вмикати мікрофон', ru: 'Педагог отключил возможность включать микрофон' },
-        'The presenter has disabled your ability to enable video': { uk: 'Педагог вимкнув можливість вмикати камеру', ru: 'Педагог отключил возможность включать камеру' },
-        'The presenter has disabled your ability to share the screen': { uk: 'Педагог вимкнув можливість показу екрана', ru: 'Педагог отключил возможность показа экрана' },
-        'The presenter has disabled your ability to raise your hand': { uk: 'Педагог вимкнув можливість піднімати руку', ru: 'Педагог отключил возможность поднимать руку' },
-        'The presenter has disabled your ability to open the chat': { uk: 'Педагог вимкнув чат', ru: 'Педагог отключил чат' },
-        'The presenter has disabled your ability to open the settings': { uk: 'Педагог вимкнув налаштування', ru: 'Педагог отключил настройки' },
-        'The presenter has disabled your ability to hide yourself': { uk: 'Педагог вимкнув можливість ховати себе', ru: 'Педагог отключил возможность скрывать себя' },
-        'The presenter has disabled your ability to take a snapshot': { uk: 'Педагог вимкнув можливість робити знімки', ru: 'Педагог отключил возможность делать снимки' },
-        'The presenter has disabled your ability to share files': { uk: 'Педагог вимкнув обмін файлами', ru: 'Педагог отключил обмен файлами' },
-        'Only the presenter can mute/unmute participants': { uk: 'Лише педагог може вимикати мікрофони учасникам', ru: 'Только педагог может выключать микрофоны участникам' },
-        'Only the presenter can hide/show participants': { uk: 'Лише педагог може вимикати камери учасникам', ru: 'Только педагог может выключать камеры участникам' },
-        'Only the presenter can start/stop the screen of participants': { uk: 'Лише педагог керує демонстрацією екрана учасників', ru: 'Только педагог управляет демонстрацией экрана участников' },
-        'Only the presenter can eject the participants': { uk: 'Лише педагог може відключати учасників', ru: 'Только педагог может отключать участников' },
-        'Only the presenter can ban the participants': { uk: 'Лише педагог може блокувати учасників', ru: 'Только педагог может блокировать участников' },
-        'The participant has been muted, and only they have the ability to unmute themselves': { uk: 'Мікрофон учасника вимкнено — увімкнути його може лише сам учасник', ru: 'Микрофон участника выключен — включить его может только сам участник' },
-        'The participant is currently hidden, and only they have the option to unhide themselves': { uk: 'Камеру учасника вимкнено — увімкнути її може лише сам учасник', ru: 'Камера участника выключена — включить её может только сам участник' },
-        'The participant screen is not shared, only the participant can initiate sharing': { uk: 'Екран не транслюється — почати показ може лише сам учасник', ru: 'Экран не транслируется — начать показ может только сам участник' },
+        'The Moderator starts your video in privacy mode': {
+            uk: 'Модератор запускає ваше відео у приватному режимі',
+            ru: 'Модератор запускает ваше видео в приватном режиме',
+        },
+        'The Moderator disabled your audio and video': {
+            uk: 'Модератор вимкнув вам мікрофон і камеру',
+            ru: 'Модератор выключил вам микрофон и камеру',
+        },
+        'The Moderator disabled your audio': {
+            uk: 'Модератор вимкнув вам мікрофон',
+            ru: 'Модератор выключил вам микрофон',
+        },
+        'The Moderator disabled your video': {
+            uk: 'Модератор вимкнув вам камеру',
+            ru: 'Модератор выключил вам камеру',
+        },
+        'The moderator does not allow you to unmute': {
+            uk: 'Модератор не дозволяє вмикати мікрофон',
+            ru: 'Модератор не разрешает включать микрофон',
+        },
+        'The moderator does not allow you to unhide': {
+            uk: 'Модератор не дозволяє вмикати камеру',
+            ru: 'Модератор не разрешает включать камеру',
+        },
+        'The moderator does not allow you to share the screen': {
+            uk: 'Модератор не дозволяє показ екрана',
+            ru: 'Модератор не разрешает показ экрана',
+        },
+        'The moderator does not allow you close this media': {
+            uk: 'Модератор не дозволяє закрити це медіа',
+            ru: 'Модератор не разрешает закрыть это медиа',
+        },
+        'The moderator does not allow you to share any media': {
+            uk: 'Модератор не дозволяє ділитися медіа',
+            ru: 'Модератор не разрешает делиться медиа',
+        },
+        'The moderator does not allow you to chat publicly': {
+            uk: 'Модератор не дозволяє писати в загальний чат',
+            ru: 'Модератор не разрешает писать в общий чат',
+        },
+        'The moderator does not allow you to chat privately': {
+            uk: 'Модератор не дозволяє особисті повідомлення',
+            ru: 'Модератор не разрешает личные сообщения',
+        },
+        'The moderator does not allow you to chat with ChatGPT': {
+            uk: 'Модератор не дозволяє чат із ChatGPT',
+            ru: 'Модератор не разрешает чат с ChatGPT',
+        },
+        'The moderator does not allow you to chat with DeepSeek': {
+            uk: 'Модератор не дозволяє чат із DeepSeek',
+            ru: 'Модератор не разрешает чат с DeepSeek',
+        },
+        'The presenter has disabled your ability to enable audio': {
+            uk: 'Педагог вимкнув можливість вмикати мікрофон',
+            ru: 'Педагог отключил возможность включать микрофон',
+        },
+        'The presenter has disabled your ability to enable video': {
+            uk: 'Педагог вимкнув можливість вмикати камеру',
+            ru: 'Педагог отключил возможность включать камеру',
+        },
+        'The presenter has disabled your ability to share the screen': {
+            uk: 'Педагог вимкнув можливість показу екрана',
+            ru: 'Педагог отключил возможность показа экрана',
+        },
+        'The presenter has disabled your ability to raise your hand': {
+            uk: 'Педагог вимкнув можливість піднімати руку',
+            ru: 'Педагог отключил возможность поднимать руку',
+        },
+        'The presenter has disabled your ability to open the chat': {
+            uk: 'Педагог вимкнув чат',
+            ru: 'Педагог отключил чат',
+        },
+        'The presenter has disabled your ability to open the settings': {
+            uk: 'Педагог вимкнув налаштування',
+            ru: 'Педагог отключил настройки',
+        },
+        'The presenter has disabled your ability to hide yourself': {
+            uk: 'Педагог вимкнув можливість ховати себе',
+            ru: 'Педагог отключил возможность скрывать себя',
+        },
+        'The presenter has disabled your ability to take a snapshot': {
+            uk: 'Педагог вимкнув можливість робити знімки',
+            ru: 'Педагог отключил возможность делать снимки',
+        },
+        'The presenter has disabled your ability to share files': {
+            uk: 'Педагог вимкнув обмін файлами',
+            ru: 'Педагог отключил обмен файлами',
+        },
+        'Only the presenter can mute/unmute participants': {
+            uk: 'Лише педагог може вимикати мікрофони учасникам',
+            ru: 'Только педагог может выключать микрофоны участникам',
+        },
+        'Only the presenter can hide/show participants': {
+            uk: 'Лише педагог може вимикати камери учасникам',
+            ru: 'Только педагог может выключать камеры участникам',
+        },
+        'Only the presenter can start/stop the screen of participants': {
+            uk: 'Лише педагог керує демонстрацією екрана учасників',
+            ru: 'Только педагог управляет демонстрацией экрана участников',
+        },
+        'Only the presenter can eject the participants': {
+            uk: 'Лише педагог може відключати учасників',
+            ru: 'Только педагог может отключать участников',
+        },
+        'Only the presenter can ban the participants': {
+            uk: 'Лише педагог може блокувати учасників',
+            ru: 'Только педагог может блокировать участников',
+        },
+        'The participant has been muted, and only they have the ability to unmute themselves': {
+            uk: 'Мікрофон учасника вимкнено — увімкнути його може лише сам учасник',
+            ru: 'Микрофон участника выключен — включить его может только сам участник',
+        },
+        'The participant is currently hidden, and only they have the option to unhide themselves': {
+            uk: 'Камеру учасника вимкнено — увімкнути її може лише сам учасник',
+            ru: 'Камера участника выключена — включить её может только сам участник',
+        },
+        'The participant screen is not shared, only the participant can initiate sharing': {
+            uk: 'Екран не транслюється — почати показ може лише сам учасник',
+            ru: 'Экран не транслируется — начать показ может только сам участник',
+        },
 
         // ---- lobby ----
         'Room has lobby enabled': { uk: 'У кімнаті увімкнено залу очікування', ru: 'В комнате включён зал ожидания' },
         'Waiting for approval': { uk: 'Очікуємо підтвердження', ru: 'Ожидаем подтверждения' },
         'Lobby users': { uk: 'Зала очікування', ru: 'Зал ожидания' },
-        'Approve or dismiss guests waiting to join': { uk: 'Прийміть або відхиліть гостей, що очікують', ru: 'Примите или отклоните ожидающих гостей' },
+        'Approve or dismiss guests waiting to join': {
+            uk: 'Прийміть або відхиліть гостей, що очікують',
+            ru: 'Примите или отклоните ожидающих гостей',
+        },
         'All requests': { uk: 'Усі запити', ru: 'Все запросы' },
-        'Review every guest currently waiting': { uk: 'Розглянути всіх, хто зараз очікує', ru: 'Рассмотреть всех, кто сейчас ожидает' },
-        'Accept': { uk: 'Прийняти', ru: 'Принять' },
-        'Reject': { uk: 'Відхилити', ru: 'Отклонить' },
+        'Review every guest currently waiting': {
+            uk: 'Розглянути всіх, хто зараз очікує',
+            ru: 'Рассмотреть всех, кто сейчас ожидает',
+        },
+        Accept: { uk: 'Прийняти', ru: 'Принять' },
+        Reject: { uk: 'Відхилити', ru: 'Отклонить' },
         'Accept all waiting guests': { uk: 'Прийняти всіх гостей', ru: 'Принять всех гостей' },
         'Reject all waiting guests': { uk: 'Відхилити всіх гостей', ru: 'Отклонить всех гостей' },
         'You are in': { uk: 'Вас прийнято', ru: 'Вас приняли' },
-        'Your join request was approved by the moderator.': { uk: 'Модератор схвалив ваш запит на приєднання.', ru: 'Модератор одобрил ваш запрос на подключение.' },
+        'Your join request was approved by the moderator.': {
+            uk: 'Модератор схвалив ваш запит на приєднання.',
+            ru: 'Модератор одобрил ваш запрос на подключение.',
+        },
         'Request declined': { uk: 'Запит відхилено', ru: 'Запрос отклонён' },
-        'Lobby enabled and no presenter available': { uk: 'Зала очікування увімкнена, педагога ще немає', ru: 'Зал ожидания включён, педагога ещё нет' },
-        'A presenter is required to start the meeting. Please try joining again later.': { uk: 'Для початку зустрічі потрібен педагог. Спробуйте приєднатися пізніше.', ru: 'Для начала встречи нужен педагог. Попробуйте подключиться позже.' },
+        'Lobby enabled and no presenter available': {
+            uk: 'Зала очікування увімкнена, педагога ще немає',
+            ru: 'Зал ожидания включён, педагога ещё нет',
+        },
+        'A presenter is required to start the meeting. Please try joining again later.': {
+            uk: 'Для початку зустрічі потрібен педагог. Спробуйте приєднатися пізніше.',
+            ru: 'Для начала встречи нужен педагог. Попробуйте подключиться позже.',
+        },
         'No participants in lobby detected': { uk: 'У залі очікування нікого немає', ru: 'В зале ожидания никого нет' },
-        'Ok': { uk: 'Добре', ru: 'Хорошо' },
-        'OK': { uk: 'Добре', ru: 'Хорошо' },
+        Ok: { uk: 'Добре', ru: 'Хорошо' },
+        OK: { uk: 'Добре', ru: 'Хорошо' },
 
         // ---- room access ----
         'Oops, Room is Locked': { uk: 'Кімнату замкнено', ru: 'Комната заперта' },
         'Enter the Room password': { uk: 'Введіть пароль кімнати', ru: 'Введите пароль комнаты' },
         'Please enter the Room password': { uk: 'Потрібен пароль кімнати', ru: 'Нужен пароль комнаты' },
         'Oops, Wrong Room Password': { uk: 'Невірний пароль', ru: 'Неверный пароль' },
-        'The room is locked, try with another one.': { uk: 'Кімнату замкнено. Перевірте пароль і спробуйте ще раз.', ru: 'Комната заперта. Проверьте пароль и попробуйте ещё раз.' },
-        'Banned': { uk: 'Доступ заборонено', ru: 'Доступ запрещён' },
-        'You are banned from this room!': { uk: 'Вас заблоковано в цій кімнаті!', ru: 'Вы заблокированы в этой комнате!' },
+        'The room is locked, try with another one.': {
+            uk: 'Кімнату замкнено. Перевірте пароль і спробуйте ще раз.',
+            ru: 'Комната заперта. Проверьте пароль и попробуйте ещё раз.',
+        },
+        Banned: { uk: 'Доступ заборонено', ru: 'Доступ запрещён' },
+        'You are banned from this room!': {
+            uk: 'Вас заблоковано в цій кімнаті!',
+            ru: 'Вы заблокированы в этой комнате!',
+        },
         'Username already in use': { uk: "Ім'я вже зайняте", ru: 'Имя уже занято' },
         'This username is already taken': { uk: "Це ім'я вже використовується", ru: 'Это имя уже используется' },
-        'Someone in this room is already using that name. Please pick a different one to join.': { uk: "Хтось у кімнаті вже використовує це ім'я. Оберіть інше, щоб приєднатися.", ru: 'Кто-то в комнате уже использует это имя. Выберите другое, чтобы подключиться.' },
+        'Someone in this room is already using that name. Please pick a different one to join.': {
+            uk: "Хтось у кімнаті вже використовує це ім'я. Оберіть інше, щоб приєднатися.",
+            ru: 'Кто-то в комнате уже использует это имя. Выберите другое, чтобы подключиться.',
+        },
         'Time Limit Reached': { uk: 'Час вичерпано', ru: 'Время истекло' },
-        'The room has reached its time limit and will close shortly': { uk: 'Ліміт часу кімнати вичерпано — незабаром вона закриється', ru: 'Лимит времени комнаты исчерпан — скоро она закроется' },
+        'The room has reached its time limit and will close shortly': {
+            uk: 'Ліміт часу кімнати вичерпано — незабаром вона закриється',
+            ru: 'Лимит времени комнаты исчерпан — скоро она закроется',
+        },
 
         // ---- connection ----
         'Connection lost': { uk: "Зв'язок втрачено", ru: 'Связь потеряна' },
-        'Reconnecting': { uk: 'Перепідключення', ru: 'Переподключение' },
+        Reconnecting: { uk: 'Перепідключення', ru: 'Переподключение' },
         'Back online': { uk: "Зв'язок відновлено", ru: 'Связь восстановлена' },
         'Connection restored.': { uk: "З'єднання відновлено.", ru: 'Соединение восстановлено.' },
-        'Reloading': { uk: 'Перезавантаження', ru: 'Перезагрузка' },
-        'Retrying': { uk: 'Повторюємо', ru: 'Повторяем' },
+        Reloading: { uk: 'Перезавантаження', ru: 'Перезагрузка' },
+        Retrying: { uk: 'Повторюємо', ru: 'Повторяем' },
         'Unable to reconnect': { uk: 'Не вдалося перепідключитися', ru: 'Не удалось переподключиться' },
-        'Connection could not be restored.': { uk: "З'єднання відновити не вдалося.", ru: 'Соединение восстановить не удалось.' },
+        'Connection could not be restored.': {
+            uk: "З'єднання відновити не вдалося.",
+            ru: 'Соединение восстановить не удалось.',
+        },
         'Join Room': { uk: 'Увійти в кімнату', ru: 'Войти в комнату' },
         'Network issue': { uk: 'Проблема з мережею', ru: 'Проблема с сетью' },
         'Server away': { uk: 'Сервер недоступний', ru: 'Сервер недоступен' },
-        'The server seems away or in maintenance, please wait until it come back up.': { uk: 'Сервер недоступний або на обслуговуванні. Зачекайте, поки він повернеться.', ru: 'Сервер недоступен или на обслуживании. Подождите, пока он вернётся.' },
-        'Browser not supported. Please try a different browser.': { uk: 'Браузер не підтримується. Спробуйте інший браузер.', ru: 'Браузер не поддерживается. Попробуйте другой браузер.' },
+        'The server seems away or in maintenance, please wait until it come back up.': {
+            uk: 'Сервер недоступний або на обслуговуванні. Зачекайте, поки він повернеться.',
+            ru: 'Сервер недоступен или на обслуживании. Подождите, пока он вернётся.',
+        },
+        'Browser not supported. Please try a different browser.': {
+            uk: 'Браузер не підтримується. Спробуйте інший браузер.',
+            ru: 'Браузер не поддерживается. Попробуйте другой браузер.',
+        },
 
         // ---- exit / share ----
         'Leave session?': { uk: 'Вийти із зустрічі?', ru: 'Выйти из встречи?' },
         'Are you sure you want to exit this session?': { uk: 'Точно хочете вийти?', ru: 'Действительно выйти?' },
-        'Yes': { uk: 'Так', ru: 'Да' },
-        'No': { uk: 'Ні', ru: 'Нет' },
-        'Cancel': { uk: 'Скасувати', ru: 'Отмена' },
-        'Save': { uk: 'Зберегти', ru: 'Сохранить' },
-        'Login': { uk: 'Увійти', ru: 'Войти' },
+        Yes: { uk: 'Так', ru: 'Да' },
+        No: { uk: 'Ні', ru: 'Нет' },
+        Cancel: { uk: 'Скасувати', ru: 'Отмена' },
+        Save: { uk: 'Зберегти', ru: 'Сохранить' },
+        Login: { uk: 'Увійти', ru: 'Войти' },
         'Share the room': { uk: 'Поділитися кімнатою', ru: 'Поделиться комнатой' },
         'Copy URL': { uk: 'Копіювати посилання', ru: 'Копировать ссылку' },
         'Email invite': { uk: 'Запрошення на email', ru: 'Приглашение на email' },
@@ -325,26 +477,44 @@ window.MontemeetDict = {
 
         // ---- leave feedback (stock hardcodes the MiroTalk name here) ----
         'Leave a feedback': { uk: 'Залишити відгук', ru: 'Оставить отзыв' },
-        'Do you want to rate your MiroTalk experience?': { uk: 'Оцінити якість зустрічі?', ru: 'Оценить качество встречи?' },
+        'Do you want to rate your MiroTalk experience?': {
+            uk: 'Оцінити якість зустрічі?',
+            ru: 'Оценить качество встречи?',
+        },
 
         // ---- misc popups ----
         'Unmute Video': { uk: 'Увімкнути звук відео', ru: 'Включить звук видео' },
-        'Tap the button below to unmute and play the video with sound.': { uk: 'Натисніть кнопку нижче, щоб відтворити відео зі звуком.', ru: 'Нажмите кнопку ниже, чтобы воспроизвести видео со звуком.' },
-        'Full screen mode not supported by this browser on this device': { uk: 'Повноекранний режим не підтримується цим браузером', ru: 'Полноэкранный режим не поддерживается этим браузером' },
+        'Tap the button below to unmute and play the video with sound.': {
+            uk: 'Натисніть кнопку нижче, щоб відтворити відео зі звуком.',
+            ru: 'Нажмите кнопку ниже, чтобы воспроизвести видео со звуком.',
+        },
+        'Full screen mode not supported by this browser on this device': {
+            uk: 'Повноекранний режим не підтримується цим браузером',
+            ru: 'Полноэкранный режим не поддерживается этим браузером',
+        },
         'Drag and drop your file here': { uk: 'Перетягніть файл сюди', ru: 'Перетащите файл сюда' },
         'Browse files': { uk: 'Вибрати файл', ru: 'Выбрать файл' },
         'No file selected': { uk: 'Файл не вибрано', ru: 'Файл не выбран' },
         'Received file': { uk: 'Отриманий файл', ru: 'Полученный файл' },
-        'You cannot send files to yourself.': { uk: 'Не можна надіслати файл самому собі.', ru: 'Нельзя отправить файл самому себе.' },
-        'Please wait for the previous file to be sent.': { uk: 'Зачекайте, поки надішлеться попередній файл.', ru: 'Подождите, пока отправится предыдущий файл.' },
-        'File transfer in progress. Please wait until it completes': { uk: 'Триває передача файлу. Зачекайте її завершення', ru: 'Идёт передача файла. Дождитесь её завершения' },
+        'You cannot send files to yourself.': {
+            uk: 'Не можна надіслати файл самому собі.',
+            ru: 'Нельзя отправить файл самому себе.',
+        },
+        'Please wait for the previous file to be sent.': {
+            uk: 'Зачекайте, поки надішлеться попередній файл.',
+            ru: 'Подождите, пока отправится предыдущий файл.',
+        },
+        'File transfer in progress. Please wait until it completes': {
+            uk: 'Триває передача файлу. Зачекайте її завершення',
+            ru: 'Идёт передача файла. Дождитесь её завершения',
+        },
         'File not selected or empty.': { uk: 'Файл не вибрано або він порожній.', ru: 'Файл не выбран или пуст.' },
 
         // ---- video tile dropdown / tooltips ----
-        'Mirror': { uk: 'Дзеркало', ru: 'Зеркало' },
+        Mirror: { uk: 'Дзеркало', ru: 'Зеркало' },
         'Private Message': { uk: 'Особисте повідомлення', ru: 'Личное сообщение' },
         'Geo Location': { uk: 'Геолокація', ru: 'Геолокация' },
-        'Geolocation': { uk: 'Геолокація', ru: 'Геолокация' },
+        Geolocation: { uk: 'Геолокація', ru: 'Геолокация' },
         'Send File': { uk: 'Надіслати файл', ru: 'Отправить файл' },
         'Send Video/Audio': { uk: 'Надіслати відео/аудіо', ru: 'Отправить видео/аудио' },
         'Kick Out': { uk: 'Виключити', ru: 'Исключить' },
@@ -352,8 +522,8 @@ window.MontemeetDict = {
         'Toggle Focus mode': { uk: 'Режим фокуса', ru: 'Режим фокуса' },
         'Toggle picture in picture': { uk: 'Картинка в картинці', ru: 'Картинка в картинке' },
         'Toggle video privacy': { uk: 'Режим приватності відео', ru: 'Режим приватности видео' },
-        'Speech': { uk: 'Озвучити', ru: 'Озвучить' },
-        'React': { uk: 'Реакція', ru: 'Реакция' },
+        Speech: { uk: 'Озвучити', ru: 'Озвучить' },
+        React: { uk: 'Реакція', ru: 'Реакция' },
         'Toggle unread messages': { uk: 'Непрочитані повідомлення', ru: 'Непрочитанные сообщения' },
 
         // ---- virtual background picker ----
@@ -369,76 +539,145 @@ window.MontemeetDict = {
         'Set Virtual Background or Blur': { uk: 'Віртуальний фон або розмиття', ru: 'Виртуальный фон или размытие' },
 
         // ---- chat header / counters ----
-        'online': { uk: 'онлайн', ru: 'онлайн' },
+        online: { uk: 'онлайн', ru: 'онлайн' },
         'Type a message...': { uk: 'Напишіть повідомлення…', ru: 'Напишите сообщение…' },
         'Search conversations': { uk: 'Пошук розмов', ru: 'Поиск бесед' },
         'Start Conversation': { uk: 'Почніть розмову', ru: 'Начните беседу' },
-        'There are no messages here yet. Start a conversation by sending a message.': { uk: 'Тут поки немає повідомлень. Напишіть перше!', ru: 'Здесь пока нет сообщений. Напишите первое!' },
-        'Enter sends. Shift+Enter adds a line break.': { uk: 'Enter — надіслати, Shift+Enter — новий рядок.', ru: 'Enter — отправить, Shift+Enter — новая строка.' },
-        'Assistant replies are visible only to you': { uk: 'Відповіді асистента бачите лише ви', ru: 'Ответы ассистента видите только вы' },
+        'There are no messages here yet. Start a conversation by sending a message.': {
+            uk: 'Тут поки немає повідомлень. Напишіть перше!',
+            ru: 'Здесь пока нет сообщений. Напишите первое!',
+        },
+        'Enter sends. Shift+Enter adds a line break.': {
+            uk: 'Enter — надіслати, Shift+Enter — новий рядок.',
+            ru: 'Enter — отправить, Shift+Enter — новая строка.',
+        },
+        'Assistant replies are visible only to you': {
+            uk: 'Відповіді асистента бачите лише ви',
+            ru: 'Ответы ассистента видите только вы',
+        },
         'AI ASSISTANT': { uk: 'ШІ-АСИСТЕНТ', ru: 'ИИ-АССИСТЕНТ' },
         'Emoji Picker': { uk: 'Емодзі', ru: 'Эмодзи' },
-        'All': { uk: 'Усі', ru: 'Все' },
-        'Sounds': { uk: 'Звуки', ru: 'Звуки' },
+        All: { uk: 'Усі', ru: 'Все' },
+        Sounds: { uk: 'Звуки', ru: 'Звуки' },
         'Delete this Message?': { uk: 'Видалити це повідомлення?', ru: 'Удалить это сообщение?' },
         'Clean up all chat Messages?': { uk: 'Очистити всі повідомлення чату?', ru: 'Очистить все сообщения чата?' },
 
         // ---- teacher's confirm dialogs on participants ----
         'Enable Microphone': { uk: 'Увімкнути мікрофон', ru: 'Включить микрофон' },
-        'Allow the presenter to enable your microphone?': { uk: 'Дозволити педагогу увімкнути ваш мікрофон?', ru: 'Разрешить педагогу включить ваш микрофон?' },
+        'Allow the presenter to enable your microphone?': {
+            uk: 'Дозволити педагогу увімкнути ваш мікрофон?',
+            ru: 'Разрешить педагогу включить ваш микрофон?',
+        },
         'Enable Camera': { uk: 'Увімкнути камеру', ru: 'Включить камеру' },
-        'Allow the presenter to enable your camera?': { uk: 'Дозволити педагогу увімкнути вашу камеру?', ru: 'Разрешить педагогу включить вашу камеру?' },
+        'Allow the presenter to enable your camera?': {
+            uk: 'Дозволити педагогу увімкнути вашу камеру?',
+            ru: 'Разрешить педагогу включить вашу камеру?',
+        },
         'Start Screen share': { uk: 'Почати демонстрацію екрана', ru: 'Начать демонстрацию экрана' },
-        'Allow the presenter to start your screen share?': { uk: 'Дозволити педагогу запустити показ вашого екрана?', ru: 'Разрешить педагогу запустить показ вашего экрана?' },
-        'A pop-up message will appear to prompt and allow this action.': { uk: 'Учасник побачить запит на підтвердження цієї дії.', ru: 'Участник увидит запрос на подтверждение этого действия.' },
-        'Once muted, only the presenter will be able to unmute participants, but participants can unmute themselves at any time': { uk: 'Після вимкнення лише педагог зможе вмикати мікрофони, але учасники можуть увімкнути себе самі будь-коли', ru: 'После выключения только педагог сможет включать микрофоны, но участники могут включить себя сами в любой момент' },
-        'Once hidden, only the presenter will be able to unhide participants, but participants can unhide themselves at any time': { uk: 'Після вимкнення лише педагог зможе вмикати камери, але учасники можуть увімкнути себе самі будь-коли', ru: 'После выключения только педагог сможет включать камеры, но участники могут включить себя сами в любой момент' },
+        'Allow the presenter to start your screen share?': {
+            uk: 'Дозволити педагогу запустити показ вашого екрана?',
+            ru: 'Разрешить педагогу запустить показ вашего экрана?',
+        },
+        'A pop-up message will appear to prompt and allow this action.': {
+            uk: 'Учасник побачить запит на підтвердження цієї дії.',
+            ru: 'Участник увидит запрос на подтверждение этого действия.',
+        },
+        'Once muted, only the presenter will be able to unmute participants, but participants can unmute themselves at any time':
+            {
+                uk: 'Після вимкнення лише педагог зможе вмикати мікрофони, але учасники можуть увімкнути себе самі будь-коли',
+                ru: 'После выключения только педагог сможет включать микрофоны, но участники могут включить себя сами в любой момент',
+            },
+        'Once hidden, only the presenter will be able to unhide participants, but participants can unhide themselves at any time':
+            {
+                uk: 'Після вимкнення лише педагог зможе вмикати камери, але учасники можуть увімкнути себе самі будь-коли',
+                ru: 'После выключения только педагог сможет включать камеры, но участники могут включить себя сами в любой момент',
+            },
         'In progress, wait...': { uk: 'Виконуємо, зачекайте…', ru: 'Выполняем, подождите…' },
         'everyone except yourself?': { uk: 'всіх, крім вас?', ru: 'всех, кроме вас?' },
         'current participant?': { uk: 'цього учасника?', ru: 'этого участника?' },
 
+        // ---- отключение участника (Иван, 2026-08-10) ----
+        // сток собирает заголовок склейкой, поэтому кладём готовые строки целиком
+        'Eject current participant?': { uk: 'Відключити цього учасника?', ru: 'Отключить этого участника?' },
+        'Eject All participants except yourself?': {
+            uk: 'Відключити всіх, крім вас?',
+            ru: 'Отключить всех, кроме вас?',
+        },
+        'Eject reason': { uk: 'Причина відключення', ru: 'Причина отключения' },
+        // заголовок окна ожидания — сток подставляет туда само название действия
+        eject: { uk: 'Відключення', ru: 'Отключение' },
+        ban: { uk: 'Блокування', ru: 'Блокировка' },
+        'Will eject you from the room': { uk: 'Відключає вас від зустрічі', ru: 'Отключает вас от встречи' },
+
         // ---- pin guards / privacy ----
-        'Another video seems pinned, unpin it before to pin this one': { uk: 'Уже закріплено інше відео — відкріпіть його спочатку', ru: 'Уже закреплено другое видео — открепите его сначала' },
-        'Please unpin the chat that appears to be currently pinned': { uk: 'Спершу відкріпіть закріплений чат', ru: 'Сначала открепите закреплённый чат' },
+        'Another video seems pinned, unpin it before to pin this one': {
+            uk: 'Уже закріплено інше відео — відкріпіть його спочатку',
+            ru: 'Уже закреплено другое видео — открепите его сначала',
+        },
+        'Please unpin the chat that appears to be currently pinned': {
+            uk: 'Спершу відкріпіть закріплений чат',
+            ru: 'Сначала открепите закреплённый чат',
+        },
 
         // ---- misc titles ----
-        'warning': { uk: 'Увага', ru: 'Внимание' },
-        'error': { uk: 'Помилка', ru: 'Ошибка' },
-        'info': { uk: 'Інформація', ru: 'Информация' },
-        'success': { uk: 'Готово', ru: 'Готово' },
-        'Unmute': { uk: 'Увімкнути звук', ru: 'Включить звук' },
-        'Dismiss': { uk: 'Закрити', ru: 'Закрыть' },
+        warning: { uk: 'Увага', ru: 'Внимание' },
+        error: { uk: 'Помилка', ru: 'Ошибка' },
+        info: { uk: 'Інформація', ru: 'Информация' },
+        success: { uk: 'Готово', ru: 'Готово' },
+        Unmute: { uk: 'Увімкнути звук', ru: 'Включить звук' },
+        Dismiss: { uk: 'Закрити', ru: 'Закрыть' },
         'Access denied': { uk: 'Доступ заборонено', ru: 'Доступ запрещён' },
         'Permission denied in browser': { uk: 'Браузер відхилив дозвіл', ru: 'Браузер отклонил разрешение' },
         'Already in use': { uk: 'Пристрій уже використовується', ru: 'Устройство уже используется' },
 
         // ---- file picker / transfer ----
         'Drag and drop a file': { uk: 'Перетягніть файл сюди', ru: 'Перетащите файл сюда' },
-        'or click to browse from your device': { uk: 'або натисніть, щоб обрати з пристрою', ru: 'или нажмите, чтобы выбрать с устройства' },
+        'or click to browse from your device': {
+            uk: 'або натисніть, щоб обрати з пристрою',
+            ru: 'или нажмите, чтобы выбрать с устройства',
+        },
         'any file type': { uk: 'будь-який тип файлу', ru: 'любой тип файла' },
         'any file': { uk: 'будь-який файл', ru: 'любой файл' },
         'File ready': { uk: 'Файл готовий', ru: 'Файл готов' },
-        'Drop another file here or browse to replace it': { uk: 'Перетягніть інший файл або оберіть заміну', ru: 'Перетащите другой файл или выберите замену' },
+        'Drop another file here or browse to replace it': {
+            uk: 'Перетягніть інший файл або оберіть заміну',
+            ru: 'Перетащите другой файл или выберите замену',
+        },
         'Browse another file': { uk: 'Вибрати інший файл', ru: 'Выбрать другой файл' },
-        'Remove': { uk: 'Прибрати', ru: 'Убрать' },
+        Remove: { uk: 'Прибрати', ru: 'Убрать' },
         'The selected file is empty.': { uk: 'Вибраний файл порожній.', ru: 'Выбранный файл пуст.' },
         'Please choose a single file.': { uk: 'Оберіть один файл.', ru: 'Выберите один файл.' },
         'Folders are not supported.': { uk: 'Теки не підтримуються.', ru: 'Папки не поддерживаются.' },
-        'Only files can be uploaded here.': { uk: 'Сюди можна завантажувати лише файли.', ru: 'Сюда можно загружать только файлы.' },
-        'Could not read the selected file.': { uk: 'Не вдалося прочитати вибраний файл.', ru: 'Не удалось прочитать выбранный файл.' },
+        'Only files can be uploaded here.': {
+            uk: 'Сюди можна завантажувати лише файли.',
+            ru: 'Сюда можно загружать только файлы.',
+        },
+        'Could not read the selected file.': {
+            uk: 'Не вдалося прочитати вибраний файл.',
+            ru: 'Не удалось прочитать выбранный файл.',
+        },
         'Choose a file before continuing.': { uk: 'Спершу оберіть файл.', ru: 'Сначала выберите файл.' },
         'Share file': { uk: 'Надіслати файл', ru: 'Отправить файл' },
         'Received file': { uk: 'Отриманий файл', ru: 'Полученный файл' },
         'Incoming transfer': { uk: 'Вхідна передача', ru: 'Входящая передача' },
         'Receiving file': { uk: 'Отримання файлу', ru: 'Получение файла' },
-        'You can hide this panel and let the download continue.': { uk: 'Цю панель можна сховати — завантаження продовжиться.', ru: 'Эту панель можно скрыть — загрузка продолжится.' },
+        'You can hide this panel and let the download continue.': {
+            uk: 'Цю панель можна сховати — завантаження продовжиться.',
+            ru: 'Эту панель можно скрыть — загрузка продолжится.',
+        },
         'Waiting for data...': { uk: 'Очікуємо дані…', ru: 'Ожидаем данные…' },
-        'Abort': { uk: 'Перервати', ru: 'Прервать' },
+        Abort: { uk: 'Перервати', ru: 'Прервать' },
 
         // ---- lobby extras ----
         'Waiting in lobby': { uk: 'Очікує в залі', ru: 'Ожидает в зале' },
-        'Keep this window open while we hold your request.': { uk: 'Не закривайте це вікно, поки запит очікує.', ru: 'Не закрывайте это окно, пока запрос ожидает.' },
-        'Your join request was rejected by the moderator. You can try again later if the room becomes available.': { uk: 'Модератор відхилив ваш запит. Спробуйте пізніше, коли кімната буде доступна.', ru: 'Модератор отклонил ваш запрос. Попробуйте позже, когда комната будет доступна.' },
+        'Keep this window open while we hold your request.': {
+            uk: 'Не закривайте це вікно, поки запит очікує.',
+            ru: 'Не закрывайте это окно, пока запрос ожидает.',
+        },
+        'Your join request was rejected by the moderator. You can try again later if the room becomes available.': {
+            uk: 'Модератор відхилив ваш запит. Спробуйте пізніше, коли кімната буде доступна.',
+            ru: 'Модератор отклонил ваш запрос. Попробуйте позже, когда комната будет доступна.',
+        },
 
         // ---- whiteboard (teacher-visible) ----
         'Add image file': { uk: 'Додати зображення', ru: 'Добавить изображение' },
@@ -456,10 +695,10 @@ window.MontemeetDict = {
         'Drawing color': { uk: 'Колір малювання', ru: 'Цвет рисования' },
         'Drawing mode': { uk: 'Режим малювання', ru: 'Режим рисования' },
         'Vanishing pen (disappears in 5s)': { uk: 'Зникаюче перо (5 с)', ru: 'Исчезающее перо (5 с)' },
-        'Eraser': { uk: 'Гумка', ru: 'Ластик' },
+        Eraser: { uk: 'Гумка', ru: 'Ластик' },
         'Object mode': { uk: 'Режим об’єктів', ru: 'Режим объектов' },
-        'Undo': { uk: 'Скасувати', ru: 'Отменить' },
-        'Redo': { uk: 'Повторити', ru: 'Повторить' },
+        Undo: { uk: 'Скасувати', ru: 'Отменить' },
+        Redo: { uk: 'Повторити', ru: 'Повторить' },
         'Clean the board': { uk: 'Очистити дошку', ru: 'Очистить доску' },
         'Are you sure you want to clean the board?': { uk: 'Точно очистити дошку?', ru: 'Точно очистить доску?' },
 
@@ -471,19 +710,35 @@ window.MontemeetDict = {
         'Отправить файл': { uk: 'Надіслати файл', en: 'Send a file' },
         'Включить камеру участнику': { uk: 'Увімкнути камеру учаснику', en: "Turn on the participant's camera" },
         'Транслировать звук компьютера': { uk: "Транслювати звук комп'ютера", en: 'Share computer sound' },
-        'Звук компьютера: транслируется (клик — выключить)': { uk: "Звук комп'ютера: транслюється (клік — вимкнути)", en: 'Computer sound: sharing (click to stop)' },
-        'На macOS звук доступен только из вкладки Chrome: выберите ВКЛАДКУ с плеером и включите «Также предоставить доступ к аудио вкладки»': {
-            uk: 'На macOS звук доступний лише з вкладки Chrome: оберіть ВКЛАДКУ з плеєром і увімкніть «Також надати доступ до аудіо вкладки»',
-            en: 'On macOS sound is only available from a Chrome tab: pick the TAB with your player and enable “Also share tab audio”',
+        'Звук компьютера: транслируется (клик — выключить)': {
+            uk: "Звук комп'ютера: транслюється (клік — вимкнути)",
+            en: 'Computer sound: sharing (click to stop)',
         },
+        'На macOS звук доступен только из вкладки Chrome: выберите ВКЛАДКУ с плеером и включите «Также предоставить доступ к аудио вкладки»':
+            {
+                uk: 'На macOS звук доступний лише з вкладки Chrome: оберіть ВКЛАДКУ з плеєром і увімкніть «Також надати доступ до аудіо вкладки»',
+                en: 'On macOS sound is only available from a Chrome tab: pick the TAB with your player and enable “Also share tab audio”',
+            },
         'Отметьте галку «Предоставить доступ к системному звуку» в диалоге браузера': {
             uk: 'Позначте «Надати доступ до системного звуку» в діалозі браузера',
             en: 'Tick “Share system audio” in the browser dialog',
         },
-        'Закреплено вручную — клик: вернуть прежний режим': { uk: 'Закріплено вручну — клік: повернути попередній режим', en: 'Pinned manually — click to restore the previous view' },
-        'Вид: сетка (клик — говорящий крупно)': { uk: 'Вигляд: сітка (клік — мовець крупно)', en: 'View: grid (click — speaker large)' },
-        'Вид: говорящий крупно, остаётся (клик — авто-возврат в сетку)': { uk: 'Вигляд: мовець крупно, залишається (клік — авто-повернення до сітки)', en: 'View: speaker stays large (click — auto-return to grid)' },
-        'Вид: говорящий крупно, тишина возвращает сетку (клик — сетка)': { uk: 'Вигляд: мовець крупно, тиша повертає сітку (клік — сітка)', en: 'View: speaker large, silence returns the grid (click — grid)' },
+        'Закреплено вручную — клик: вернуть прежний режим': {
+            uk: 'Закріплено вручну — клік: повернути попередній режим',
+            en: 'Pinned manually — click to restore the previous view',
+        },
+        'Вид: сетка (клик — говорящий крупно)': {
+            uk: 'Вигляд: сітка (клік — мовець крупно)',
+            en: 'View: grid (click — speaker large)',
+        },
+        'Вид: говорящий крупно, остаётся (клик — авто-возврат в сетку)': {
+            uk: 'Вигляд: мовець крупно, залишається (клік — авто-повернення до сітки)',
+            en: 'View: speaker stays large (click — auto-return to grid)',
+        },
+        'Вид: говорящий крупно, тишина возвращает сетку (клик — сетка)': {
+            uk: 'Вигляд: мовець крупно, тиша повертає сітку (клік — сітка)',
+            en: 'View: speaker large, silence returns the grid (click — grid)',
+        },
     },
 
     RULES: [
@@ -544,24 +799,49 @@ window.MontemeetDict = {
             ru: '$1 остановил(а) показ вашего экрана',
         },
         {
-            re: /^Mute (everyone except yourself\?|current participant\?)$/,
-            uk: 'Вимкнути мікрофон: $1',
-            ru: 'Выключить микрофон: $1',
+            re: /^Mute everyone except yourself\?$/,
+            uk: 'Вимкнути мікрофон: всіх, крім вас?',
+            ru: 'Выключить микрофон: всех, кроме вас?',
         },
         {
-            re: /^Unmute (everyone except yourself\?|current participant\?)$/,
-            uk: 'Увімкнути мікрофон: $1',
-            ru: 'Включить микрофон: $1',
+            re: /^Mute current participant\?$/,
+            uk: 'Вимкнути мікрофон: цього учасника?',
+            ru: 'Выключить микрофон: этого участника?',
         },
         {
-            re: /^Hide (everyone except yourself\?|current participant\?)$/,
-            uk: 'Вимкнути камеру: $1',
-            ru: 'Выключить камеру: $1',
+            re: /^Unmute everyone except yourself\?$/,
+            uk: 'Увімкнути мікрофон: всіх, крім вас?',
+            ru: 'Включить микрофон: всех, кроме вас?',
         },
         {
-            re: /^Unhide (everyone except yourself\?|current participant\?)$/,
-            uk: 'Увімкнути камеру: $1',
-            ru: 'Включить камеру: $1',
+            re: /^Unmute current participant\?$/,
+            uk: 'Увімкнути мікрофон: цього учасника?',
+            ru: 'Включить микрофон: этого участника?',
+        },
+        {
+            re: /^Hide everyone except yourself\?$/,
+            uk: 'Вимкнути камеру: всіх, крім вас?',
+            ru: 'Выключить камеру: всех, кроме вас?',
+        },
+        {
+            re: /^Hide current participant\?$/,
+            uk: 'Вимкнути камеру: цього учасника?',
+            ru: 'Выключить камеру: этого участника?',
+        },
+        {
+            re: /^Unhide everyone except yourself\?$/,
+            uk: 'Увімкнути камеру: всіх, крім вас?',
+            ru: 'Включить камеру: всех, кроме вас?',
+        },
+        {
+            re: /^Unhide current participant\?$/,
+            uk: 'Увімкнути камеру: цього учасника?',
+            ru: 'Включить камеру: этого участника?',
+        },
+        {
+            re: /^Reason:\s*([\s\S]+)$/,
+            uk: 'Причина: $1',
+            ru: 'Причина: $1',
         },
         {
             re: /Lobby is enabled$/,
@@ -643,9 +923,20 @@ window.MontemeetDict = {
     STATIC: [
         // boot / banners
         ['#loadingTitle', 'text', { uk: 'Завантаження', ru: 'Загрузка' }],
-        ['#loadingMessage', 'html', { uk: 'Дозвольте доступ до камери або мікрофона,<br />щоб користуватися застосунком.', ru: 'Разрешите доступ к камере или микрофону,<br />чтобы пользоваться приложением.' }],
+        [
+            '#loadingMessage',
+            'html',
+            {
+                uk: 'Дозвольте доступ до камери або мікрофона,<br />щоб користуватися застосунком.',
+                ru: 'Разрешите доступ к камере или микрофону,<br />чтобы пользоваться приложением.',
+            },
+        ],
         ['#disconnectBannerTitle', 'text', { uk: "Зв'язок втрачено", ru: 'Связь потеряна' }],
-        ['#disconnectBannerMessage', 'text', { uk: "Намагаємось відновити з'єднання з кімнатою…", ru: 'Пытаемся восстановить соединение с комнатой…' }],
+        [
+            '#disconnectBannerMessage',
+            'text',
+            { uk: "Намагаємось відновити з'єднання з кімнатою…", ru: 'Пытаемся восстановить соединение с комнатой…' },
+        ],
         ['#disconnectBannerMeta', 'text', { uk: 'Повторюємо…', ru: 'Повторяем…' }],
         ['#disconnectBannerAction', 'text', { uk: 'Увійти в кімнату', ru: 'Войти в комнату' }],
         ['#qrText', 'text', { uk: 'Скануйте, щоб приєднатися', ru: 'Сканируйте, чтобы подключиться' }],
@@ -665,17 +956,39 @@ window.MontemeetDict = {
         // chat panel
         ['#searchParticipantsFromList', 'placeholder', { uk: 'Пошук розмов', ru: 'Поиск бесед' }],
         ['#chatMessage', 'placeholder', { uk: 'Напишіть повідомлення…', ru: 'Напишите сообщение…' }],
-        ['.chat-input-hint', 'text', { uk: 'Enter — надіслати, Shift+Enter — новий рядок.', ru: 'Enter — отправить, Shift+Enter — новая строка.' }],
-        ['#chatEmptyNotice p', 'text', { uk: 'Тут поки немає повідомлень. Напишіть перше!', ru: 'Здесь пока нет сообщений. Напишите первое!' }],
+        [
+            '.chat-input-hint',
+            'text',
+            {
+                uk: 'Enter — надіслати, Shift+Enter — новий рядок.',
+                ru: 'Enter — отправить, Shift+Enter — новая строка.',
+            },
+        ],
+        [
+            '#chatEmptyNotice p',
+            'text',
+            { uk: 'Тут поки немає повідомлень. Напишіть перше!', ru: 'Здесь пока нет сообщений. Напишите первое!' },
+        ],
 
         // lobby (moderator side + participant templates)
         ['#lobbyHeaderTitle', 'text', { uk: 'Зала очікування', ru: 'Зал ожидания' }],
-        ['.lobby-header-subtitle', 'text', { uk: 'Прийміть або відхиліть гостей, що очікують', ru: 'Примите или отклоните ожидающих гостей' }],
+        [
+            '.lobby-header-subtitle',
+            'text',
+            { uk: 'Прийміть або відхиліть гостей, що очікують', ru: 'Примите или отклоните ожидающих гостей' },
+        ],
 
         // file transfer cards
         ['.file-transfer-kicker', 'text', { uk: 'Передача файлу', ru: 'Передача файла' }],
         ['#sendFileDiv .file-transfer-title', 'text', { uk: 'Надсилання файлу', ru: 'Отправка файла' }],
-        ['#sendFileDiv .file-transfer-subtitle', 'text', { uk: 'Не закривайте вікно, доки передача не завершиться.', ru: 'Не закрывайте окно, пока передача не завершится.' }],
+        [
+            '#sendFileDiv .file-transfer-subtitle',
+            'text',
+            {
+                uk: 'Не закривайте вікно, доки передача не завершиться.',
+                ru: 'Не закрывайте окно, пока передача не завершится.',
+            },
+        ],
         ['#sendFilePercentage', 'text', { uk: 'Готуємо передачу…', ru: 'Готовим передачу…' }],
         ['#sendAbortBtn span', 'text', { uk: 'Перервати', ru: 'Прервать' }],
 
@@ -702,7 +1015,10 @@ window.MontemeetDict = {
         ['initExitButton', 'Leave meeting'],
         ['initVideoAudioRefreshButton', 'Refresh audio/video devices'],
         ['mySettingsCloseBtn', 'Close'],
-        ['switchNoiseSuppression', 'If Active, the audio will be processed to reduce background noise, making the voice clearer'],
+        [
+            'switchNoiseSuppression',
+            'If Active, the audio will be processed to reduce background noise, making the voice clearer',
+        ],
         ['roomId', 'Room name (click to copy)'],
         ['sessionTime', 'Session time'],
         ['chatCleanTextButton', 'Clean'],
