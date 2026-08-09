@@ -320,24 +320,18 @@ const MontemeetRoles = (() => {
     // появляется и исчезает само и у всех педагогов сразу, а всплывашка висела
     // и после чужого решения — гасить её надёжно не вышло (Иван, 2026-08-10).
     // Убираем саму всплывашку: она ничего не добавляла к окну и звуку.
+    const LOBBY_TOAST_RE = /wants to join the meeting/i;
     function dismissLobbyToast() {
         const proto = roomClientProto();
         if (!proto || proto._mmLobbyToast) return;
         proto._mmLobbyToast = true;
-        const stock = proto.lobbyAddPear;
-        proto.lobbyAddPear = function (data) {
-            const quiet = this._mmQuietLog;
-            this._mmQuietLog = true;
-            try {
-                return stock.call(this, data);
-            } finally {
-                this._mmQuietLog = quiet;
-            }
-        };
         const stockLog = proto.userLog;
-        proto.userLog = function (...args) {
-            if (this._mmQuietLog) return;
-            return stockLog.apply(this, args);
+        // сток зовёт userLog отдельной строкой после lobbyAddPear, поэтому
+        // «тихий» флаг вокруг добавления в список ничего не давал: смотрим
+        // на сам текст сообщения
+        proto.userLog = function (icon, message, ...rest) {
+            if (typeof message === 'string' && LOBBY_TOAST_RE.test(message)) return;
+            return stockLog.call(this, icon, message, ...rest);
         };
     }
 
@@ -815,6 +809,16 @@ const MontemeetRoles = (() => {
     // нажатия по невидимой панели, иначе тап по пустому месту внизу экрана
     // выключал камеру (Иван, 2026-08-09).
     setInterval(() => {
+        // Панель чата закрывают и стоковым крестиком, а класс «панель открыта»
+        // снимал только наш обработчик — после этого вёрстка прятала нижний
+        // тулбар навсегда, и тапы по экрану переставали его вызывать
+        // (Иван, 2026-08-10). Держим класс и признак по факту.
+        if (typeof rc !== 'undefined' && rc) {
+            const shown = document.getElementById('chatRoom')?.classList.contains('show');
+            if (rc.isChatOpen && shown === false) rc.isChatOpen = false;
+            const listOpen = !!rc.isParticipantsOpen && !document.getElementById('plist')?.classList.contains('hidden');
+            markPanelOpen(!!rc.isChatOpen || listOpen);
+        }
         const bar = document.getElementById('bottomButtons');
         if (!bar) return;
         const cs = getComputedStyle(bar);

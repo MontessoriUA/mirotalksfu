@@ -954,6 +954,10 @@ const MontemeetLayout = (() => {
         const btn = document.createElement('button');
         btn.id = 'montemeetSpeakerViewBtn';
         btn.addEventListener('click', cycleSpeakerView);
+        // Видимость выставляем сразу: раньше её ставил syncSolo, а он теперь
+        // проходит РАНЬШЕ создания кнопки — и на паре участников кнопка
+        // появлялась, хотя переключать там нечего (Иван, 2026-08-10)
+        btn.style.display = !soloActive && livePeerIds().size >= 3 ? '' : 'none';
         bar.appendChild(btn);
         restoreSpeakerView();
         updateSpeakerViewButton();

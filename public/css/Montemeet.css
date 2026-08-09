@@ -384,12 +384,21 @@ body.montemeet-concert-pip .montemeet-self-pip {
 }
 #loadingDiv h1 {
     /* переносить слово нельзя — рваное «Завантаження» хуже мелкого, поэтому
-       строка одна, а размер считается от ширины экрана (Иван, 2026-08-10) */
-    font-size: min(60px, 11vw) !important;
+       строка одна, а размер считается от ширины экрана (Иван, 2026-08-10).
+       Свои боковые поля у заголовка убираем: вместе с полями самой карточки
+       они съедали ширину, слово вылезало вправо и переставало быть по центру */
+    font-size: min(60px, 9vw) !important;
     white-space: nowrap;
+    padding-left: 0;
+    padding-right: 0;
     max-width: 100%;
     margin: 0 auto;
     line-height: 1.15;
+}
+@media screen and (max-width: 520px) {
+    #loadingDiv {
+        padding: 24px 12px;
+    }
 }
 
 /* Панель кнопок проявлялась целую секунду — слишком задумчиво для действия,
