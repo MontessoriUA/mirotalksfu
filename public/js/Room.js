@@ -4704,7 +4704,10 @@ function setVideoButtonsDisabled(disabled) {
 }
 
 async function playSpeaker(deviceId = null, name, path = '../sounds/') {
-    const selectedDeviceId = deviceId || audioOutputSelect?.value;
+    // Montemeet: audioOutputSelect в проекте не существует — если устройство
+    // не передали, обращение к нему валит проверку звука ошибкой вместо того,
+    // чтобы просто сыграть на устройстве по умолчанию
+    const selectedDeviceId = deviceId || null;
     if (selectedDeviceId) {
         const sound = path + name + '.wav';
         const audioToPlay = new Audio(sound);

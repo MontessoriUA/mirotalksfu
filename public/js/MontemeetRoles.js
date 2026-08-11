@@ -803,15 +803,21 @@ const MontemeetRoles = (() => {
     function watchDeviceChanges() {
         if (deviceWatchDone || !navigator.mediaDevices?.addEventListener) return;
         deviceWatchDone = true;
+        // Сравниваем не только идентификаторы, но и названия: воткнутая
+        // гарнитура на макбуке часто не добавляет устройство, а лишь переносит
+        // на себя «устройство по умолчанию» — идентификаторы те же, меняется
+        // подпись. По одним идентификаторам такая замена невидима, и список
+        // так и оставался вчерашним (Иван, 2026-08-11).
+        const mark = (d) => d.deviceId + '|' + d.label;
         const snapshot = (list) => ({
             audio: list
                 .filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
-                .map((d) => d.deviceId)
+                .map(mark)
                 .sort()
                 .join(','),
             video: list
                 .filter((d) => d.kind === 'videoinput')
-                .map((d) => d.deviceId)
+                .map(mark)
                 .sort()
                 .join(','),
         });
@@ -833,16 +839,70 @@ const MontemeetRoles = (() => {
                 const was = deviceSnapshot;
                 deviceSnapshot = now;
                 if (!was) return;
-                if (was.audio !== now.audio && typeof refreshMyAudioDevices === 'function') {
-                    await refreshMyAudioDevices();
-                }
-                if (was.video !== now.video && typeof refreshMyVideoDevices === 'function') {
-                    await refreshMyVideoDevices();
-                }
+                if (was.audio !== now.audio) await refreshDeviceList('audio');
+                if (was.video !== now.video) await refreshDeviceList('video');
             }, 900);
         });
     }
+
+    // Сток пересобирает список и восстанавливает выбор по НОМЕРУ строки. Стоит
+    // списку измениться — номер показывает уже на другое устройство, и в поле
+    // оказывается не то, что человек выбирал. Держим выбор за идентификатором.
+    async function refreshDeviceList(kind) {
+        const selects =
+            kind === 'audio'
+                ? ['microphoneSelect', 'speakerSelect', 'initMicrophoneSelect', 'initSpeakerSelect']
+                : ['videoSelect', 'initVideoSelect'];
+        const refresh = kind === 'audio' ? refreshMyAudioDevices : refreshMyVideoDevices;
+        if (typeof refresh !== 'function') return;
+        const chosen = {};
+        for (const id of selects) {
+            const el = document.getElementById(id);
+            if (el && el.value) chosen[id] = el.value;
+        }
+        await refresh();
+        for (const [id, value] of Object.entries(chosen)) {
+            const el = document.getElementById(id);
+            if (el && [...el.options].some((o) => o.value === value)) el.value = value;
+        }
+    }
+
+    // Событие о смене устройств приходит не всегда и не везде, а список нужен
+    // свежим ровно в тот момент, когда его открывают. Поэтому перед показом
+    // настроек и выпадающих меню перечитываем устройства ещё раз.
+    function refreshDevicesOnDemand() {
+        document.addEventListener(
+            'click',
+            (e) => {
+                if (!e.target.closest('#settingsButton, .device-dropdown-toggle, #tabDevicesBtn, #tabAudioBtn')) return;
+                navigator.mediaDevices
+                    ?.enumerateDevices?.()
+                    .then(async (list) => {
+                        const now = {
+                            audio: list
+                                .filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
+                                .map((d) => d.deviceId + '|' + d.label)
+                                .sort()
+                                .join(','),
+                            video: list
+                                .filter((d) => d.kind === 'videoinput')
+                                .map((d) => d.deviceId + '|' + d.label)
+                                .sort()
+                                .join(','),
+                        };
+                        const was = deviceSnapshot;
+                        deviceSnapshot = now;
+                        if (!was) return;
+                        if (was.audio !== now.audio) await refreshDeviceList('audio');
+                        if (was.video !== now.video) await refreshDeviceList('video');
+                    })
+                    .catch(() => {});
+            },
+            true
+        );
+    }
     watchDeviceChanges();
+    refreshDevicesOnDemand();
 
     // перехваты, которые обязаны существовать ДО входа в комнату
     function patchRoomClient() {
