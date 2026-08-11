@@ -714,7 +714,15 @@ class RoomClient {
         for (let peer of Array.from(this.peers.keys()).filter((id) => id == this.peer_id)) {
             let my_peer_info = this.peers.get(peer).peer_info;
             console.log('07.1 ----> My Peer info', my_peer_info);
-            isPresenter = window.localStorage.isReconnected === 'true' ? isPresenter : my_peer_info.peer_presenter;
+            // Montemeet: «да» от сервера сильнее локальной догадки. Сток при
+            // пометке о переподключении полностью игнорировал ответ сервера и
+            // брал своё значение — а оно приходит из параметра адреса, которого
+            // при обычной перезагрузке нет. Из-за этого педагог, перезагрузивший
+            // страницу после обрыва связи (например, при выкладке новой версии),
+            // возвращался в комнату студентом, хотя сервер считал его педагогом
+            // (Иван, 2026-08-11). Защиту стока сохраняем: если сервер роли не
+            // даёт, а до обрыва она была — держим её до выяснения.
+            isPresenter = my_peer_info.peer_presenter || (window.localStorage.isReconnected === 'true' && isPresenter);
             this.peer_info.peer_presenter = isPresenter;
             this.getId('isUserPresenter').innerText = isPresenter;
             window.localStorage.isReconnected = false;
