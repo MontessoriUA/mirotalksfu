@@ -1029,8 +1029,27 @@ function isPeerPresenter() {
     return false;
 }
 
+// Montemeet: имя педагога приходит кукой от кабинета, а не параметром в адресе.
+// Раньше ссылка в адресной строке несла имя, и скопировавший её студент попадал
+// в комнату под именем педагога (Иван, 2026-08-11). Кука привязана к комнате,
+// живёт ровно столько же, сколько пропуск педагога, и гаснет при выходе из
+// кабинета. Прав она не даёт — роль по-прежнему решает сервер.
+function mmNameFromCabinet(roomId) {
+    try {
+        const row = document.cookie
+            .split(';')
+            .map((s) => s.trim())
+            .find((s) => s.startsWith('mm_name='));
+        if (!row) return null;
+        const who = JSON.parse(decodeURIComponent(row.slice('mm_name='.length)));
+        return who && who.r === roomId ? who.n || null : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 function getPeerName() {
-    const name = getQueryParam('name');
+    const name = getQueryParam('name') || mmNameFromCabinet(room_id);
     if (isHtml(name)) {
         console.log('Direct join', { name: 'Invalid name' });
         return 'Invalid name';
