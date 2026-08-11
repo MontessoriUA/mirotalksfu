@@ -800,49 +800,56 @@ const MontemeetRoles = (() => {
     // камеры посреди урока — это ровно тот путь, на котором она отваливалась.
     let deviceWatchDone = false;
     let deviceSnapshot = null;
+    const deviceMark = (d) => d.deviceId + '|' + d.label;
+    const deviceSnap = (list) => ({
+        audio: list
+            .filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
+            .map(deviceMark)
+            .sort()
+            .join(','),
+        video: list
+            .filter((d) => d.kind === 'videoinput')
+            .map(deviceMark)
+            .sort()
+            .join(','),
+    });
+
+    // Перечитать список и, если состав или подписи изменились, пересобрать поля
+    async function checkDevices() {
+        let now;
+        try {
+            now = deviceSnap(await navigator.mediaDevices.enumerateDevices());
+        } catch (e) {
+            return;
+        }
+        const was = deviceSnapshot;
+        deviceSnapshot = now;
+        if (!was) return;
+        if (was.audio !== now.audio) await refreshDeviceList('audio');
+        if (was.video !== now.video) await refreshDeviceList('video');
+    }
     function watchDeviceChanges() {
-        if (deviceWatchDone || !navigator.mediaDevices?.addEventListener) return;
+        if (deviceWatchDone || !navigator.mediaDevices?.enumerateDevices) return;
         deviceWatchDone = true;
-        // Сравниваем не только идентификаторы, но и названия: воткнутая
-        // гарнитура на макбуке часто не добавляет устройство, а лишь переносит
-        // на себя «устройство по умолчанию» — идентификаторы те же, меняется
-        // подпись. По одним идентификаторам такая замена невидима, и список
-        // так и оставался вчерашним (Иван, 2026-08-11).
-        const mark = (d) => d.deviceId + '|' + d.label;
-        const snapshot = (list) => ({
-            audio: list
-                .filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
-                .map(mark)
-                .sort()
-                .join(','),
-            video: list
-                .filter((d) => d.kind === 'videoinput')
-                .map(mark)
-                .sort()
-                .join(','),
-        });
         navigator.mediaDevices
             .enumerateDevices()
-            .then((l) => (deviceSnapshot = snapshot(l)))
+            .then((l) => (deviceSnapshot = deviceSnap(l)))
             .catch(() => {});
         let timer = null;
-        navigator.mediaDevices.addEventListener('devicechange', () => {
+        // событие о смене устройств приходит не во всех браузерах и не на всякую
+        // смену: на маке подключение гарнитуры часто только переносит на неё
+        // «устройство по умолчанию», и события может не быть вовсе
+        navigator.mediaDevices.addEventListener?.('devicechange', () => {
             clearTimeout(timer);
             // системе нужно время доделать переключение, телефону — больше
-            timer = setTimeout(async () => {
-                let now;
-                try {
-                    now = snapshot(await navigator.mediaDevices.enumerateDevices());
-                } catch (e) {
-                    return;
-                }
-                const was = deviceSnapshot;
-                deviceSnapshot = now;
-                if (!was) return;
-                if (was.audio !== now.audio) await refreshDeviceList('audio');
-                if (was.video !== now.video) await refreshDeviceList('video');
-            }, 900);
+            timer = setTimeout(checkDevices, 900);
         });
+        // поэтому не полагаемся на него: раз в несколько секунд смотрим сами.
+        // Перечитывание списка ничего не захватывает и разрешений не просит,
+        // поэтому стоит дёшево; на скрытой вкладке не тратимся вовсе.
+        setInterval(() => {
+            if (document.visibilityState === 'visible') checkDevices();
+        }, 3000);
     }
 
     // Сток пересобирает список и восстанавливает выбор по НОМЕРУ строки. Стоит
@@ -867,36 +874,15 @@ const MontemeetRoles = (() => {
         }
     }
 
-    // Событие о смене устройств приходит не всегда и не везде, а список нужен
-    // свежим ровно в тот момент, когда его открывают. Поэтому перед показом
-    // настроек и выпадающих меню перечитываем устройства ещё раз.
+    // список нужен свежим ровно в тот момент, когда его открывают — не ждём
+    // очередного круга опроса
     function refreshDevicesOnDemand() {
         document.addEventListener(
             'click',
             (e) => {
-                if (!e.target.closest('#settingsButton, .device-dropdown-toggle, #tabDevicesBtn, #tabAudioBtn')) return;
-                navigator.mediaDevices
-                    ?.enumerateDevices?.()
-                    .then(async (list) => {
-                        const now = {
-                            audio: list
-                                .filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
-                                .map((d) => d.deviceId + '|' + d.label)
-                                .sort()
-                                .join(','),
-                            video: list
-                                .filter((d) => d.kind === 'videoinput')
-                                .map((d) => d.deviceId + '|' + d.label)
-                                .sort()
-                                .join(','),
-                        };
-                        const was = deviceSnapshot;
-                        deviceSnapshot = now;
-                        if (!was) return;
-                        if (was.audio !== now.audio) await refreshDeviceList('audio');
-                        if (was.video !== now.video) await refreshDeviceList('video');
-                    })
-                    .catch(() => {});
+                if (e.target.closest?.('#settingsButton, .device-dropdown-toggle, #tabDevicesBtn, #tabAudioBtn')) {
+                    checkDevices();
+                }
             },
             true
         );
