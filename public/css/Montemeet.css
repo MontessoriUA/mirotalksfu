@@ -475,25 +475,35 @@ body.montemeet-concert-pip .montemeet-self-pip {
     }
 }
 
-/* Кнопка входа педагога — в один ряд с «Присоединиться», такой же высоты.
-   Прежняя растянутая полоса с полупрозрачным текстом читалась плохо
-   (Иван, 2026-08-11). На узких экранах ряд переносится, а не сжимается. */
+/* Кнопка входа педагога — слева от «Присоединиться» и один в один с ней по
+   геометрии. Замеры родной кнопки: радиус 0.25em, рамки нет. У нашей радиус
+   обнулялся, а при наведении подскакивал до 10px — стоковые правила для кнопок
+   в этом окне; поэтому закрепляем жёстко и в покое, и под курсором. Белый на
+   тёмно-зелёном горел ярче фиолетовой кнопки и перетягивал внимание студента,
+   так что фон приглушён (Иван, 2026-08-11). На узких экранах ряд переносится. */
 .swal2-actions {
     flex-wrap: wrap;
     gap: 10px;
 }
-.montemeet-signin {
+.montemeet-signin,
+.montemeet-signin:hover,
+.montemeet-signin:focus,
+.montemeet-signin:active {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 9px;
-    background: #fff !important;
+    border: 0 !important;
+    border-radius: 0.25em !important;
     color: #1f2328 !important;
-    border: 1px solid rgba(0, 0, 0, 0.12) !important;
     font-weight: 600;
+    transform: none !important;
+}
+.montemeet-signin {
+    background: #dee2e6 !important;
 }
 .montemeet-signin:hover {
-    background: #f2f4f7 !important;
+    background: #cbd1d8 !important;
 }
 .montemeet-signin[disabled] {
     opacity: 0.6;

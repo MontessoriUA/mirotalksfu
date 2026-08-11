@@ -119,6 +119,25 @@ const MontemeetRoles = (() => {
         },
     };
 
+    // Сервер присылает свой набор флагов кнопок, и слияние кладёт серверное
+    // значение ПОВЕРХ нашего для каждого присланного ключа — а присылает он все
+    // до единого. Наши урезания плиточных кнопок, чата и настроек молча
+    // возвращались сразу после того, как мы их наложили (Иван, 2026-08-11).
+    // Поэтому вклиниваемся в само слияние: наши значения ложатся последними, и
+    // плитки строятся уже с ними, а не со стоковым набором.
+    let studentButtonsOn = false;
+    function guardButtons() {
+        if (typeof mergeConfig !== 'function' || mergeConfig._mm) return;
+        const stock = mergeConfig;
+        mergeConfig = function (current, updated) {
+            const merged = stock(current, updated);
+            patchButtons(BUTTONS_LESSON_BOTH);
+            if (studentButtonsOn) patchButtons(BUTTONS_LESSON_STUDENT);
+            return merged;
+        };
+        mergeConfig._mm = true;
+    }
+
     function patchButtons(patch) {
         if (typeof BUTTONS === 'undefined') return false;
         for (const [section, values] of Object.entries(patch)) {
@@ -714,6 +733,7 @@ const MontemeetRoles = (() => {
             // возвращалось рекламное окно «Поделиться комнатой» (Иван,
             // 2026-08-11).
             const early = setInterval(() => {
+                guardButtons();
                 if (typeof BUTTONS !== 'undefined') patchButtons(BUTTONS_LESSON_BOTH);
                 // Это окно показывается первому вошедшему ещё и по отдельному
                 // флагу, который серверного набора не касается: гасим и его,
@@ -731,7 +751,7 @@ const MontemeetRoles = (() => {
                 } catch (e) {
                     /* настроек ещё нет */
                 }
-            }, 300);
+            }, 150);
             setTimeout(() => clearInterval(early), 20000);
             // pre-join popup: keep refresh / camera / mic / emoji / exit only
             // (Ivan, 2026-08-06: the eye, screen and mirror buttons go away)
@@ -787,6 +807,7 @@ const MontemeetRoles = (() => {
                         document.querySelector('#videoMediaContainer .Camera')
                     ) {
                         if (!(typeof isPresenter !== 'undefined' && isPresenter)) {
+                            studentButtonsOn = true;
                             patchButtons(BUTTONS_LESSON_STUDENT);
                         }
                         clearInterval(studentPoll);
@@ -1095,7 +1116,8 @@ const MontemeetRoles = (() => {
         btn.innerHTML = GOOGLE_ICON + '<span></span>';
         btn.querySelector('span').textContent = mmT(SIGNIN_LABEL);
         btn.addEventListener('click', () => startSignIn(btn));
-        actions.appendChild(btn);
+        // слева от «Присоединиться» (Иван, 2026-08-11)
+        actions.insertBefore(btn, actions.firstChild);
     }
 
     function startSignIn(btn) {
