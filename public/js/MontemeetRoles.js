@@ -850,6 +850,7 @@ const MontemeetRoles = (() => {
         keepDeviceChoice();
         setInterval(() => {
             keepDeviceChoice(); // поля появляются не сразу
+            syncSelectsToLiveCamera();
             if (document.visibilityState === 'visible') checkDevices();
         }, 3000);
     }
@@ -942,6 +943,51 @@ const MontemeetRoles = (() => {
             }).observe(el, { childList: true });
         }
     }
+
+    // Что реально снимает камера — знает только сама дорожка.
+    //
+    // Списки переставляются, номера строк уезжают, обновления приходят от кого
+    // угодно. Поэтому не пытаемся уследить за каждым, а приводим поля к
+    // действительности: спрашиваем у работающей дорожки её устройство и
+    // показываем в настройках и в меню именно его. Тогда картинка и подпись
+    // расходиться не могут (Иван, 2026-08-11).
+    function syncSelectsToLiveCamera() {
+        if (typeof rc === 'undefined' || !rc?.producerLabel || typeof RoomClient === 'undefined') return;
+        const producerId = rc.producerLabel.get(RoomClient.mediaType?.video);
+        const track = producerId && rc.producers?.get?.(producerId)?.track;
+        const deviceId = track?.readyState === 'live' ? track.getSettings?.().deviceId : null;
+        if (!deviceId) return;
+        // микрофона это не касается: там есть строка «по умолчанию», и человек
+        // выбирает именно её, а дорожка вернёт конкретное устройство
+        for (const sid of ['videoSelect', 'initVideoSelect']) {
+            const el = document.getElementById(sid);
+            if (!el || el.value === deviceId) continue;
+            if (![...el.options].some((o) => o.value === deviceId)) continue;
+            el.value = deviceId;
+            stickyChoice.set(sid, deviceId);
+        }
+    }
+
+    // Смена камеры из выпадающего меню посылает синтетическое событие, а сток
+    // сбрасывает выбранное разрешение только для «доверенного». Новая камера
+    // открывалась с разрешением предыдущей — кадр выходил обрезанным и
+    // приближённым (Иван, 2026-08-11). Перехватываем на погружении, до
+    // стокового обработчика, иначе сбрасывать уже поздно.
+    let qualityResetDone = false;
+    function resetQualityOnCameraPick() {
+        if (qualityResetDone) return;
+        qualityResetDone = true;
+        document.addEventListener(
+            'change',
+            (e) => {
+                if (e.target?.id !== 'videoSelect') return;
+                const q = document.getElementById('videoQuality');
+                if (q) q.selectedIndex = 0;
+            },
+            true
+        );
+    }
+    resetQualityOnCameraPick();
 
     // список нужен свежим ровно в тот момент, когда его открывают — не ждём
     // очередного круга опроса
