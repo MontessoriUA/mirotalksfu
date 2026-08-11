@@ -10548,10 +10548,12 @@ class RoomClient {
     handleAudioVolume(data) {
         //console.log('Active speaker', data);
 
-        const { peer_id, peer_name, audioVolume } = data;
+        const { peer_id, peer_name, audioVolume, top } = data;
 
-        // Montemeet: activity heartbeat for the concert silence watchdog
-        if (typeof MontemeetLayout !== 'undefined') MontemeetLayout.noteActivity(peer_id, audioVolume);
+        // Montemeet: activity heartbeat for the concert silence watchdog.
+        // top отмечает самого громкого из пришедшей тройки — только он вправе
+        // менять того, кого показываем крупно
+        if (typeof MontemeetLayout !== 'undefined') MontemeetLayout.noteActivity(peer_id, audioVolume, top !== false);
         const audioVolumeTmp = audioVolume * 10; //10-100
         const audioColorTmp = this.getAudioVolumeColor(audioVolumeTmp);
 

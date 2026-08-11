@@ -329,11 +329,17 @@ const MontemeetLayout = (() => {
     // mediasoup emits dominantspeaker only on CHANGE, so when the same person
     // speaks again after a silence reset, no new dominant event ever arrives —
     // the audio-level stream is what re-elects them.
-    function noteActivity(peer_id, volume) {
+    // top === false — это не самый громкий из пришедшей тройки: такой годится
+    // для кружочков говорящих, но не для смены того, кого показываем крупно,
+    // иначе кандидаты чередуются и выдержка никогда не срабатывает.
+    function noteActivity(peer_id, volume, top = true) {
         // отметку о речи ведём всегда, а не только в авто-режимах: по ней
         // выбирается активный якорь, когда презентеров в комнате двое
-        if (peer_id && (volume ?? 0) >= (auto?.minVolume ?? 2)) lastSpokeAt.set(peer_id, Date.now());
-        if (!auto) return;
+        if (peer_id && (volume ?? 0) >= (auto?.minVolume ?? 2)) {
+            lastSpokeAt.set(peer_id, Date.now());
+            noteSpeakingCircle(peer_id);
+        }
+        if (!auto || !top) return;
         if ((volume ?? 0) < auto.minVolume) return;
         lastActivityTs = Date.now();
         if (peer_id) holdCandidate(peer_id);
@@ -985,6 +991,104 @@ const MontemeetLayout = (() => {
         // Показать кого-то надо сразу: восстановленный режим, при котором на
         // экране сетка до первой реплики, читается как поломка (Иван, 2026-08-10)
         setSpeakerViewTo(viewCycle().includes(saved) ? saved : 'sticky');
+    }
+
+    // ---------- кружочки говорящих (телефон, студент на групповом уроке) ----------
+    // Студент смотрит на педагога крупно, и одноклассник, когда заговорил,
+    // выезжает из-за левой грани маленьким кружком, а замолчав — уходит туда
+    // же. Одновременно их может быть до трёх (Иван, 2026-08-09).
+    const CIRCLE_MAX = 3;
+    const CIRCLE_HOLD_MS = 1600; // сколько кружок держится после последнего звука
+    const CIRCLE_LEAVE_MS = 400; // столько занимает уход за грань экрана
+    const speakingUntil = new Map(); // peerId -> до какого времени показывать
+    let circlesTimer = null;
+
+    function circlesAllowed() {
+        if (typeof rc === 'undefined' || !rc?.isMobileDevice) return false;
+        if (!anchorMode || concertRoom || soloActive) return false;
+        if (isHost()) return false; // у педагога для этого свои режимы вида
+        // кружочки существуют поверх КРУПНОГО видео; если на экране сетка,
+        // говорящий и так виден своей плиткой
+        return current() !== null;
+    }
+
+    function noteSpeakingCircle(peerId) {
+        if (!peerId || !circlesAllowed()) return;
+        if (peerId === selfId() || peerId === anchorPeerId()) return;
+        speakingUntil.set(peerId, Date.now() + CIRCLE_HOLD_MS);
+        syncCircles();
+    }
+
+    // лицо кружка: та же дорожка, что и в основной плитке (лишнего трафика
+    // нет — поток один), иначе аватар, иначе первая буква имени
+    function circleFace(peerId) {
+        const src = rc.getVideoElementByPeerId?.(peerId)?.srcObject;
+        if (src) {
+            const v = document.createElement('video');
+            v.autoplay = true;
+            v.muted = true; // звук идёт из основной плитки, здесь он лишний
+            v.playsInline = true;
+            v.srcObject = src;
+            return v;
+        }
+        const avatar = document.getElementById(peerId + '__videoOff')?.querySelector('img');
+        if (avatar?.src) {
+            const i = document.createElement('img');
+            i.src = avatar.src;
+            i.alt = '';
+            return i;
+        }
+        const span = document.createElement('span');
+        const name = rc.peers?.get(peerId)?.peer_info?.peer_name || '';
+        span.textContent = (name.trim()[0] || '?').toUpperCase();
+        return span;
+    }
+
+    function syncCircles() {
+        const now = Date.now();
+        for (const [id, until] of speakingUntil) if (until <= now) speakingUntil.delete(id);
+        const wanted = circlesAllowed()
+            ? [...speakingUntil.entries()]
+                  .sort((a, b) => b[1] - a[1]) // заговорившие позже — выше
+                  .slice(0, CIRCLE_MAX)
+                  .map(([id]) => id)
+            : [];
+        let box = document.getElementById('montemeetCircles');
+        if (!wanted.length && !box) return;
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'montemeetCircles';
+            box.className = 'montemeet-circles';
+            document.body.appendChild(box);
+        }
+        for (const el of [...box.children]) {
+            const keep = wanted.includes(el.dataset.peer);
+            if (keep) {
+                delete el.dataset.leavingAt; // заговорил снова, пока уезжал
+                el.classList.add('is-in');
+            } else if (!el.dataset.leavingAt) {
+                el.dataset.leavingAt = String(now);
+                el.classList.remove('is-in');
+            } else if (now - Number(el.dataset.leavingAt) > CIRCLE_LEAVE_MS) {
+                el.remove();
+            }
+        }
+        for (const id of wanted) {
+            if (box.querySelector(`[data-peer="${id}"]`)) continue;
+            const el = document.createElement('div');
+            el.className = 'montemeet-circle';
+            el.dataset.peer = id;
+            el.appendChild(circleFace(id));
+            box.appendChild(el);
+            requestAnimationFrame(() => el.classList.add('is-in'));
+        }
+        const busy = speakingUntil.size > 0 || box.children.length > 0;
+        if (busy && !circlesTimer) circlesTimer = setInterval(syncCircles, 250);
+        if (!busy && circlesTimer) {
+            clearInterval(circlesTimer);
+            circlesTimer = null;
+            box.remove();
+        }
     }
 
     (async () => {

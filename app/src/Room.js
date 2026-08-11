@@ -265,7 +265,11 @@ module.exports = class Room {
         log.debug('Start audioLevelObserver for signaling active speaker...');
 
         this.audioLevelObserver = await this.router.createAudioLevelObserver({
-            maxEntries: 1,
+            // Montemeet: до трёх записей вместо одной — по ним студент видит
+            // кружочки одновременно говорящих одноклассников. Выбор того, кого
+            // показывать крупно, по-прежнему идёт только по самому громкому:
+            // он приходит с пометкой top (Иван, 2026-08-11).
+            maxEntries: 3,
             threshold: -70,
             interval: 100,
         });
@@ -287,10 +291,10 @@ module.exports = class Room {
             if (Date.now() > this.audioLastUpdateTime + 100) {
                 this.audioLastUpdateTime = Date.now();
 
-                const { producer, volume } = volumes[0];
-                const audioVolume = Math.round(Math.pow(10, volume / 70) * 10); // Scale volume to 1-10
-
-                if (audioVolume > 1) {
+                // самый громкий идёт первым — его и помечаем как top
+                volumes.forEach(({ producer, volume }, index) => {
+                    const audioVolume = Math.round(Math.pow(10, volume / 70) * 10); // Scale volume to 1-10
+                    if (audioVolume <= 1) return;
                     this.peers.forEach((peer) => {
                         const { id, peer_audio, peer_name } = peer;
                         peer.producers.forEach((peerProducer) => {
@@ -299,6 +303,7 @@ module.exports = class Room {
                                     peer_id: id,
                                     peer_name: peer_name,
                                     audioVolume: audioVolume,
+                                    top: index === 0,
                                 };
                                 // log.debug('Sending audio volume', data);
                                 this.sendToAll('audioVolume', data);
@@ -306,7 +311,7 @@ module.exports = class Room {
                             }
                         });
                     });
-                }
+                });
             }
         } catch (error) {
             log.error('Error sending active speaker volume', error.message);
