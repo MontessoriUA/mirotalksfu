@@ -518,8 +518,9 @@ async function runGroupSpeakerScenario() {
         });
     }
 
-    await clickCycle(teacher); // sticky → auto
-    await clickCycle(teacher); // auto → grid (unpins)
+    // Сколько шагов до сетки — зависит от админки: с выключенным «Авто» режимов
+    // два, а не три. Поэтому доходим до сетки, а не отсчитываем клики.
+    for (let i = 0; i < 4 && (await viewOf(teacher)) !== 'grid'; i++) await clickCycle(teacher);
     await delay(1500);
     const afterGridClick = await pinnedOn(teacher);
 
