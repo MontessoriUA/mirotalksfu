@@ -882,13 +882,26 @@ const MontemeetRoles = (() => {
             let list = devices.filter((d) => d.kind === devKind);
             if (devKind === 'videoinput' && typeof mmDedupeCameras === 'function') list = mmDedupeCameras(devices);
             if (!list.length) continue;
-            const chosen = els.map((el) => el.value);
-            els.forEach((el) => (el.innerHTML = ''));
-            for (const d of list) await addChild(d, els);
-            // выбор держим за устройством, а не за строкой
-            els.forEach((el, i) => {
-                if ([...el.options].some((o) => o.value === chosen[i])) el.value = chosen[i];
-            });
+            for (const el of els) {
+                const chosen = el.value;
+                // Порядок сохраняем прежний: уже знакомые устройства остаются на
+                // своих местах, новые дописываются в конец. Система выдаёт их в
+                // произвольном порядке и любит поднимать активное наверх — от
+                // этого список перетасовывался на глазах (Иван, 2026-08-11).
+                const seen = [...el.options].map((o) => o.value);
+                const ordered = [
+                    ...seen.map((v) => list.find((d) => d.deviceId === v)).filter(Boolean),
+                    ...list.filter((d) => !seen.includes(d.deviceId)),
+                ];
+                // Собираем пункты отдельно и подменяем разом: если чистить живое
+                // поле, между очисткой и восстановлением выбора оно на миг пустое
+                // — и меню, построенное в этот момент, ставит галочку не туда.
+                const spare = document.createElement('select');
+                for (const d of ordered) await addChild(d, [spare]);
+                el.replaceChildren(...spare.children);
+                // выбор держим за устройством, а не за номером строки
+                if ([...el.options].some((o) => o.value === chosen)) el.value = chosen;
+            }
         }
     }
 
