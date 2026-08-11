@@ -847,7 +847,9 @@ const MontemeetRoles = (() => {
         // поэтому не полагаемся на него: раз в несколько секунд смотрим сами.
         // Перечитывание списка ничего не захватывает и разрешений не просит,
         // поэтому стоит дёшево; на скрытой вкладке не тратимся вовсе.
+        keepDeviceChoice();
         setInterval(() => {
+            keepDeviceChoice(); // поля появляются не сразу
             if (document.visibilityState === 'visible') checkDevices();
         }, 3000);
     }
@@ -902,6 +904,42 @@ const MontemeetRoles = (() => {
                 // выбор держим за устройством, а не за номером строки
                 if ([...el.options].some((o) => o.value === chosen)) el.value = chosen;
             }
+        }
+    }
+
+    // Выбор держится за УСТРОЙСТВОМ, кто бы список ни пересобрал.
+    //
+    // Стоковое обновление запоминает номер строки и возвращает его после
+    // пересборки. Система же выдаёт устройства в произвольном порядке и любит
+    // поднимать активное наверх — и тот же номер показывает уже на другую
+    // камеру. Отсюда и расхождение: в настройках выбрана одна, галочка в
+    // выпадающем списке стоит на другой (Иван, 2026-08-11). Бороться с
+    // перестановками бесполезно, они системные; поэтому запоминаем сам выбор и
+    // возвращаем его на место каждый раз, когда список поменялся.
+    const stickyChoice = new Map(); // поле -> выбранное устройство
+    const DEVICE_SELECTS = [
+        'videoSelect',
+        'microphoneSelect',
+        'speakerSelect',
+        'initVideoSelect',
+        'initMicrophoneSelect',
+        'initSpeakerSelect',
+    ];
+    function keepDeviceChoice() {
+        for (const id of DEVICE_SELECTS) {
+            const el = document.getElementById(id);
+            if (!el || el.dataset.mmSticky) continue;
+            el.dataset.mmSticky = '1';
+            if (el.value) stickyChoice.set(id, el.value);
+            // выбор человека — единственный источник правды
+            el.addEventListener('change', () => {
+                if (el.value) stickyChoice.set(id, el.value);
+            });
+            new MutationObserver(() => {
+                const want = stickyChoice.get(id);
+                if (!want || el.value === want) return;
+                if ([...el.options].some((o) => o.value === want)) el.value = want;
+            }).observe(el, { childList: true });
         }
     }
 
