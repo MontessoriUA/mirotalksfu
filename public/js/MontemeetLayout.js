@@ -628,8 +628,26 @@ const MontemeetLayout = (() => {
         if (typeof rc === 'undefined') return;
         if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // the teacher pinned someone by hand — obey
-        // режим включили раньше, чем построились плитки — добираем кандидата
-        if (dom === null && seedPending) {
+        // Демонстрация экрана — осознанное «смотрите сюда». Забирать вид у
+        // говорящего она не должна (экран показывается вместо его камеры, когда
+        // говорит сам автор), но если говорить некому — а на уроке все обычно
+        // сидят с выключенными микрофонами — крупным становится она
+        // (Иван, 2026-08-11).
+        if (dom === null && !manualPinActive()) {
+            const screenEl = anyRemoteScreenVideo();
+            const owner = (screenEl?.getAttribute('volumeBar') || '').replace(/___pVolume$/, '');
+            if (owner && owner !== selfId()) {
+                dom = lastDom = owner;
+                seedPending = false;
+                lastActivityTs = Date.now();
+            }
+        }
+        // «Липкий» вид никогда не оставляет экран пустым: режим включили раньше,
+        // чем построились плитки, никто ещё не говорил, или крупное видео
+        // исчезло вместе с законченной демонстрацией — во всех случаях
+        // показываем кого-то, иначе кнопка обещает говорящего крупно, а на
+        // экране сетка (Иван, 2026-08-11).
+        if (dom === null && (seedPending || (speakerView === 'sticky' && !rc.isVideoPinned))) {
             const seed = seedDom();
             if (seed) {
                 seedPending = false;

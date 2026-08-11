@@ -3329,7 +3329,18 @@ class RoomClient {
                 this.popupPeerInfo(p.id, this.peer_info);
                 this.checkPeerInfoStatus(this.peer_info);
 
-                if (isScreen && this.videoMediaContainer.childElementCount > 1) pn.click();
+                // Montemeet: в наших комнатах раскладкой распоряжается её владелец.
+                // Стоковое самозакрепление своей демонстрации спорило с якорем:
+                // у студента уже закреплён педагог, и повторное нажатие выдавало
+                // ему предупреждение «уже закреплено другое видео» (Иван,
+                // 2026-08-11).
+                if (
+                    isScreen &&
+                    this.videoMediaContainer.childElementCount > 1 &&
+                    !(typeof MontemeetLayout !== 'undefined' && MontemeetLayout.managedRoom())
+                ) {
+                    pn.click();
+                }
 
                 if (!this.isMobileDevice) {
                     this.setTippy(pn.id, 'Toggle Pin', 'bottom');
