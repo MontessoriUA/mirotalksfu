@@ -700,6 +700,30 @@ async function initEnumerateVideoDevices() {
         });
 }
 
+// Montemeet: телефон отдаёт по несколько записей на одну физическую камеру
+// (разные режимы одного сенсора) — в списке получались четыре «камеры» вместо
+// двух, и переключение могло уходить на дубль той же. Оставляем по одной записи
+// на сторону съёмки, как это делают Meet и Zoom (Иван, 2026-08-09). Вынесено
+// наверх: этим же пользуется пересборка списков при смене устройств.
+function mmDedupeCameras(devices) {
+    const seenSide = new Set();
+    const sideOf = (label) => {
+        const l = String(label || '').toLowerCase();
+        if (/front|user|фронт|передн/.test(l)) return 'front';
+        if (/back|rear|environment|задн|тыл/.test(l)) return 'back';
+        return null;
+    };
+    const all = devices.filter((d) => d.kind === 'videoinput');
+    const sided = all.filter((d) => sideOf(d.label));
+    // порядок сохраняем: первым идёт основной сенсор стороны
+    return (sided.length >= 2 ? sided : all).filter((d) => {
+        const key = sideOf(d.label) || d.groupId || d.deviceId;
+        if (seenSide.has(key)) return false;
+        seenSide.add(key);
+        return true;
+    });
+}
+
 async function enumerateVideoDevices(stream) {
     console.log('02 ----> Get Video Devices');
 
@@ -709,30 +733,7 @@ async function enumerateVideoDevices(stream) {
     await navigator.mediaDevices
         .enumerateDevices()
         .then((devices) => {
-            // Montemeet: телефон отдаёт по несколько записей на одну физическую
-            // камеру (разные режимы одного сенсора) — в списке получались четыре
-            // «камеры» вместо двух, и переключение могло уходить на дубль той же.
-            // Оставляем по одной записи на группу устройств, как это делают
-            // Meet и Zoom (Иван, 2026-08-09).
-            // Группируем по стороне съёмки: на телефонах несколько сенсоров с
-            // одной стороны (основной, ультраширокий, теле) — человеку нужна
-            // «передняя» и «задняя», как в Meet и Zoom. Порядок сохраняем: первым
-            // идёт основной сенсор стороны.
-            const seenSide = new Set();
-            const sideOf = (label) => {
-                const l = String(label || '').toLowerCase();
-                if (/front|user|фронт|передн/.test(l)) return 'front';
-                if (/back|rear|environment|задн|тыл/.test(l)) return 'back';
-                return null;
-            };
-            const all = devices.filter((d) => d.kind === 'videoinput');
-            const sided = all.filter((d) => sideOf(d.label));
-            const cams = (sided.length >= 2 ? sided : all).filter((d) => {
-                const key = sideOf(d.label) || d.groupId || d.deviceId;
-                if (seenSide.has(key)) return false;
-                seenSide.add(key);
-                return true;
-            });
+            const cams = mmDedupeCameras(devices);
             return cams.forEach(async (device) => {
                 let el,
                     eli = null;

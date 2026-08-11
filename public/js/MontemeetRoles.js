@@ -825,8 +825,8 @@ const MontemeetRoles = (() => {
         const was = deviceSnapshot;
         deviceSnapshot = now;
         if (!was) return;
-        if (was.audio !== now.audio) await refreshDeviceList('audio');
-        if (was.video !== now.video) await refreshDeviceList('video');
+        if (was.audio !== now.audio) await rebuildDeviceSelects('audio');
+        if (was.video !== now.video) await rebuildDeviceSelects('video');
     }
     function watchDeviceChanges() {
         if (deviceWatchDone || !navigator.mediaDevices?.enumerateDevices) return;
@@ -852,25 +852,43 @@ const MontemeetRoles = (() => {
         }, 3000);
     }
 
-    // Сток пересобирает список и восстанавливает выбор по НОМЕРУ строки. Стоит
-    // списку измениться — номер показывает уже на другое устройство, и в поле
-    // оказывается не то, что человек выбирал. Держим выбор за идентификатором.
-    async function refreshDeviceList(kind) {
-        const selects =
-            kind === 'audio'
-                ? ['microphoneSelect', 'speakerSelect', 'initMicrophoneSelect', 'initSpeakerSelect']
-                : ['videoSelect', 'initVideoSelect'];
-        const refresh = kind === 'audio' ? refreshMyAudioDevices : refreshMyVideoDevices;
-        if (typeof refresh !== 'function') return;
-        const chosen = {};
-        for (const id of selects) {
-            const el = document.getElementById(id);
-            if (el && el.value) chosen[id] = el.value;
+    // Пересобираем поля выбора САМИ, из одного лишь перечня устройств.
+    //
+    // Стоковое обновление сначала заново запрашивает микрофон, и это дважды
+    // подводит. В Safari такой запрос посреди звонка не проходит: флаг «звук
+    // разрешён» гаснет, а вместе с ним навсегда отключаются и все последующие
+    // обновления — список так и остаётся тем, что был на входе (Иван,
+    // 2026-08-11). А ещё сток восстанавливает выбор по НОМЕРУ строки: стоит
+    // списку измениться — и номер показывает уже на другое устройство.
+    // Перечень устройств никакого захвата не требует и разрешений не просит.
+    async function rebuildDeviceSelects(kind) {
+        if (typeof addChild !== 'function') return;
+        let devices;
+        try {
+            devices = await navigator.mediaDevices.enumerateDevices();
+        } catch (e) {
+            return;
         }
-        await refresh();
-        for (const [id, value] of Object.entries(chosen)) {
-            const el = document.getElementById(id);
-            if (el && [...el.options].some((o) => o.value === value)) el.value = value;
+        const groups =
+            kind === 'audio'
+                ? [
+                      ['audioinput', ['microphoneSelect', 'initMicrophoneSelect']],
+                      ['audiooutput', ['speakerSelect', 'initSpeakerSelect']],
+                  ]
+                : [['videoinput', ['videoSelect', 'initVideoSelect']]];
+        for (const [devKind, ids] of groups) {
+            const els = ids.map((id) => document.getElementById(id)).filter(Boolean);
+            if (!els.length) continue;
+            let list = devices.filter((d) => d.kind === devKind);
+            if (devKind === 'videoinput' && typeof mmDedupeCameras === 'function') list = mmDedupeCameras(devices);
+            if (!list.length) continue;
+            const chosen = els.map((el) => el.value);
+            els.forEach((el) => (el.innerHTML = ''));
+            for (const d of list) await addChild(d, els);
+            // выбор держим за устройством, а не за строкой
+            els.forEach((el, i) => {
+                if ([...el.options].some((o) => o.value === chosen[i])) el.value = chosen[i];
+            });
         }
     }
 
