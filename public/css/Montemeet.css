@@ -475,26 +475,27 @@ body.montemeet-concert-pip .montemeet-self-pip {
     }
 }
 
-/* Кнопка входа педагога на экране входа в комнату: неброская строка под полем
-   имени — студенту она ни к чему, педагогу видна (Иван, 2026-08-11) */
+/* Кнопка входа педагога — в один ряд с «Присоединиться», такой же высоты.
+   Прежняя растянутая полоса с полупрозрачным текстом читалась плохо
+   (Иван, 2026-08-11). На узких экранах ряд переносится, а не сжимается. */
+.swal2-actions {
+    flex-wrap: wrap;
+    gap: 10px;
+}
 .montemeet-signin {
-    display: block;
-    width: 100%;
-    margin: 10px 0 0;
-    padding: 9px 12px;
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 10px;
-    color: inherit;
-    font-size: 13.5px;
-    cursor: pointer;
-    opacity: 0.85;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    background: #fff !important;
+    color: #1f2328 !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+    font-weight: 600;
 }
 .montemeet-signin:hover {
-    opacity: 1;
-    border-color: rgba(255, 255, 255, 0.7);
+    background: #f2f4f7 !important;
 }
 .montemeet-signin[disabled] {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: default;
 }

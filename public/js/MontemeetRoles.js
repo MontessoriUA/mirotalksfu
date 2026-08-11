@@ -85,6 +85,12 @@ const MontemeetRoles = (() => {
         whiteboard: {
             whiteboardLockButton: false,
         },
+        popup: {
+            // окно «Поделиться комнатой» с QR-кодом выскакивало первому вошедшему:
+            // ссылку педагог берёт в кабинете, а студенту делиться незачем
+            // (Иван, 2026-08-11)
+            shareRoomPopup: false,
+        },
     };
     const BUTTONS_LESSON_STUDENT = {
         settings: {
@@ -703,9 +709,29 @@ const MontemeetRoles = (() => {
 
             // role-independent BUTTONS overrides — as early as BUTTONS exists, so
             // tiles are built without the trimmed buttons at all (concerts included)
+            // Накладываем ПОВТОРНО, а не один раз: сервер отдаёт свой набор
+            // флагов и перезаписывает им наш уже после первого прохода — так
+            // возвращалось рекламное окно «Поделиться комнатой» (Иван,
+            // 2026-08-11).
             const early = setInterval(() => {
-                if (typeof BUTTONS !== 'undefined' && patchButtons(BUTTONS_LESSON_BOTH)) clearInterval(early);
-            }, 100);
+                if (typeof BUTTONS !== 'undefined') patchButtons(BUTTONS_LESSON_BOTH);
+                // Это окно показывается первому вошедшему ещё и по отдельному
+                // флагу, который серверного набора не касается: гасим и его,
+                // вместе с сохранённой настройкой «делиться при входе».
+                try {
+                    if (notify !== false) notify = false;
+                } catch (e) {
+                    /* Room.js ещё не выполнился */
+                }
+                try {
+                    if (localStorageSettings && localStorageSettings.share_on_join) {
+                        localStorageSettings.share_on_join = false;
+                        lS.setSettings(localStorageSettings);
+                    }
+                } catch (e) {
+                    /* настроек ещё нет */
+                }
+            }, 300);
             setTimeout(() => clearInterval(early), 20000);
             // pre-join popup: keep refresh / camera / mic / emoji / exit only
             // (Ivan, 2026-08-06: the eye, screen and mirror buttons go away)
@@ -1050,16 +1076,26 @@ const MontemeetRoles = (() => {
         document.querySelector('.swal2-confirm')?.click();
     }
 
+    // та же иконка, что на кнопке входа в кабинете
+    const GOOGLE_ICON =
+        '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>' +
+        '<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>' +
+        '<path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/>' +
+        '<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>';
+
     function addSignInButton() {
-        const input = nameInput();
-        if (!input || document.getElementById('montemeetSignIn')) return;
+        const actions = document.querySelector('.swal2-actions');
+        if (!actions || !nameInput() || document.getElementById('montemeetSignIn')) return;
         const btn = document.createElement('button');
         btn.id = 'montemeetSignIn';
         btn.type = 'button';
-        btn.className = 'montemeet-signin';
-        btn.textContent = mmT(SIGNIN_LABEL);
+        // swal2-styled даёт ту же высоту и отступы, что у «Присоединиться»
+        btn.className = 'swal2-styled montemeet-signin';
+        btn.innerHTML = GOOGLE_ICON + '<span></span>';
+        btn.querySelector('span').textContent = mmT(SIGNIN_LABEL);
         btn.addEventListener('click', () => startSignIn(btn));
-        input.insertAdjacentElement('afterend', btn);
+        actions.appendChild(btn);
     }
 
     function startSignIn(btn) {
@@ -1081,8 +1117,19 @@ const MontemeetRoles = (() => {
                     /* окно уже закрыто */
                 }
                 btn.remove();
+                // Связь с сервером устанавливается ПРИ ЗАГРУЗКЕ страницы, а не
+                // при входе в комнату: к моменту входа в аккаунт сокет уже
+                // подключён анонимно, и сервер по-прежнему видит гостя — педагог
+                // попадал в зал ожидания собственного урока (Иван, 2026-08-11).
+                // Поэтому перезагружаем: кабинет уже выдал имя и пропуск, так что
+                // страница вернётся сразу в комнату и уже педагогом.
+                if (who.owns) {
+                    location.reload();
+                    return;
+                }
+                // не своя комната: пропуска нет, входим участником под своим именем
                 fillName(who.name);
-                joinNow(); // вошёл — значит хочет в комнату, а не обратно к полю
+                joinNow();
                 return;
             }
             // окно закрыли, ничего не выбрав, или прошло слишком много времени
