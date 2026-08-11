@@ -875,6 +875,29 @@ const MontemeetRoles = (() => {
         if (was.audio !== now.audio) await rebuildDeviceSelects('audio');
         if (was.video !== now.video) await rebuildDeviceSelects('video');
     }
+    // Выключенный микрофон на экране входа блокировал ОБА списка — и микрофонов,
+    // и динамиков. Выбрать наушники, входя с выключенным микрофоном, было
+    // нельзя, а динамики к микрофону и вовсе отношения не имеют (Иван,
+    // 2026-08-11). Выбор здесь ничего не открывает, он только запоминается, так
+    // что запирать его не за чем.
+    function unlockInitSelects() {
+        for (const id of ['initMicrophoneSelect', 'initSpeakerSelect']) {
+            const el = document.getElementById(id);
+            if (el && el.disabled) el.disabled = false;
+        }
+        if (typeof checkInitAudio !== 'function' || checkInitAudio._mm) return;
+        const stock = checkInitAudio;
+        checkInitAudio = function (allowed) {
+            const r = stock(allowed);
+            for (const id of ['initMicrophoneSelect', 'initSpeakerSelect']) {
+                const el = document.getElementById(id);
+                if (el) el.disabled = false;
+            }
+            return r;
+        };
+        checkInitAudio._mm = true;
+    }
+
     function watchDeviceChanges() {
         if (deviceWatchDone || !navigator.mediaDevices?.enumerateDevices) return;
         deviceWatchDone = true;
@@ -897,6 +920,7 @@ const MontemeetRoles = (() => {
         keepDeviceChoice();
         setInterval(() => {
             keepDeviceChoice(); // поля появляются не сразу
+            unlockInitSelects();
             syncSelectsToLiveCamera();
             offerTeacherSignIn();
             if (document.visibilityState === 'visible') checkDevices();
@@ -966,6 +990,11 @@ const MontemeetRoles = (() => {
     // перестановками бесполезно, они системные; поэтому запоминаем сам выбор и
     // возвращаем его на место каждый раз, когда список поменялся.
     const stickyChoice = new Map(); // поле -> выбранное устройство
+    const INIT_TWIN = {
+        initVideoSelect: 'videoSelect',
+        initMicrophoneSelect: 'microphoneSelect',
+        initSpeakerSelect: 'speakerSelect',
+    };
     const DEVICE_SELECTS = [
         'videoSelect',
         'microphoneSelect',
@@ -983,6 +1012,12 @@ const MontemeetRoles = (() => {
             // выбор человека — единственный источник правды
             el.addEventListener('change', () => {
                 if (el.value) stickyChoice.set(id, el.value);
+                // выбор на экране входа сток переносит в комнатное поле по
+                // НОМЕРУ строки и молча — запоминаем и его, иначе наш сторож
+                // вернёт то, что было до выбора
+                const twin = INIT_TWIN[id];
+                const other = twin && document.getElementById(twin);
+                if (other?.value) stickyChoice.set(twin, other.value);
             });
             new MutationObserver(() => {
                 const want = stickyChoice.get(id);
@@ -1052,6 +1087,22 @@ const MontemeetRoles = (() => {
     }
     watchDeviceChanges();
     refreshDevicesOnDemand();
+
+    // Старые ссылки ещё носят имя в адресе, и скопированная из адресной строки
+    // такая ссылка приводит студента в комнату под чужим именем. Имя к этому
+    // моменту уже прочитано, поэтому просто убираем его из адреса — дальше
+    // копировать нечего (Иван, 2026-08-11).
+    function stripNameFromUrl() {
+        try {
+            const url = new URL(location.href);
+            if (!url.searchParams.has('name')) return;
+            url.searchParams.delete('name');
+            history.replaceState(history.state, '', url.toString());
+        } catch (e) {
+            /* адрес трогать не обязательно */
+        }
+    }
+    document.addEventListener('DOMContentLoaded', stripNameFromUrl);
 
     // ---------- вход педагога прямо из комнаты ----------
     //

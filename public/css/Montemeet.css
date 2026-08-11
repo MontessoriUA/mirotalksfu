@@ -498,7 +498,7 @@ body.montemeet-concert-pip .montemeet-self-pip {
     color: #1f2328 !important;
     /* под курсором надпись жирнела от стокового правила — текст не трогаем
        вовсе, меняется только фон (Иван, 2026-08-11) */
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     font-size: 1em !important;
     letter-spacing: normal !important;
     transform: none !important;
@@ -508,6 +508,10 @@ body.montemeet-concert-pip .montemeet-self-pip {
 }
 .montemeet-signin:hover {
     background: #fff !important;
+}
+/* родная кнопка окна входа — той же жирности, что наша (Иван, 2026-08-11) */
+.init-modal-size .swal2-confirm {
+    font-weight: 700 !important;
 }
 .montemeet-signin[disabled] {
     opacity: 0.6;
