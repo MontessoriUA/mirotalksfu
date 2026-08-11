@@ -791,6 +791,59 @@ const MontemeetRoles = (() => {
     disableSurvey();
     document.addEventListener('DOMContentLoaded', disableSurvey);
 
+    // Наушники, воткнутые посреди урока, в списке микрофонов не появлялись.
+    // Стоковый обработчик смены устройств живёт внутри настройки быстрых
+    // выпадающих меню: на телефоне она не выполняется вовсе, а на компьютере
+    // требует, чтобы на месте были все её кнопки (Иван, 2026-08-11). Ставим
+    // свой, независимый — и трогаем только то, что действительно поменялось:
+    // перечитывать камеру ради воткнутой гарнитуры незачем, лишний захват
+    // камеры посреди урока — это ровно тот путь, на котором она отваливалась.
+    let deviceWatchDone = false;
+    let deviceSnapshot = null;
+    function watchDeviceChanges() {
+        if (deviceWatchDone || !navigator.mediaDevices?.addEventListener) return;
+        deviceWatchDone = true;
+        const snapshot = (list) => ({
+            audio: list
+                .filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
+                .map((d) => d.deviceId)
+                .sort()
+                .join(','),
+            video: list
+                .filter((d) => d.kind === 'videoinput')
+                .map((d) => d.deviceId)
+                .sort()
+                .join(','),
+        });
+        navigator.mediaDevices
+            .enumerateDevices()
+            .then((l) => (deviceSnapshot = snapshot(l)))
+            .catch(() => {});
+        let timer = null;
+        navigator.mediaDevices.addEventListener('devicechange', () => {
+            clearTimeout(timer);
+            // системе нужно время доделать переключение, телефону — больше
+            timer = setTimeout(async () => {
+                let now;
+                try {
+                    now = snapshot(await navigator.mediaDevices.enumerateDevices());
+                } catch (e) {
+                    return;
+                }
+                const was = deviceSnapshot;
+                deviceSnapshot = now;
+                if (!was) return;
+                if (was.audio !== now.audio && typeof refreshMyAudioDevices === 'function') {
+                    await refreshMyAudioDevices();
+                }
+                if (was.video !== now.video && typeof refreshMyVideoDevices === 'function') {
+                    await refreshMyVideoDevices();
+                }
+            }, 900);
+        });
+    }
+    watchDeviceChanges();
+
     // перехваты, которые обязаны существовать ДО входа в комнату
     function patchRoomClient() {
         autoRenameOnConflict();
