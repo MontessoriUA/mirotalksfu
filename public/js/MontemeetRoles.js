@@ -851,6 +851,7 @@ const MontemeetRoles = (() => {
         setInterval(() => {
             keepDeviceChoice(); // поля появляются не сразу
             syncSelectsToLiveCamera();
+            offerTeacherSignIn();
             if (document.visibilityState === 'visible') checkDevices();
         }, 3000);
     }
@@ -1004,6 +1005,111 @@ const MontemeetRoles = (() => {
     }
     watchDeviceChanges();
     refreshDevicesOnDemand();
+
+    // ---------- вход педагога прямо из комнаты ----------
+    //
+    // Ссылка у педагога и студента одна и та же, и педагог заходит с любой
+    // машины: из класса, из дому, с чужого компьютера. Просить его сперва
+    // открыть кабинет — лишний шаг, который он забудет. Поэтому на экране
+    // входа спрашиваем кабинет «кто я тут», и если это педагог своей комнаты —
+    // просто подставляем имя. Если он не вошёл, показываем одну неброскую
+    // кнопку; вход открывается ОТДЕЛЬНЫМ ОКНОМ, а не перебросом страницы,
+    // чтобы не терять уже настроенные камеру и микрофон (Иван, 2026-08-11).
+    const SIGNIN_LABEL = 'Я педагог — войти';
+    let whoamiAsked = false;
+
+    function roomIdNow() {
+        try {
+            return new URL(location.href).searchParams.get('room') || location.pathname.substring(6);
+        } catch (e) {
+            return '';
+        }
+    }
+
+    async function whoami() {
+        try {
+            const r = await fetch('/whoami?room=' + encodeURIComponent(roomIdNow()), { credentials: 'same-origin' });
+            return r.ok ? await r.json() : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    const nameInput = () => document.getElementById('usernameInput');
+
+    function fillName(name) {
+        const input = nameInput();
+        if (!input || !name) return false;
+        input.value = name;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+    }
+
+    function joinNow() {
+        // та же кнопка «Join meeting», что нажал бы человек
+        document.querySelector('.swal2-confirm')?.click();
+    }
+
+    function addSignInButton() {
+        const input = nameInput();
+        if (!input || document.getElementById('montemeetSignIn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'montemeetSignIn';
+        btn.type = 'button';
+        btn.className = 'montemeet-signin';
+        btn.textContent = mmT(SIGNIN_LABEL);
+        btn.addEventListener('click', () => startSignIn(btn));
+        input.insertAdjacentElement('afterend', btn);
+    }
+
+    function startSignIn(btn) {
+        const w = window.open(
+            '/oauth2/start?rd=%2Fsigned-in',
+            'montemeet-signin',
+            'width=520,height=680,menubar=no,toolbar=no'
+        );
+        btn.disabled = true;
+        const started = Date.now();
+        const tick = setInterval(async () => {
+            const gone = !w || w.closed;
+            const who = await whoami();
+            if (who?.signedIn && who.name) {
+                clearInterval(tick);
+                try {
+                    w?.close();
+                } catch (e) {
+                    /* окно уже закрыто */
+                }
+                btn.remove();
+                fillName(who.name);
+                joinNow(); // вошёл — значит хочет в комнату, а не обратно к полю
+                return;
+            }
+            // окно закрыли, ничего не выбрав, или прошло слишком много времени
+            if ((gone && Date.now() - started > 3000) || Date.now() - started > 120000) {
+                clearInterval(tick);
+                btn.disabled = false;
+            }
+        }, 1500);
+    }
+
+    // экран входа появляется не сразу — ловим его на общем проходе
+    async function offerTeacherSignIn() {
+        if (!nameInput()) return;
+        if (whoamiAsked) {
+            addSignInButton();
+            return;
+        }
+        whoamiAsked = true;
+        const who = await whoami();
+        if (!nameInput()) return;
+        // уже вошёл: имя подставим, а нажать «войти» человек решит сам
+        if (who?.signedIn && who.name) {
+            fillName(who.name);
+            return;
+        }
+        addSignInButton();
+    }
 
     // перехваты, которые обязаны существовать ДО входа в комнату
     function patchRoomClient() {

@@ -474,3 +474,27 @@ body.montemeet-concert-pip .montemeet-self-pip {
         font-size: 20px;
     }
 }
+
+/* Кнопка входа педагога на экране входа в комнату: неброская строка под полем
+   имени — студенту она ни к чему, педагогу видна (Иван, 2026-08-11) */
+.montemeet-signin {
+    display: block;
+    width: 100%;
+    margin: 10px 0 0;
+    padding: 9px 12px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 10px;
+    color: inherit;
+    font-size: 13.5px;
+    cursor: pointer;
+    opacity: 0.85;
+}
+.montemeet-signin:hover {
+    opacity: 1;
+    border-color: rgba(255, 255, 255, 0.7);
+}
+.montemeet-signin[disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
