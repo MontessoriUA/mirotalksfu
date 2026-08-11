@@ -738,6 +738,61 @@ async function runViewCycleScenario() {
     };
 }
 
+// Кружочки говорящих (Иван, 2026-08-09). Студент на ТЕЛЕФОНЕ смотрит педагога
+// крупно, а заговорившие одноклассники выезжают из-за левой грани кружками:
+// одновременно не больше трёх, педагога среди них не бывает, на компьютере и у
+// самого педагога их нет вовсе, и после тишины они уходят.
+async function runCirclesScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const viewer = await launchPeer('Student1', fixtures.silence, { room, phone: true });
+    const talkers = [];
+    for (const n of ['Student2', 'Student3', 'Student4', 'Student5']) {
+        talkers.push(await launchPeer(n, fixtures.speech, { room }));
+        await delay(1000);
+    }
+    await delay(12000);
+
+    const teacherId = await teacher.page.evaluate(() => rc.peer_id);
+    const circles = (p) =>
+        p.page.evaluate(() => {
+            const box = document.getElementById('montemeetCircles');
+            const items = box ? [...box.children] : [];
+            return {
+                exists: !!box,
+                peers: items.map((c) => c.dataset.peer),
+                shown: items.filter((c) => c.classList.contains('is-in')).length,
+                faces: items.map((c) => c.firstElementChild?.tagName.toLowerCase() ?? null),
+            };
+        });
+
+    const speaking = await circles(viewer);
+    const onDesktop = await circles(talkers[0]);
+    const onTeacher = await circles(teacher);
+
+    for (const t of talkers) await t.browser.close();
+    await delay(9000);
+    const afterSilence = await circles(viewer);
+
+    await teacher.browser.close();
+    await viewer.browser.close();
+
+    return {
+        scenario: 'circles',
+        speaking,
+        afterSilence,
+        checks: {
+            cappedAtThree: speaking.shown === 3 && speaking.peers.length === 3,
+            neverTheTeacher: !speaking.peers.includes(teacherId),
+            facesShown: speaking.faces.length === 3 && speaking.faces.every((f) => f === 'video'),
+            notOnDesktop: !onDesktop.exists,
+            notForTheTeacher: !onTeacher.exists,
+            goneAfterSilence: afterSilence.peers.length === 0,
+        },
+    };
+}
+
 // Занятое имя: второй участник с тем же именем должен молча получить номер и
 // войти, а не упереться в модальное окно «Username already in use».
 async function runNameClashScenario() {
@@ -834,6 +889,11 @@ if (which === 'leaver' || which === 'all') {
 }
 if (which === 'view-cycle' || which === 'all') {
     const r = await runViewCycleScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'circles' || which === 'all') {
+    const r = await runCirclesScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }

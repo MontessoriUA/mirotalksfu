@@ -1047,13 +1047,22 @@ const MontemeetLayout = (() => {
     function syncCircles() {
         const now = Date.now();
         for (const [id, until] of speakingUntil) if (until <= now) speakingUntil.delete(id);
-        const wanted = circlesAllowed()
-            ? [...speakingUntil.entries()]
-                  .sort((a, b) => b[1] - a[1]) // заговорившие позже — выше
-                  .slice(0, CIRCLE_MAX)
-                  .map(([id]) => id)
-            : [];
         let box = document.getElementById('montemeetCircles');
+        // Место закрепляется за тем, кто его занял, пока он говорит: если
+        // каждый раз пересобирать тройку заново, при четырёх одновременно
+        // говорящих кружки скачут по колонке каждую десятую секунды.
+        const wanted = [];
+        if (circlesAllowed()) {
+            for (const el of box ? box.children : []) {
+                const id = el.dataset.peer;
+                if (id && speakingUntil.has(id) && !wanted.includes(id)) wanted.push(id);
+            }
+            for (const [id] of [...speakingUntil.entries()].sort((a, b) => b[1] - a[1])) {
+                if (wanted.length >= CIRCLE_MAX) break;
+                if (!wanted.includes(id)) wanted.push(id);
+            }
+            wanted.length = Math.min(wanted.length, CIRCLE_MAX);
+        }
         if (!wanted.length && !box) return;
         if (!box) {
             box = document.createElement('div');

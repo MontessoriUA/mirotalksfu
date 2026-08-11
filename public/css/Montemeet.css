@@ -418,15 +418,16 @@ body.montemeet-concert-pip .montemeet-self-pip {
     z-index: 8;
     display: flex;
     flex-direction: column;
-    gap: 8px;
     pointer-events: none;
 }
 .montemeet-circle {
     display: flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
     width: 64px;
     height: 64px;
+    margin-bottom: 8px;
     border-radius: 50%;
     overflow: hidden;
     background: var(--body-bg, #14161a);
@@ -437,7 +438,17 @@ body.montemeet-concert-pip .montemeet-self-pip {
     opacity: 0;
     transition:
         transform 0.35s ease,
-        opacity 0.35s ease;
+        opacity 0.35s ease,
+        height 0.35s ease,
+        margin-bottom 0.35s ease,
+        border-width 0.35s ease;
+}
+/* пока кружок не выехал (или уже уезжает) он не занимает места в колонке —
+   иначе оставшиеся дёргаются на его высоту, стоило кому-то замолчать */
+.montemeet-circle:not(.is-in) {
+    height: 0;
+    margin-bottom: 0;
+    border-width: 0;
 }
 .montemeet-circle.is-in {
     transform: translateX(10px);
