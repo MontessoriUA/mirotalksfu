@@ -134,13 +134,18 @@ function endsOnTeacherLeave(roomId) {
 // GET /profile/:roomId, and the teacher's address has no business being public.
 function isPresenterEmail(roomId, email) {
     if (!email) return false;
-    const { presenterEmails = {}, admins = [] } = load() || {};
+    const { presenterEmails = {}, admins = [], rooms = {} } = load() || {};
     const who = String(email).trim().toLowerCase();
-    // Админ школы — педагог в любой комнате: он заходит к коллегам помочь,
-    // подменить, посмотреть, и понижать его там до участника незачем
+    // Админ школы — педагог в любой ИЗВЕСТНОЙ комнате: он заходит к коллегам
+    // помочь, подменить, посмотреть, и понижать его там до участника незачем
     // (Иван, 2026-08-12). Список приходит из кабинета вместе с остальным
     // реестром, так что снятый админ теряет это в тот же миг.
-    if (admins.some((a) => String(a).toLowerCase() === who)) return true;
+    //
+    // Оговорка про «известную» дорого досталась: билет с испорченным слагом увёл
+    // админа в несуществующую комнату, и права там у него всё равно оказались —
+    // из-за чего ошибка выглядела успешным входом (Иван, 2026-08-13).
+    const known = Object.prototype.hasOwnProperty.call(rooms, roomId);
+    if (known && admins.some((a) => String(a).toLowerCase() === who)) return true;
     const expected = presenterEmails[roomId];
     return !!expected && expected.toLowerCase() === who;
 }
