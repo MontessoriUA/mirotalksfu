@@ -134,9 +134,15 @@ function endsOnTeacherLeave(roomId) {
 // GET /profile/:roomId, and the teacher's address has no business being public.
 function isPresenterEmail(roomId, email) {
     if (!email) return false;
-    const { presenterEmails = {} } = load() || {};
+    const { presenterEmails = {}, admins = [] } = load() || {};
+    const who = String(email).trim().toLowerCase();
+    // Админ школы — педагог в любой комнате: он заходит к коллегам помочь,
+    // подменить, посмотреть, и понижать его там до участника незачем
+    // (Иван, 2026-08-12). Список приходит из кабинета вместе с остальным
+    // реестром, так что снятый админ теряет это в тот же миг.
+    if (admins.some((a) => String(a).toLowerCase() === who)) return true;
     const expected = presenterEmails[roomId];
-    return !!expected && expected.toLowerCase() === String(email).trim().toLowerCase();
+    return !!expected && expected.toLowerCase() === who;
 }
 
 // Есть ли у комнаты SSO-владелец. Если есть, имя перестаёт быть пропуском в
