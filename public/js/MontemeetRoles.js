@@ -1114,6 +1114,14 @@ const MontemeetRoles = (() => {
     // кнопку; вход открывается ОТДЕЛЬНЫМ ОКНОМ, а не перебросом страницы,
     // чтобы не терять уже настроенные камеру и микрофон (Иван, 2026-08-11).
     const SIGNIN_LABEL = 'Я педагог — войти';
+    // Кнопка выключена (Иван, 2026-08-12). Педагог приходит по ссылке из
+    // расписания, а оно уже знает, кто он, и передаёт это билетом — просить его
+    // входить ещё раз незачем. Прятать кнопку по совпадению имени с педагогом
+    // комнаты мы отвергли: Катя Иванова у доски и Катя Иванова за партой —
+    // обычное дело, и студентка увидела бы её без всякой причины. Сам код
+    // оставлен: если путь через расписание где-то не сложится, включается
+    // одной строкой.
+    const SHOW_TEACHER_SIGNIN = false;
     let whoamiAsked = false;
 
     function roomIdNow() {
@@ -1157,6 +1165,7 @@ const MontemeetRoles = (() => {
         '<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>';
 
     function addSignInButton() {
+        if (!SHOW_TEACHER_SIGNIN) return;
         const actions = document.querySelector('.swal2-actions');
         if (!actions || !nameInput() || document.getElementById('montemeetSignIn')) return;
         const btn = document.createElement('button');
