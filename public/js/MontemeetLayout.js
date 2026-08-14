@@ -325,6 +325,14 @@ const MontemeetLayout = (() => {
         if (!watchdog) {
             // silence watchdog: no activity above the threshold → back to default
             watchdog = setInterval(() => {
+                // Копию могли узнать позже, чем она успела стать выступающей:
+                // признак «этот участник — педагог» приходит с сервера с
+                // задержкой, а пересобрать раскладку в устоявшейся комнате
+                // некому — крупное так и висит (Иван, 2026-08-14).
+                if (auto && dropDomIfMine()) {
+                    if (speakerView === 'sticky') seedPending = true;
+                    auto.apply();
+                }
                 if (auto && dom !== null && Date.now() - lastActivityTs > auto.silenceMs) {
                     dom = null;
                     if (pending) {
