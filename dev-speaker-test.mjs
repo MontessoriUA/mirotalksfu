@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
+import { pathToFileURL } from 'node:url';
 
 // overridable so the same suite can be pointed at a real deployment:
 //   MM_TEST_BASE=http://192.168.35.11 node dev-speaker-test.mjs
@@ -1187,6 +1188,58 @@ async function runSplashSpeechScenario() {
     };
 }
 
+// Настройки комнаты из кабинета. Комната на сервере живёт, пока в ней хоть кто-то
+// есть, и раньше применялись они ровно один раз — при её создании: педагог ставил
+// галочку, заходил второй вкладкой и не находил изменений. Браузер тут не нужен —
+// проверяем сам реестр и его применение к комнате.
+async function runRoomPolicyScenario() {
+    const file = path.join(FIXTURES, 'policy-registry.json');
+    const write = (lobby) =>
+        fs.writeFileSync(
+            file,
+            JSON.stringify({
+                profiles: { concert: { title: 'Концерт', roles: 'concert', layout: { holdMs: 1500 } } },
+                rooms: { 'policy-room': 'concert' },
+                roomOverrides: { 'policy-room': { startMuted: false, startHidden: false, lobby } },
+            })
+        );
+
+    write(false);
+    process.env.MONTEMEET_PROFILES_PATH = file;
+    const profiles = (await import(pathToFileURL(path.join(import.meta.dirname, 'app/src/MontemeetProfiles.js')).href))
+        .default;
+
+    const room = { _moderator: {}, _isLobbyEnabled: false };
+    profiles.applyToRoom(room, 'policy-room');
+    const atCreate = room._isLobbyEnabled;
+
+    await delay(1100); // разводим записи по времени: реестр сверяется по mtime
+    write(true);
+    const changed = profiles.refreshRoom(room, 'policy-room');
+    const afterOn = room._isLobbyEnabled;
+    const secondCall = profiles.refreshRoom(room, 'policy-room'); // реестр не менялся — работы нет
+
+    await delay(1100);
+    write(false);
+    profiles.refreshRoom(room, 'policy-room');
+    const afterOff = room._isLobbyEnabled;
+
+    fs.rmSync(file, { force: true });
+
+    return {
+        scenario: 'room-policy',
+        atCreate,
+        afterOn,
+        afterOff,
+        checks: {
+            offAtCreate: atCreate === false,
+            picksUpChange: changed === true && afterOn === true,
+            idleWhenUnchanged: secondCall === false,
+            picksUpChangeBack: afterOff === false,
+        },
+    };
+}
+
 // Зал с ОДНИМ зрителем: это всё ещё концерт (афиша работает), но раскладка —
 // «один на один», и педагог видит себя в углу, а не пустую ленту.
 async function runConcertSoloScenario() {
@@ -1481,6 +1534,11 @@ if (which === 'screen-tile' || which === 'all') {
 }
 if (which === 'splash-speech' || which === 'all') {
     const r = await runSplashSpeechScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'room-policy' || which === 'all') {
+    const r = await runRoomPolicyScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
