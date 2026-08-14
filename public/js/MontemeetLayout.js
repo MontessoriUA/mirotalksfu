@@ -876,7 +876,7 @@ const MontemeetLayout = (() => {
 
     async function applySolo() {
         const companion = companionPeerId();
-        if (!companion) return;
+        if (!companion || isMyTwin(companion)) return;
         const epoch = layoutEpoch;
         const videoEl = peerScreenVideo(companion) || (await resolvePeerVideo(companion));
         if (epoch !== layoutEpoch) return; // вышли из 1:1, пока искали плитку
@@ -893,7 +893,12 @@ const MontemeetLayout = (() => {
         // Телефон больше не исключение: на индивидуальном уроке собеседник
         // крупно, своя картинка — в углу, как на компьютере (Иван, 2026-08-09).
         // Раньше мобильные проваливались в сетку, а себя не было видно вовсе.
-        const shouldSolo = peerCount === 2;
+        // Вдвоём со своей же копией вид «один на один» не включается: собеседника
+        // нет, а показывать себе самому себя крупно — ровно то, о чём просил
+        // Иван «ни одна моя копия не должна фокусироваться» (2026-08-14). Именно
+        // здесь копия и всплывала: раскладка 1:1 старше всех прочих правил.
+        const companion = companionPeerId();
+        const shouldSolo = peerCount === 2 && !!companion && !isMyTwin(companion);
         const btn = document.getElementById('montemeetSpeakerViewBtn');
         // the view button makes sense only with an actual group (3+): hidden
         // when the teacher sits alone and in the solo 1:1 layout
