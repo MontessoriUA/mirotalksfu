@@ -976,6 +976,73 @@ async function runSplashScenario() {
     };
 }
 
+// Вкладку свернули, браузер убил дорожку камеры — вернулись, и камера должна
+// подняться сама, без перезагрузки страницы. Фон эмулируем честно: вторая
+// вкладка поверх делает первую скрытой, дорожку в это время гасим — ровно так
+// её гасит браузер.
+async function runTabReturnScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(9000);
+
+    const p = student.page;
+    const cameraState = () =>
+        p.evaluate(() => {
+            const type = RoomClient.mediaType.video;
+            const has = rc.producerExist(type);
+            const track = has ? rc.producers.get(rc.producerLabel.get(type))?.track : null;
+            return { producer: has, live: !!track && track.readyState === 'live' && !track.muted };
+        });
+
+    await p.evaluate(() => {
+        window.__hidden = 0;
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') window.__hidden++;
+        });
+    });
+
+    const before = await cameraState();
+    const other = await student.browser.newPage();
+    await other.goto('about:blank');
+    await other.bringToFront();
+    await delay(1200);
+    const hiddenSeen = await p.evaluate(() => window.__hidden > 0);
+    // браузер в фоне глушит захват — повторяем это руками
+    await p.evaluate(() => {
+        const type = RoomClient.mediaType.video;
+        rc.producers.get(rc.producerLabel.get(type))?.track?.stop();
+    });
+    await delay(2500);
+    const whileHidden = await cameraState();
+
+    await p.bringToFront();
+    let back = null;
+    for (let i = 0; i < 10; i++) {
+        await delay(1500);
+        back = await cameraState();
+        if (back.producer && back.live) break;
+    }
+
+    await other.close();
+    await student.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'tab-return',
+        before,
+        whileHidden,
+        back,
+        checks: {
+            cameraWasOn: before.producer && before.live,
+            wentHidden: hiddenSeen === true,
+            diedInBackground: !whileHidden.live, // без этого проверять нечего
+            cameraBack: back.producer === true && back.live === true,
+        },
+    };
+}
+
 // Плитка ДЕМОНСТРАЦИИ экрана: «Отключить» на ней выгоняло студента из встречи
 // целиком. Там должно остаться «Остановить показ», а бан с отключением —
 // уехать; на обычной плитке того же студента они обязаны остаться.
@@ -1316,6 +1383,11 @@ if (which === 'twin' || which === 'all') {
 }
 if (which === 'splash' || which === 'all') {
     const r = await runSplashScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'tab-return' || which === 'all') {
+    const r = await runTabReturnScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
