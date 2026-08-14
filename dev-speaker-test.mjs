@@ -128,6 +128,9 @@ async function launchPeer(
         // Https*: Chrome 141+ silently upgrades http navigations to https, which
         // kills any run against an http-only stand (ERR_CONNECTION_REFUSED).
         '--disable-features=AudioServiceOutOfProcess,AudioServiceSandbox,HttpsUpgrades,HttpsFirstBalancedModeAutoEnable',
+        // демонстрация экрана без диалога выбора источника (сценарий screen-tile)
+        '--auto-select-desktop-capture-source=Entire screen',
+        '--auto-accept-this-tab-capture',
     ];
     // headless Linux (a server run) has no usable sandbox namespace
     if (process.platform === 'linux') args.push('--no-sandbox', '--disable-dev-shm-usage');
@@ -973,6 +976,65 @@ async function runSplashScenario() {
     };
 }
 
+// Плитка ДЕМОНСТРАЦИИ экрана: «Отключить» на ней выгоняло студента из встречи
+// целиком. Там должно остаться «Остановить показ», а бан с отключением —
+// уехать; на обычной плитке того же студента они обязаны остаться.
+async function runScreenTileScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(9000);
+
+    const sharing = await student.page.evaluate(async () => {
+        try {
+            await rc.produce(RoomClient.mediaType.screen);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    });
+    await delay(6000);
+
+    const studentId = await student.page.evaluate(() => rc.peer_id);
+    const menu = await teacher.page.evaluate((id) => {
+        const read = (kind) => {
+            const box = document.getElementById(`${id}_${kind}__videoExpandContent`);
+            if (!box) return null;
+            box.classList.add('show'); // у скрытого контейнера всё скрыто по определению
+            const seen = (suffix) => {
+                const row = box.querySelector(`[id$="${suffix}"]`)?.closest('.navbar-dropdown-item');
+                return !!row && getComputedStyle(row).display !== 'none';
+            };
+            const res = {
+                ban: seen('___ban'),
+                kick: seen('___kickOut'),
+                stop: !!box.querySelector('.montemeet-stop-share'),
+            };
+            box.classList.remove('show');
+            return res;
+        };
+        return { screen: read('screen'), camera: read('video') };
+    }, studentId);
+
+    await student.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'screen-tile',
+        sharing,
+        menu,
+        checks: {
+            sharingStarted: sharing === true,
+            screenTileFound: !!menu.screen,
+            noBanOnScreen: menu.screen ? !menu.screen.ban : false,
+            noKickOnScreen: menu.screen ? !menu.screen.kick : false,
+            stopOffered: menu.screen ? menu.screen.stop : false,
+            cameraTileUntouched: !!menu.camera && menu.camera.ban && menu.camera.kick,
+        },
+    };
+}
+
 // Заставка и РЕЧЬ. Собственный голос сцену не занимает: педагог говорит — афиша
 // остаётся. Заговорил кто-то другой — афиша уходит, замолчал — возвращается.
 // Проверка не пустая: рядом считаем, что голос самого педагога до его же
@@ -1254,6 +1316,11 @@ if (which === 'twin' || which === 'all') {
 }
 if (which === 'splash' || which === 'all') {
     const r = await runSplashScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'screen-tile' || which === 'all') {
+    const r = await runScreenTileScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
