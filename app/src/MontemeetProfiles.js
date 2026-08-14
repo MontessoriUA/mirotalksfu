@@ -105,6 +105,17 @@ function isLessonRoom(roomId) {
     return !!(profile && profile.roles === 'lesson');
 }
 
+// Комнату ведёт кабинет — и урок, и концерт. Оговорки «клиент не навязывает
+// комнате свой localStorage» были писаны только про уроки, и концерт оставался
+// стоковым: педагог, открывая комнату, сам же гасил зал ожидания, который
+// только что поставили в кабинете (Иван, 2026-08-14).
+function isManagedRoom(roomId) {
+    const { profiles = {}, rooms = {} } = load() || {};
+    if (!Object.prototype.hasOwnProperty.call(rooms, roomId)) return false;
+    const profile = profiles[rooms[roomId]];
+    return !!(profile && profile.roles);
+}
+
 // seed a freshly created Room with cabinet policies + the teacher's switches.
 // Unmanaged rooms stay stock.
 function applyToRoom(room, roomId) {
@@ -252,6 +263,7 @@ function emailFromGrant(cookieHeader, roomId) {
 
 module.exports = {
     forRoom,
+    isManagedRoom,
     applyToRoom,
     refreshRoom,
     endsOnTeacherLeave,

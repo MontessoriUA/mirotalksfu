@@ -3278,9 +3278,9 @@ function startServer() {
             switch (data.action) {
                 case 'broadcasting':
                     if (!isPresenter) return;
-                    // Montemeet: lessons never broadcast; the presenter's localStorage
+                    // Montemeet: наши комнаты не вещают; localStorage педагога на входе
                     // push at join would only toast every student "BROADCASTING Off"
-                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+                    if (montemeetProfiles.isManagedRoom(socket.room_id)) return;
                     room.setIsBroadcasting(data.room_broadcasting);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
@@ -3313,29 +3313,30 @@ function startServer() {
                     break;
                 case 'lobbyOn':
                     if (!isPresenter) return;
-                    // Montemeet: in lesson rooms the lobby follows the cabinet switch only
-                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+                    // Montemeet: в комнатах кабинета (урок И концерт) зал ожидания слушается
+                    // только кабинет — клиент педагога на входе шлёт сюда свой localStorage
+                    if (montemeetProfiles.isManagedRoom(socket.room_id)) return;
                     room.setLobbyEnabled(true);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
                 case 'lobbyOff':
                     if (!isPresenter) return;
-                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+                    if (montemeetProfiles.isManagedRoom(socket.room_id)) return;
                     room.setLobbyEnabled(false);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
                 case 'hostOnlyRecordingOn':
                     if (!isPresenter) return;
-                    // Montemeet: cabinet policy owns this flag in lesson rooms; the client
+                    // Montemeet: cabinet policy owns this flag in managed rooms; the client
                     // pushes its localStorage copy at presenter join — a broadcast would
                     // toast every student for nothing
-                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+                    if (montemeetProfiles.isManagedRoom(socket.room_id)) return;
                     room.setHostOnlyRecording(true);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
                 case 'hostOnlyRecordingOff':
                     if (!isPresenter) return;
-                    if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+                    if (montemeetProfiles.isManagedRoom(socket.room_id)) return;
                     room.setHostOnlyRecording(false);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;
@@ -3650,9 +3651,9 @@ function startServer() {
         socket.on('updateRoomModerator', (dataObject) => {
             if (!roomExists(socket)) return;
 
-            // Montemeet: lesson policies are cabinet-managed (admin level) — the hidden
+            // Montemeet: политики комнат ведёт кабинет (уровень админа) — а скрытая
             // Moderator tab still pushes the presenter's stale localStorage on join
-            if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+            if (montemeetProfiles.isManagedRoom(socket.room_id)) return;
 
             const data = checkXSS(dataObject);
 
@@ -3688,8 +3689,8 @@ function startServer() {
         socket.on('updateRoomModeratorALL', (dataObject) => {
             if (!roomExists(socket)) return;
 
-            // Montemeet: see updateRoomModerator — cabinet policies win in lesson rooms
-            if (montemeetProfiles.isLessonRoom(socket.room_id)) return;
+            // Montemeet: см. updateRoomModerator — в комнатах кабинета побеждает кабинет
+            if (montemeetProfiles.isManagedRoom(socket.room_id)) return;
 
             const data = checkXSS(dataObject);
 
