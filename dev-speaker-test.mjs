@@ -865,16 +865,24 @@ async function runTwinScenario() {
         p.page.evaluate(
             () => document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ?? null
         );
-    const pitchOf = (p, id) =>
-        p.page.evaluate((peerId) => parseFloat(document.getElementById(peerId + '__pitchBar')?.style.height) || 0, id);
+    // Речь копии считаем по тем же событиям уровня звука, по которым раскладка
+    // и выбирает говорящего: мгновенный снимок полоски громкости слишком
+    // случаен, чтобы им что-то доказывать.
+    await teacher.page.evaluate(() => {
+        window.__mmHeard = {};
+        const stock = MontemeetLayout.noteActivity;
+        MontemeetLayout.noteActivity = (peerId, volume, top) => {
+            window.__mmHeard[peerId] = Math.max(window.__mmHeard[peerId] || 0, volume || 0);
+            return stock(peerId, volume, top);
+        };
+    });
 
-    let heardTwin = 0;
     const pins = [];
     for (let i = 0; i < 8; i++) {
         await delay(1500);
-        heardTwin = Math.max(heardTwin, await pitchOf(teacher, twinId));
         pins.push(await pinnedOn(teacher));
     }
+    const heardTwin = await teacher.page.evaluate((id) => window.__mmHeard[id] || 0, twinId);
 
     const recognised = await teacher.page.evaluate((id) => MontemeetLayout.isMyTwin(id), twinId);
     const forStudent = await student.page.evaluate((id) => MontemeetLayout.isMyTwin(id), twinId);
@@ -900,7 +908,7 @@ async function runTwinScenario() {
         checks: {
             modeReady,
             recognised: recognised === true && forStudent === false,
-            heardTheTwin: heardTwin > 5, // копия действительно говорила
+            heardTheTwin: heardTwin >= 3, // копия действительно говорила
             neverBigOnMyself: pins.every((p) => p !== twinId),
             noSelfHarmButtons: rows.found && !rows.ban && !rows.kick,
         },
