@@ -989,9 +989,12 @@ async function runPhantomTapScenario() {
     await delay(500);
     const target = await p.evaluate(() => {
         const bar = document.getElementById('bottomButtons');
+        const seen = (el) => !!el && !!el.offsetParent;
+        // безобидные переключатели; выход и панели трогать нельзя — уедет вся сцена
         const btn =
-            document.getElementById('raiseHandButton') ||
-            [...bar.querySelectorAll('button')].find((b) => b.offsetParent);
+            ['raiseHandButton', 'stopAudioButton', 'startAudioButton', 'stopVideoButton', 'startVideoButton']
+                .map((id) => document.getElementById(id))
+                .find(seen) || [...bar.querySelectorAll('button')].find((b) => seen(b) && b.id !== 'exitButton');
         const r = btn.getBoundingClientRect();
         return { id: btn.id, x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
     });
