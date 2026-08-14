@@ -576,6 +576,7 @@ const MontemeetLayout = (() => {
         if (!auto || typeof rc === 'undefined') return;
         if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // a hand-made pin always wins
+        dropDomIfMine(); // свой же голос сцену не занимает
         let shownDom = false;
         if (dom && dom !== selfId()) {
             const epoch = layoutEpoch;
@@ -682,10 +683,33 @@ const MontemeetLayout = (() => {
         return null;
     }
 
+    // Кто сейчас крупно (закреплён) — по разметке, а не по нашим переменным
+    function pinnedPeerId() {
+        return document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') || null;
+    }
+
+    // Выступающим не может быть ни сам зритель, ни его копия. Проверять это
+    // только в момент выдвижения кандидата оказалось мало: признак «этот peer —
+    // педагог» приходит с сервера не мгновенно, и копия, заговорившая сразу
+    // после входа, успевала стать выступающей, а «липкий» вид её уже не
+    // отпускал (Иван, 2026-08-14). Поэтому смотрим ещё и в точке применения.
+    function dropDomIfMine() {
+        if (!dom || (dom !== selfId() && !isMyTwin(dom))) return false;
+        if (pinnedPeerId() === dom) unpin();
+        if (lastDom === dom) lastDom = null;
+        dom = null;
+        if (pending) {
+            clearTimeout(pending.timer);
+            pending = null;
+        }
+        return true;
+    }
+
     async function applyGroupSpeaker() {
         if (typeof rc === 'undefined') return;
         if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // the teacher pinned someone by hand — obey
+        if (dropDomIfMine() && speakerView === 'sticky') seedPending = true;
         // Демонстрация экрана — осознанное «смотрите сюда». Забирать вид у
         // говорящего она не должна (экран показывается вместо его камеры, когда
         // говорит сам автор), но если говорить некому — а на уроке все обычно
@@ -979,7 +1003,7 @@ const MontemeetLayout = (() => {
         // квадрат с аватаркой (Иван, 2026-08-14). Кнопка педагога сюда не
         // достаёт — она гасит заставку только на его собственном экране.
         if (!isHost()) {
-            const performer = dom && dom !== selfId() ? rc?.getVideoElementByPeerId?.(dom) : null;
+            const performer = dom && dom !== selfId() && !isMyTwin(dom) ? rc?.getVideoElementByPeerId?.(dom) : null;
             renderSplash(!performer && !anchorVideoId() && !manualPinActive(), url);
             return;
         }
@@ -1001,7 +1025,7 @@ const MontemeetLayout = (() => {
         // ручной пин — сцена занята, иначе показываем заставку.
         // «Выступает» — кто-то другой: собственная речь педагога сцену не
         // занимает, он и есть зал (Иван, 2026-08-14)
-        const performing = (!!dom && dom !== selfId()) || manualPinActive();
+        const performing = (!!dom && dom !== selfId() && !isMyTwin(dom)) || manualPinActive();
         renderSplash(!splashForced && !performing, url);
     }
 
