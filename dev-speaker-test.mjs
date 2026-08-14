@@ -1026,6 +1026,10 @@ async function runPhantomTapScenario() {
     });
     await p.touchscreen.touchStart(target.x, target.y);
     await delay(400); // опрос успевает вернуть класс «панель видна»
+    // Здесь и проходит проверка на зубы: класс вернулся, значит CSS-запрет
+    // нажатий уже снят и клик пришёл бы по кнопке — не пропустить его может
+    // только сам заслон.
+    const cssGuardOpen = await p.evaluate(() => document.body.classList.contains('montemeet-bar-visible'));
     await p.touchscreen.touchEnd();
     await delay(600);
     const whenHidden = await taps();
@@ -1039,11 +1043,13 @@ async function runPhantomTapScenario() {
         target,
         whenVisible,
         whenHidden,
+        cssGuardOpen,
         checks: {
             touchScreen: coarse, // без этого проверка ничего не значит
             controlPressed: whenVisible === 1,
-            phantomBlocked: whenHidden === 0,
             barRevealed: revealed,
+            cssGuardOpen, // запрет нажатий к моменту клика уже снят
+            phantomBlocked: whenHidden === 0,
         },
     };
 }
