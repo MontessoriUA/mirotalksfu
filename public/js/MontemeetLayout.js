@@ -134,13 +134,35 @@ const MontemeetLayout = (() => {
         return 1;
     }
 
+    // Свои же копии. Педагог заходит со второго устройства (телефон в классе,
+    // планшет у доски) и остаётся собой: раскладка не должна показывать его
+    // самому себе крупно, сколько бы копий он ни открыл (Иван, 2026-08-14).
+    // Различаем по имени: при совпадении вторая вкладка получает « (2)», её и
+    // отсекаем. Однофамильцы-тёзки сюда попадут тоже — цена невелика, крупно
+    // они друг у друга не всплывут, а всё остальное про них работает как было.
+    const nameBase = (s) =>
+        String(s || '')
+            .replace(/\s*\(\d+\)$/, '')
+            .trim()
+            .toLowerCase();
+
+    function isMyTwin(peerId) {
+        if (typeof rc === 'undefined' || !rc || !peerId || peerId === selfId()) return false;
+        const mine = nameBase(rc.peer_name);
+        if (!mine) return false;
+        const theirs = nameBase(
+            rc.peers?.get(peerId)?.peer_info?.peer_name || document.getElementById(peerId + '__name')?.innerText
+        );
+        return !!theirs && theirs.replace(/^⭐️\s*/, '') === mine;
+    }
+
     function anchorPeerId() {
         if (typeof rc === 'undefined' || !rc?.peers) return null;
         const live = livePeerIds();
         const me = selfId();
         const candidates = [];
         for (const [peerId, peer] of rc.peers) {
-            if (peerId === me || !live.has(peerId)) continue;
+            if (peerId === me || !live.has(peerId) || isMyTwin(peerId)) continue;
             if (peer?.peer_info?.peer_presenter) candidates.push(peerId);
         }
         if (candidates.length < 2) return candidates[0] ?? null;
@@ -309,6 +331,7 @@ const MontemeetLayout = (() => {
     // A candidate must survive holdMs before the layout switches to them
     function holdCandidate(peer_id) {
         if (peer_id === dom) return;
+        if (isMyTwin(peer_id)) return; // сам себе крупно не показываюсь
         if (pending?.peerId === peer_id) return; // already holding this candidate
         if (pending) clearTimeout(pending.timer);
         pending = {
@@ -547,6 +570,10 @@ const MontemeetLayout = (() => {
         // the grid honest after class/visibility flips.
         if (isHost()) hideSelf();
         if (typeof resizeVideoMedia === 'function') resizeVideoMedia();
+        // раскладка устоялась — здесь же решаем про заставку: раньше её
+        // пересчитывал только наблюдатель за составом, а гостю она нужна и на
+        // смену выступающего (Иван, 2026-08-14)
+        syncConcertSplash();
     }
 
     // ---------- teacher's view switch at group lessons (2.4+) ----------
@@ -616,10 +643,10 @@ const MontemeetLayout = (() => {
     // видео крупно бесполезна). Себя не выбираем — на себя не смотрят.
     function seedDom() {
         const live = livePeerIds();
-        if (lastDom && lastDom !== selfId() && live.has(lastDom)) return lastDom;
+        if (lastDom && lastDom !== selfId() && !isMyTwin(lastDom) && live.has(lastDom)) return lastDom;
         for (const el of document.querySelectorAll('video[name]')) {
             const p = el.getAttribute('name');
-            if (p && p !== selfId() && live.has(p)) return p;
+            if (p && p !== selfId() && !isMyTwin(p) && live.has(p)) return p;
         }
         return null;
     }
@@ -914,14 +941,17 @@ const MontemeetLayout = (() => {
     // The admin cabinet will manage the image later — the mechanics live here.
     function syncConcertSplash() {
         if (!concertRoom) return;
-        // the splash is the HALL's stage filler only (Ivan, 2026-08-06) — guests
-        // keep the normal focus-on-hall view
-        if (!isHost()) {
-            document.getElementById('montemeetSplash')?.remove();
-            return;
-        }
         const url = layoutCfg?.splash;
         if (!url) return;
+        // Гостю заставка закрывает пустую сцену: камера зала выключена и никто
+        // не выступает — смотреть нечего, пусть висит афиша, а не чёрный
+        // квадрат с аватаркой (Иван, 2026-08-14). Кнопка педагога сюда не
+        // достаёт — она гасит заставку только на его собственном экране.
+        if (!isHost()) {
+            const performer = dom && dom !== selfId() ? rc?.getVideoElementByPeerId?.(dom) : null;
+            renderSplash(!performer && !anchorVideoId() && !manualPinActive(), url);
+            return;
+        }
         const others = [
             ...document.querySelectorAll(
                 '#videoMediaContainer video[name], #videoPinMediaContainer video[name],' +
@@ -939,19 +969,33 @@ const MontemeetLayout = (() => {
         // Теперь смотрим на выступающего: есть подтверждённый говорящий или
         // ручной пин — сцена занята, иначе показываем заставку.
         const performing = !!dom || manualPinActive();
-        const wantSplash = !splashForced && !performing;
+        renderSplash(!splashForced && !performing, url);
+    }
+
+    let splashFadeOut = null;
+    function renderSplash(wantSplash, url) {
         let el = document.getElementById('montemeetSplash');
-        if (wantSplash && !el) {
-            el = document.createElement('div');
-            el.id = 'montemeetSplash';
-            el.className = 'montemeet-splash';
-            el.style.backgroundImage = `url('${url}')`;
-            document.body.appendChild(el);
+        if (wantSplash) {
+            // вернулась, пока гасла — снять таймер удаления и зажечь снова
+            if (splashFadeOut) {
+                clearTimeout(splashFadeOut);
+                splashFadeOut = null;
+            }
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'montemeetSplash';
+                el.className = 'montemeet-splash';
+                el.style.backgroundImage = `url('${url}')`;
+                document.body.appendChild(el);
+            }
             requestAnimationFrame(() => el.classList.add('is-on')); // плавное появление
-        } else if (!wantSplash && el) {
+        } else if (el && !splashFadeOut) {
             el.classList.remove('is-on');
             const doomed = el;
-            setTimeout(() => doomed.remove(), 400);
+            splashFadeOut = setTimeout(() => {
+                splashFadeOut = null;
+                doomed.remove();
+            }, 400);
         }
     }
 
@@ -970,6 +1014,11 @@ const MontemeetLayout = (() => {
         btn.addEventListener('click', () => {
             splashForced = !splashForced;
             btn.style.color = splashForced ? 'lime' : '';
+            // Зелёная фотография сама по себе не говорит, включена заставка или
+            // убрана. Перечёркиваем её, когда заставка принудительно снята
+            // (Иван, 2026-08-14). Косая черта — своя: fa-image-slash есть
+            // только в платном наборе, а у нас бесплатный 6.1.1.
+            btn.classList.toggle('montemeet-slashed', splashForced);
             syncConcertSplash();
         });
         bar.appendChild(btn);
@@ -1040,7 +1089,7 @@ const MontemeetLayout = (() => {
 
     function noteSpeakingCircle(peerId) {
         if (!peerId || !circlesAllowed()) return;
-        if (peerId === selfId() || peerId === anchorPeerId()) return;
+        if (peerId === selfId() || peerId === anchorPeerId() || isMyTwin(peerId)) return;
         speakingUntil.set(peerId, Date.now() + CIRCLE_HOLD_MS);
         syncCircles();
     }
@@ -1197,6 +1246,7 @@ const MontemeetLayout = (() => {
         noteActivity,
         syncPinnedClass,
         managedRoom,
+        isMyTwin, // свои же копии: их не показываем крупно и не даём себя забанить
         view: () => speakerView, // текущий режим вида педагога (регрессии, отладка)
     };
 })();

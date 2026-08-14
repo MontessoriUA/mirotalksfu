@@ -302,6 +302,26 @@ body.montemeet-concert-pip .montemeet-self-pip {
     }
 }
 
+/* Список «Выйти / Завершить для всех» — не кнопка тулбара, а меню над ним.
+   Наша мобильная правка размеров ужимала и его строки до квадратика 48px, и
+   надпись переносилась на вторую строку, хотя ширины экрана хватало с запасом
+   (Иван, 2026-08-14). Возвращаем строкам их ширину, а меню — свою. */
+@media screen and (max-width: 1024px) {
+    body.montemeet-teacher #bottomButtons #exitMenu,
+    body.montemeet-student #bottomButtons #exitMenu {
+        width: max-content !important;
+        max-width: min(94vw, 360px) !important;
+    }
+    body.montemeet-teacher #bottomButtons #exitMenu button,
+    body.montemeet-student #bottomButtons #exitMenu button {
+        width: 100% !important;
+        height: auto !important;
+        font-size: 0.95rem !important;
+        padding: 12px 16px !important;
+        white-space: nowrap !important;
+    }
+}
+
 /* Заставка сцены концерта: появляется и уходит плавно (Иван, 2026-08-09) */
 .montemeet-splash {
     position: fixed;
@@ -317,6 +337,25 @@ body.montemeet-concert-pip .montemeet-self-pip {
 }
 .montemeet-splash.is-on {
     opacity: 1;
+}
+
+/* Перечёркнутая иконка: заставка снята вручную. Косую чертим сами — в
+   бесплатном FontAwesome 6.1.1 fa-image-slash нет (Иван, 2026-08-14) */
+#bottomButtons button.montemeet-slashed {
+    position: relative;
+}
+#bottomButtons button.montemeet-slashed::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1.25em;
+    height: 2px;
+    background: currentColor;
+    border-radius: 2px;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    box-shadow: 0 -2px 0 rgba(0, 0, 0, 0.65);
+    pointer-events: none;
 }
 
 /* Тулбар доски: на узких экранах кнопки не влезали в строку и правый край с

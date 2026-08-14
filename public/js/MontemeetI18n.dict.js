@@ -218,6 +218,14 @@ window.MontemeetDict = {
         'Eject participant': { uk: 'Відключити учасника', ru: 'Отключить участника' },
         'Ban': { uk: 'Заблокувати', ru: 'Заблокировать' },
         'Eject': { uk: 'Відключити', ru: 'Отключить' },
+        // наши строки на плитке демонстрации и на кнопке заставки концерта
+        'Остановить показ': { uk: 'Зупинити демонстрацію', en: 'Stop screen share' },
+        'Заставка сцены': { uk: 'Заставка сцени', en: 'Stage splash' },
+        "Once stopped, only the presenter will be able to start the participants' screens, but participants can start their screens themselves at any time":
+            {
+                uk: 'Після зупинки лише педагог зможе запускати демонстрацію екрана, але учасники можуть увімкнути її самі будь-коли',
+                ru: 'После остановки только педагог сможет запускать демонстрацию экрана, но участники могут включить её сами в любой момент',
+            },
         'Save participants info': { uk: 'Зберегти список учасників', ru: 'Сохранить список участников' },
         'No participants in the room': { uk: 'У кімнаті немає учасників', ru: 'В комнате нет участников' },
         'No participants in the room except you': { uk: 'У кімнаті немає інших учасників', ru: 'В комнате нет других участников' },
@@ -593,6 +601,16 @@ window.MontemeetDict = {
             re: /^Unhide current participant\?$/,
             uk: 'Увімкнути камеру: цього учасника?',
             ru: 'Включить камеру: этого участника?',
+        },
+        {
+            re: /^Stop screen share to the current participant\?$/,
+            uk: 'Зупинити демонстрацію екрана: цьому учаснику?',
+            ru: 'Остановить демонстрацию экрана: этому участнику?',
+        },
+        {
+            re: /^Start screen share to the current participant\?$/,
+            uk: 'Запропонувати демонстрацію екрана: цьому учаснику?',
+            ru: 'Предложить демонстрацию экрана: этому участнику?',
         },
         {
             re: /^Reason:\s*([\s\S]+)$/,

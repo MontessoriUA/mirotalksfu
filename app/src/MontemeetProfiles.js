@@ -106,14 +106,22 @@ function isLessonRoom(roomId) {
 }
 
 // seed a freshly created Room with cabinet policies + the teacher's switches.
-// Lessons only: concerts run their own rules, unmanaged rooms stay stock.
+// Unmanaged rooms stay stock.
 function applyToRoom(room, roomId) {
-    if (!isLessonRoom(roomId)) return false;
     const { roomOverrides = {}, lessonPolicies = {} } = load() || {};
-    for (const [policy, flags] of Object.entries(POLICY_TO_MODERATOR)) {
-        if (lessonPolicies[policy]) for (const flag of flags) room._moderator[flag] = true;
-    }
+    const lesson = isLessonRoom(roomId);
     const ov = roomOverrides[roomId];
+    if (!lesson && !ov) return false;
+
+    // Общешкольные политики — только урокам: у концерта свои правила.
+    if (lesson) {
+        for (const [policy, flags] of Object.entries(POLICY_TO_MODERATOR)) {
+            if (lessonPolicies[policy]) for (const flag of flags) room._moderator[flag] = true;
+        }
+    }
+    // Переключатели самой комнаты — любой комнате из кабинета. Раньше их гасил
+    // ранний выход для не-уроков, и зал ожидания на концерте молча не включался,
+    // хотя в кабинете галочка стояла (Иван, 2026-08-14).
     if (ov) {
         if (ov.startMuted) room._moderator.audio_start_muted = true;
         if (ov.startHidden) room._moderator.video_start_hidden = true;

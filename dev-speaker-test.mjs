@@ -834,6 +834,195 @@ async function runNameClashScenario() {
     };
 }
 
+// Своя же копия: педагог входит со второго устройства и остаётся собой. Когда
+// он там говорит, на первом устройстве он НЕ должен всплыть крупно сам у себя,
+// и кнопок «Заблокировать»/«Отключить» на своей копии быть не должно.
+// Проверка не пустая: рядом меряем уровень звука, пришедший с той копии, —
+// значит она действительно говорила, а раскладка её осознанно не взяла.
+async function runTwinScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const twin = await launchPeer('Teacher', fixtures.speech, { room });
+    const student = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(4000);
+
+    const twinId = await twin.page.evaluate(() => rc.peer_id);
+    const viewOf = (p) => p.page.evaluate(() => MontemeetLayout.view());
+    const clickCycle = (p) =>
+        p.page.evaluate(() => {
+            const btn = document.getElementById('montemeetSpeakerViewBtn');
+            if (!btn) return false;
+            btn.click();
+            return true;
+        });
+    // нужен режим, в котором говорящий вообще всплывает крупно, иначе проверять нечего
+    for (let i = 0; i < 4 && (await viewOf(teacher)) !== 'auto'; i++) await clickCycle(teacher);
+    const modeReady = (await viewOf(teacher)) === 'auto';
+
+    const pinnedOn = (p) =>
+        p.page.evaluate(
+            () => document.querySelector('#videoPinMediaContainer video[name]')?.getAttribute('name') ?? null
+        );
+    const pitchOf = (p, id) =>
+        p.page.evaluate((peerId) => parseFloat(document.getElementById(peerId + '__pitchBar')?.style.height) || 0, id);
+
+    let heardTwin = 0;
+    const pins = [];
+    for (let i = 0; i < 8; i++) {
+        await delay(1500);
+        heardTwin = Math.max(heardTwin, await pitchOf(teacher, twinId));
+        pins.push(await pinnedOn(teacher));
+    }
+
+    const recognised = await teacher.page.evaluate((id) => MontemeetLayout.isMyTwin(id), twinId);
+    const forStudent = await student.page.evaluate((id) => MontemeetLayout.isMyTwin(id), twinId);
+    const rows = await teacher.page.evaluate((id) => {
+        const box = document.getElementById(id + '_video__videoExpandContent');
+        const shown = (suffix) => {
+            const row = box?.querySelector(`[id$="${suffix}"]`)?.closest('.navbar-dropdown-item');
+            return !!row && row.style.display !== 'none';
+        };
+        return { found: !!box, ban: shown('___ban'), kick: shown('___kickOut') };
+    }, twinId);
+
+    await teacher.browser.close();
+    await twin.browser.close();
+    await student.browser.close();
+
+    return {
+        scenario: 'twin',
+        twinId,
+        pins,
+        heardTwin,
+        rows,
+        checks: {
+            modeReady,
+            recognised: recognised === true && forStudent === false,
+            heardTheTwin: heardTwin > 5, // копия действительно говорила
+            neverBigOnMyself: pins.every((p) => p !== twinId),
+            noSelfHarmButtons: rows.found && !rows.ban && !rows.kick,
+        },
+    };
+}
+
+// Заставка концерта у ЗРИТЕЛЯ: камера зала выключена и никто не выступает —
+// смотреть нечего, вместо чёрной плитки с аватаркой должна висеть афиша.
+// Вернули камеру — заставка ушла.
+async function runSplashScenario() {
+    const room = 'montemeet-concert';
+    const hall = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const guest = await launchPeer('Guest1', fixtures.silence, { room });
+    await delay(8000);
+
+    const splashOn = (p) =>
+        p.page.evaluate(() => !!document.getElementById('montemeetSplash')?.classList.contains('is-on'));
+    const camera = (p, on) =>
+        p.page.evaluate((wanted) => {
+            document.getElementById(wanted ? 'startVideoButton' : 'stopVideoButton')?.click();
+        }, on);
+
+    const guestWhileOn = await splashOn(guest);
+    await camera(hall, false);
+    await delay(6000);
+    const guestWhenOff = await splashOn(guest);
+    await camera(hall, true);
+    await delay(6000);
+    const guestAfterBack = await splashOn(guest);
+
+    await guest.browser.close();
+    await hall.browser.close();
+
+    return {
+        scenario: 'splash',
+        guestWhileOn,
+        guestWhenOff,
+        guestAfterBack,
+        checks: {
+            quietWhileCameraOn: guestWhileOn === false,
+            shownWhenCameraOff: guestWhenOff === true,
+            goneWhenCameraBack: guestAfterBack === false,
+        },
+    };
+}
+
+// Скрытый тулбар не должен ловить тот самый тап, которым его поднимают.
+// Воспроизводим ровно ту щель, из-за которой баг возвращался: между касанием и
+// кликом на телефоне проходят сотни миллисекунд, за это время наш опрос успевает
+// снять запрет нажатий — и клик приходит уже по появившейся кнопке.
+async function runPhantomTapScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(2000);
+    const phone = await launchPeer('Student1', fixtures.silence, { room, phone: true });
+    await delay(8000);
+    const p = phone.page;
+
+    const coarse = await p.evaluate(() => matchMedia('(hover: none) and (pointer: coarse)').matches);
+    await p.evaluate(() => {
+        window.__mmTaps = 0;
+        document.addEventListener('click', (e) => {
+            if (document.getElementById('bottomButtons')?.contains(e.target)) window.__mmTaps++;
+        });
+    });
+    const setBar = (display) =>
+        p.evaluate((d) => {
+            document.getElementById('bottomButtons').style.display = d;
+        }, display);
+    const barShown = () =>
+        p.evaluate(() => getComputedStyle(document.getElementById('bottomButtons')).display !== 'none');
+    const taps = () => p.evaluate(() => window.__mmTaps);
+
+    // цель — безобидная кнопка: поднятая рука переключается туда и обратно
+    await setBar('flex');
+    await delay(500);
+    const target = await p.evaluate(() => {
+        const bar = document.getElementById('bottomButtons');
+        const btn =
+            document.getElementById('raiseHandButton') ||
+            [...bar.querySelectorAll('button')].find((b) => b.offsetParent);
+        const r = btn.getBoundingClientRect();
+        return { id: btn.id, x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    });
+
+    // контроль: по ВИДИМОЙ панели нажатие обязано проходить
+    await p.touchscreen.touchStart(target.x, target.y);
+    await delay(400);
+    await p.touchscreen.touchEnd();
+    await delay(600);
+    const whenVisible = await taps();
+
+    // а теперь — панель спрятана, бьём в то же место
+    await setBar('none');
+    await delay(500);
+    await p.evaluate(() => {
+        window.__mmTaps = 0;
+    });
+    await p.touchscreen.touchStart(target.x, target.y);
+    await delay(400); // опрос успевает вернуть класс «панель видна»
+    await p.touchscreen.touchEnd();
+    await delay(600);
+    const whenHidden = await taps();
+    const revealed = await barShown();
+
+    await phone.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'phantom-tap',
+        target,
+        whenVisible,
+        whenHidden,
+        checks: {
+            touchScreen: coarse, // без этого проверка ничего не значит
+            controlPressed: whenVisible === 1,
+            phantomBlocked: whenHidden === 0,
+            barRevealed: revealed,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -900,6 +1089,21 @@ if (which === 'circles' || which === 'all') {
 }
 if (which === 'name-clash' || which === 'all') {
     const r = await runNameClashScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'twin' || which === 'all') {
+    const r = await runTwinScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'splash' || which === 'all') {
+    const r = await runSplashScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'phantom-tap' || which === 'all') {
+    const r = await runPhantomTapScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }

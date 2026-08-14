@@ -1253,11 +1253,61 @@ const MontemeetRoles = (() => {
     })();
     document.addEventListener('DOMContentLoaded', patchRoomClient);
 
+    // Кнопки на чужой плитке — два уточнения (Иван, 2026-08-14).
+    //
+    // «Отключить» на плитке ДЕМОНСТРАЦИИ экрана выгоняло студента из встречи
+    // целиком, хотя педагог ждал, что прекратится только показ. Сток умеет
+    // останавливать демонстрацию отдельным действием — его туда и ставим, а бан
+    // с отключением с этой плитки убираем: на обычной плитке того же студента
+    // и в списке участников они на месте.
+    //
+    // Свои же копии: педагог, вошедший со второго устройства, видел на себе
+    // «Заблокировать» и «Отключить». Забанить себя посреди урока — не то, что
+    // должно быть возможно по случайному касанию. Микрофон, камера, зеркало
+    // остаются. Список участников намеренно не трогаем: если тёзка окажется
+    // настоящим человеком, вывести его по-прежнему есть откуда.
+    const isTwin = (peerId) =>
+        typeof MontemeetLayout !== 'undefined' && !!MontemeetLayout.isMyTwin && MontemeetLayout.isMyTwin(peerId);
+
+    function hideDropdownRow(box, suffix) {
+        const row = box.querySelector(`[id$="${suffix}"]`)?.closest('.navbar-dropdown-item');
+        if (row) row.style.display = 'none';
+    }
+
+    function addStopShareRow(box, peerId) {
+        if (box.querySelector('.montemeet-stop-share')) return;
+        if (typeof rc === 'undefined' || !rc?.createDropdownItem) return;
+        const btn = document.createElement('button');
+        btn.id = 'montemeetStopShare___' + peerId;
+        btn.innerHTML = '<i class="fas fa-circle-stop"></i>';
+        btn.addEventListener('click', () => rc.peerAction('me', peerId + '___pScreen', 'stop'));
+        const item = rc.createDropdownItem(btn, mmT('Остановить показ'), box, 'red');
+        item.classList.add('montemeet-stop-share');
+        box.appendChild(item);
+    }
+
+    function groomPeerTiles() {
+        if (typeof rc === 'undefined' || !rc) return;
+        const teacher = typeof isPresenter !== 'undefined' && isPresenter;
+        for (const box of document.querySelectorAll('.navbar-dropdown-content[id$="_videoExpandContent"]')) {
+            const m = box.id.match(/^(.*)_(screen|video)__videoExpandContent$/);
+            if (!m) continue;
+            const [, peerId, kind] = m;
+            const screen = kind === 'screen';
+            const twin = isTwin(peerId);
+            if (!screen && !twin) continue;
+            hideDropdownRow(box, '___ban');
+            hideDropdownRow(box, '___kickOut');
+            if (screen && !twin && teacher) addStopShareRow(box, peerId);
+        }
+    }
+
     // Панель кнопок то показывается, то прячется. Отмечаем её состояние на body:
     // по нему CSS поднимает своё превью над панелью и — главное — запрещает
     // нажатия по невидимой панели, иначе тап по пустому месту внизу экрана
     // выключал камеру (Иван, 2026-08-09).
     setInterval(() => {
+        groomPeerTiles();
         // Панель чата закрывают и стоковым крестиком, а класс «панель открыта»
         // снимал только наш обработчик — после этого вёрстка прятала нижний
         // тулбар навсегда, и тапы по экрану переставали его вызывать
@@ -1268,12 +1318,44 @@ const MontemeetRoles = (() => {
             const listOpen = !!rc.isParticipantsOpen && !document.getElementById('plist')?.classList.contains('hidden');
             markPanelOpen(!!rc.isChatOpen || listOpen);
         }
-        const bar = document.getElementById('bottomButtons');
-        if (!bar) return;
-        const cs = getComputedStyle(bar);
-        const visible = cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.05;
-        document.body.classList.toggle('montemeet-bar-visible', visible);
+        if (!document.getElementById('bottomButtons')) return;
+        document.body.classList.toggle('montemeet-bar-visible', !barHidden());
     }, 250);
+
+    // Тап по пустому месту внизу экрана поднимает скрытый тулбар — и этот же тап
+    // успевает нажать кнопку, которая только что появилась под пальцем. Запрет
+    // нажатий (CSS выше) снимался опросом раз в четверть секунды, а между
+    // касанием и кликом проходит меньше — в эту щель нажатие и проскакивало
+    // (Иван, 2026-08-14, «опять та же проблема»). Теперь смотрим на состояние
+    // панели в момент касания и глушим ровно тот клик, который её и вызвал.
+    function barHidden() {
+        const bar = document.getElementById('bottomButtons');
+        if (!bar) return true;
+        const cs = getComputedStyle(bar);
+        return cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) <= 0.05;
+    }
+
+    let tapStartedHidden = false;
+    const rememberBar = () => {
+        tapStartedHidden = barHidden();
+    };
+    document.addEventListener('pointerdown', rememberBar, true);
+    document.addEventListener('touchstart', rememberBar, true);
+    document.addEventListener(
+        'click',
+        (e) => {
+            const wasHidden = tapStartedHidden;
+            tapStartedHidden = false;
+            if (!wasHidden || !e.isTrusted) return;
+            // только сенсорные экраны: на компьютере панель показывается по
+            // наведению, и клик мышью по ней всегда осознанный
+            if (!window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) return;
+            if (!document.getElementById('bottomButtons')?.contains(e.target)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        },
+        true
+    );
 
     // Переключились в другое приложение и вернулись — браузер успел заморозить
     // вкладку и порвать связь. Сток показывает баннер и ждёт нажатия; пробуем
