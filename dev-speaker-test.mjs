@@ -976,9 +976,17 @@ async function runPhantomTapScenario() {
             if (document.getElementById('bottomButtons')?.contains(e.target)) window.__mmTaps++;
         });
     });
+    // Прячем панель ровно так, как это делает сток: он ведёт ещё и свой признак,
+    // и без него showButtons() выходит сразу — панель не поднимется, а проверка
+    // выродится в «клика нет, потому что кнопки нет».
     const setBar = (display) =>
         p.evaluate((d) => {
             document.getElementById('bottomButtons').style.display = d;
+            try {
+                isButtonsVisible = d !== 'none';
+            } catch (e) {
+                /* сток переименовал признак — увидим по barRevealed */
+            }
         }, display);
     const barShown = () =>
         p.evaluate(() => getComputedStyle(document.getElementById('bottomButtons')).display !== 'none');
