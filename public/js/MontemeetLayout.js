@@ -251,6 +251,11 @@ const MontemeetLayout = (() => {
     function applyCurrent() {
         healFocusState();
         pruneDeparted();
+        // Заставка сцены считается и в виде «один на один»: зал с единственным
+        // зрителем — всё ещё зал. Раньше ранний выход по soloActive уносил с
+        // собой всю концертную логику, и афиша не появлялась вовсе
+        // (Иван, 2026-08-14).
+        if (concertRoom) syncConcertSplash();
         if (soloActive) return;
         if (concertRoom) applyConcert();
         else if (auto) auto.apply();
@@ -574,9 +579,13 @@ const MontemeetLayout = (() => {
 
     async function applyConcert() {
         if (!auto || typeof rc === 'undefined') return;
+        dropDomIfMine(); // свой же голос сцену не занимает
+        // Заставка не зависит от того, кто владеет раскладкой: в зале с одним
+        // зрителем экраном распоряжается вид «один на один», а афиша всё равно
+        // должна уходить, когда тот заговорил (Иван, 2026-08-14).
+        syncConcertSplash();
         if (soloActive) return; // the 1:1 layout owns the screen
         if (manualPinActive()) return; // a hand-made pin always wins
-        dropDomIfMine(); // свой же голос сцену не занимает
         let shownDom = false;
         if (dom && dom !== selfId()) {
             const epoch = layoutEpoch;
@@ -884,11 +893,7 @@ const MontemeetLayout = (() => {
         // Телефон больше не исключение: на индивидуальном уроке собеседник
         // крупно, своя картинка — в углу, как на компьютере (Иван, 2026-08-09).
         // Раньше мобильные проваливались в сетку, а себя не было видно вовсе.
-        // Концерт остаётся концертом при любом числе зрителей: раскладка «один
-        // на один» — про индивидуальный урок. Когда в зале оставался один
-        // гость, она включалась и молча уносила с собой всю концертную логику
-        // вместе с заставкой (Иван, 2026-08-14).
-        const shouldSolo = peerCount === 2 && !concertRoom;
+        const shouldSolo = peerCount === 2;
         const btn = document.getElementById('montemeetSpeakerViewBtn');
         // the view button makes sense only with an actual group (3+): hidden
         // when the teacher sits alone and in the solo 1:1 layout

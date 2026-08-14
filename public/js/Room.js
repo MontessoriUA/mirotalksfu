@@ -1428,9 +1428,12 @@ async function whoAreYou() {
         willOpen: () => {
             hide(loadingDiv);
         },
-        didOpen: () => {
-            showMobileAudioGuidance();
-        },
+        // Montemeet: подсказку про внешние микрофоны на входе больше не
+        // показываем (Иван, 2026-08-14). Список устройств у нас пересчитывается
+        // на лету — и по событию devicechange, и опросом, — так что «микрофон
+        // потребует переподключения» уже неправда. А места она съедала столько,
+        // что на телефоне кнопка «Присоединиться» уезжала под нижний край.
+        // didOpen: () => showMobileAudioGuidance(),
         inputValidator: (name) => {
             if (isVideoAllowed && !isInitVideoLoaded) {
                 return 'Please wait for video to initialize...';

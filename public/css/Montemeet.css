@@ -448,23 +448,16 @@ body.montemeet-concert-pip .montemeet-self-pip {
     }
 }
 
-/* Панель кнопок проявлялась целую секунду — слишком задумчиво для действия,
-   которое делают десятки раз за урок. Вдвое быстрее (Иван, 2026-08-10). */
+/* Панель кнопок появляется СРАЗУ, без проявления. Сначала оно длилось секунду,
+   потом мы ускорили его вдвое (Иван, 2026-08-10) — но дело было не в скорости:
+   пока панель проявляется, кнопки уже полностью нажимаются, оставаясь почти
+   невидимыми. Нажатие в это окно молча выключало камеру и на телефоне, и мышью
+   на компьютере (Иван, 2026-08-14). Состояния «прозрачная, но рабочая» больше
+   нет ни на одном устройстве. */
 #bottomButtons.fadein {
-    animation-duration: 0.45s !important;
-    -webkit-animation-duration: 0.45s !important;
-}
-
-/* На сенсорном экране панель появляется СРАЗУ. Проявление длилось почти
-   полсекунды, и всё это время кнопки были ещё прозрачными, но уже нажимались:
-   палец попадал по невидимой кнопке и выключал камеру. Убираем само состояние
-   «прозрачная, но рабочая» — на телефоне анимации нет (Иван, 2026-08-14). */
-@media (hover: none) and (pointer: coarse) {
-    #bottomButtons.fadein {
-        animation: none !important;
-        -webkit-animation: none !important;
-        opacity: 1 !important;
-    }
+    animation: none !important;
+    -webkit-animation: none !important;
+    opacity: 1 !important;
 }
 
 /* Кружочки говорящих (телефон, студент на групповом уроке): одноклассник,
@@ -575,4 +568,40 @@ body.montemeet-concert-pip .montemeet-self-pip {
 .montemeet-signin[disabled] {
     opacity: 0.6;
     cursor: default;
+}
+
+/* Окно входа на телефоне: превью, десяток кнопок и два списка устройств не
+   помещались в экран, и кнопка «Присоединиться» оказывалась под нижним краем —
+   до неё надо было прокручивать (Иван, 2026-08-14). Прокручиваем СОДЕРЖИМОЕ,
+   а поле имени и кнопка остаются на виду. */
+@media screen and (max-width: 1024px) {
+    .swal2-popup.init-modal-size {
+        max-height: 94vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 12px 0 10px !important;
+    }
+    .swal2-popup.init-modal-size .swal2-html-container {
+        max-height: 46vh !important;
+        overflow-y: auto !important;
+        margin: 6px 12px !important;
+    }
+    .swal2-popup.init-modal-size .swal2-title {
+        padding: 4px 12px !important;
+        font-size: 1.2rem !important;
+    }
+    .swal2-popup.init-modal-size .swal2-actions {
+        margin: 8px auto 0 !important;
+    }
+    .init-video-container video {
+        height: 150px !important;
+    }
+    .init-user button {
+        margin-top: 8px !important;
+        margin-bottom: 4px !important;
+    }
+    .init-user select {
+        margin-top: 8px !important;
+        padding: 8px !important;
+    }
 }
