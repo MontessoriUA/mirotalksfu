@@ -984,6 +984,10 @@ async function runPhantomTapScenario() {
             document.getElementById('bottomButtons').style.display = d;
             try {
                 isButtonsVisible = d !== 'none';
+                // «указатель над панелью» сток снимает по mouseout: на телефоне
+                // это происходит от касания в стороне от панели, чем наш
+                // сценарий и занимается
+                if (d === 'none') isButtonsBarOver = false;
             } catch (e) {
                 /* сток переименовал признак — увидим по barRevealed */
             }
