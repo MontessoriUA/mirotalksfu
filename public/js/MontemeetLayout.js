@@ -884,7 +884,11 @@ const MontemeetLayout = (() => {
         // Телефон больше не исключение: на индивидуальном уроке собеседник
         // крупно, своя картинка — в углу, как на компьютере (Иван, 2026-08-09).
         // Раньше мобильные проваливались в сетку, а себя не было видно вовсе.
-        const shouldSolo = peerCount === 2;
+        // Концерт остаётся концертом при любом числе зрителей: раскладка «один
+        // на один» — про индивидуальный урок. Когда в зале оставался один
+        // гость, она включалась и молча уносила с собой всю концертную логику
+        // вместе с заставкой (Иван, 2026-08-14).
+        const shouldSolo = peerCount === 2 && !concertRoom;
         const btn = document.getElementById('montemeetSpeakerViewBtn');
         // the view button makes sense only with an actual group (3+): hidden
         // when the teacher sits alone and in the solo 1:1 layout
