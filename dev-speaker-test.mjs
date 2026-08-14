@@ -886,13 +886,20 @@ async function runTwinScenario() {
 
     const recognised = await teacher.page.evaluate((id) => MontemeetLayout.isMyTwin(id), twinId);
     const forStudent = await student.page.evaluate((id) => MontemeetLayout.isMyTwin(id), twinId);
+    // Видимость меряем ВЫЧИСЛЕННЫМ стилем: у стока на строке меню
+    // `display: flex !important`, и инлайновый display ему проигрывает —
+    // проверка по style.display показывала «скрыто» на видимой строке
+    // (Иван, 2026-08-14).
     const rows = await teacher.page.evaluate((id) => {
         const box = document.getElementById(id + '_video__videoExpandContent');
+        if (box) box.classList.add('show'); // скрытый контейнер не считается
         const shown = (suffix) => {
             const row = box?.querySelector(`[id$="${suffix}"]`)?.closest('.navbar-dropdown-item');
-            return !!row && row.style.display !== 'none';
+            return !!row && getComputedStyle(row).display !== 'none';
         };
-        return { found: !!box, ban: shown('___ban'), kick: shown('___kickOut') };
+        const res = { found: !!box, ban: shown('___ban'), kick: shown('___kickOut') };
+        if (box) box.classList.remove('show');
+        return res;
     }, twinId);
 
     await teacher.browser.close();
@@ -953,6 +960,106 @@ async function runSplashScenario() {
             quietWhileCameraOn: guestWhileOn === false,
             shownWhenCameraOff: guestWhenOff === true,
             goneWhenCameraBack: guestAfterBack === false,
+        },
+    };
+}
+
+// Заставка и РЕЧЬ. Собственный голос сцену не занимает: педагог говорит — афиша
+// остаётся. Заговорил кто-то другой — афиша уходит, замолчал — возвращается.
+// Проверка не пустая: рядом считаем, что голос самого педагога до его же
+// клиента дошёл и был громким.
+async function runSplashSpeechScenario() {
+    const room = 'montemeet-concert';
+    const hall = await launchPeer('Zal', fixtures.speech, { room });
+    await delay(3000);
+    const guest = await launchPeer('Guest1', fixtures.silence, { room });
+    await delay(8000);
+
+    await hall.page.evaluate(() => {
+        window.__mmHeard = {};
+        const stock = MontemeetLayout.noteActivity;
+        MontemeetLayout.noteActivity = (peerId, volume, top) => {
+            window.__mmHeard[peerId] = Math.max(window.__mmHeard[peerId] || 0, volume || 0);
+            return stock(peerId, volume, top);
+        };
+    });
+    const splashOn = (p) =>
+        p.page.evaluate(() => !!document.getElementById('montemeetSplash')?.classList.contains('is-on'));
+
+    await delay(9000);
+    const whileHallTalks = await splashOn(hall);
+    const heardSelf = await hall.page.evaluate(() => window.__mmHeard[rc.peer_id] || 0);
+
+    // выступающий — отдельный гость, чтобы речь была заведомо не своя
+    const performer = await launchPeer('Guest2', fixtures.speech, { room });
+    await delay(12000);
+    const whilePerformer = await splashOn(hall);
+    const heardPerformer = await hall.page.evaluate((id) => window.__mmHeard[id] || 0, await performer.page.evaluate(() => rc.peer_id));
+
+    await performer.browser.close();
+    await delay(12000);
+    const afterPerformer = await splashOn(hall);
+
+    await guest.browser.close();
+    await hall.browser.close();
+
+    return {
+        scenario: 'splash-speech',
+        whileHallTalks,
+        whilePerformer,
+        afterPerformer,
+        heardSelf,
+        heardPerformer,
+        checks: {
+            heardOwnVoice: heardSelf >= 3, // педагог сам звучал громко
+            staysWhenISpeak: whileHallTalks === true,
+            heardThePerformer: heardPerformer >= 3,
+            goesWhenOtherSpeaks: whilePerformer === false,
+            backAfterSilence: afterPerformer === true,
+        },
+    };
+}
+
+// Тост должен остаться тостом. Наша обёртка перевода привязывала Swal.fire к
+// базовому классу, и Swal.mixin({toast}) молча терял свои параметры: любое
+// служебное сообщение выходило модальным окном во весь экран (Иван, 2026-08-14).
+async function runToastScenario() {
+    const room = 'montemeet-group';
+    const peer = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(9000);
+
+    const kind = async (fn) => {
+        await peer.page.evaluate(fn);
+        await delay(900);
+        return peer.page.evaluate(() => {
+            const p = document.querySelector('.swal2-popup');
+            return { toast: !!p?.classList.contains('swal2-toast'), classes: p?.className ?? null };
+        });
+    };
+    const viaUserLog = await kind(() => rc.userLog('info', 'ПРОВЕРКА-ТОСТА', 'top-end'));
+    const viaMixin = await kind(() => {
+        Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 30000 }).fire({
+            icon: 'info',
+            title: 'ПРОВЕРКА-МИКСИНА',
+        });
+    });
+    // эхо чужого входа гасится фильтром шума и не показывается вовсе
+    const noiseSuppressed = await peer.page.evaluate(async () => {
+        document.querySelectorAll('.swal2-container').forEach((el) => el.remove());
+        rc.roomStatus('hostOnlyRecordingOff');
+        await new Promise((r) => setTimeout(r, 600));
+        return !document.querySelector('.swal2-popup');
+    });
+
+    await peer.browser.close();
+    return {
+        scenario: 'toast',
+        viaUserLog,
+        viaMixin,
+        checks: {
+            userLogIsToast: viaUserLog.toast === true,
+            mixinKeepsParams: viaMixin.toast === true,
+            joinEchoSuppressed: noiseSuppressed === true,
         },
     };
 }
@@ -1025,7 +1132,13 @@ async function runPhantomTapScenario() {
         window.__mmTaps = 0;
     });
     await p.touchscreen.touchStart(target.x, target.y);
-    await delay(400); // опрос успевает вернуть класс «панель видна»
+    // На сенсорном экране панель обязана появиться сразу: полупрозрачная и уже
+    // нажимаемая — это ровно то состояние, в которое попадал палец.
+    await delay(90);
+    const opacityAtReveal = await p.evaluate(
+        () => getComputedStyle(document.getElementById('bottomButtons')).opacity
+    );
+    await delay(310); // опрос успевает вернуть класс «панель видна»
     // Здесь и проходит проверка на зубы: класс вернулся, значит CSS-запрет
     // нажатий уже снят и клик пришёл бы по кнопке — не пропустить его может
     // только сам заслон.
@@ -1044,10 +1157,12 @@ async function runPhantomTapScenario() {
         whenVisible,
         whenHidden,
         cssGuardOpen,
+        opacityAtReveal,
         checks: {
             touchScreen: coarse, // без этого проверка ничего не значит
             controlPressed: whenVisible === 1,
             barRevealed: revealed,
+            noFadeOnTouch: Number(opacityAtReveal) === 1,
             cssGuardOpen, // запрет нажатий к моменту клика уже снят
             phantomBlocked: whenHidden === 0,
         },
@@ -1130,6 +1245,16 @@ if (which === 'twin' || which === 'all') {
 }
 if (which === 'splash' || which === 'all') {
     const r = await runSplashScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'splash-speech' || which === 'all') {
+    const r = await runSplashSpeechScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'toast' || which === 'all') {
+    const r = await runToastScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }

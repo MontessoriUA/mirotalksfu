@@ -201,8 +201,13 @@ const MontemeetI18n = (() => {
             const orig = window.userLog;
             window.userLog = (icon, message, position, timer) => orig(icon, tr(message), position, timer);
         }
-        if (window.RoomClient && window.RoomClient.prototype) {
-            const proto = window.RoomClient.prototype;
+        // RoomClient объявлен как class верхнего уровня: на window его нет, и
+        // проверка `window.RoomClient` никогда не срабатывала — обёртки ниже не
+        // ставились вовсе, а всплывающие подсказки, которые сток строит из кода,
+        // так и оставались английскими (найдено 2026-08-14).
+        const rcProto = typeof RoomClient !== 'undefined' ? RoomClient.prototype : null;
+        if (rcProto && typeof rcProto.userLog === 'function') {
+            const proto = rcProto;
             for (const name of ['userLog', 'msgPopup']) {
                 if (typeof proto[name] === 'function') {
                     const orig = proto[name];
@@ -226,14 +231,20 @@ const MontemeetI18n = (() => {
             }
         }
         if (window.Swal && typeof window.Swal.fire === 'function') {
-            const origFire = window.Swal.fire.bind(window.Swal);
-            window.Swal.fire = (options, ...rest) => origFire(wrapSwalOptions(options), ...rest);
-            const origMixin = window.Swal.mixin.bind(window.Swal);
-            window.Swal.mixin = (mixinOptions) => {
-                const inst = origMixin(wrapSwalOptions(mixinOptions));
-                const instFire = inst.fire.bind(inst);
-                inst.fire = (options, ...r) => instFire(wrapSwalOptions(options), ...r);
-                return inst;
+            // Обёртки НЕ привязываем к самому Swal. Swal.mixin() возвращает
+            // подкласс, а fire у него — унаследованная статика, которая строит
+            // окно через `new this(...)`. Жёсткая привязка к базовому классу
+            // подменяла this, и mixin-параметры (toast, position, timer,
+            // showConfirmButton) молча терялись: КАЖДЫЙ тост в конференции
+            // выходил модальным окном с кнопкой «Хорошо» посреди экрана
+            // (Иван, 2026-08-14 — «высветился какой-то попап»).
+            const origFire = window.Swal.fire;
+            window.Swal.fire = function (options, ...rest) {
+                return origFire.call(this, wrapSwalOptions(options), ...rest);
+            };
+            const origMixin = window.Swal.mixin;
+            window.Swal.mixin = function (mixinOptions) {
+                return origMixin.call(this, wrapSwalOptions(mixinOptions));
             };
             if (typeof window.Swal.showValidationMessage === 'function') {
                 const origSVM = window.Swal.showValidationMessage.bind(window.Swal);

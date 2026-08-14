@@ -127,6 +127,14 @@ body.montemeet-student .navbar-dropdown-item:has([id$='__videoMirror']) {
     display: none !important;
 }
 
+/* Строка меню, снятая из кода (бан и отключение на своей же копии и на плитке
+   демонстрации). Через класс, а не инлайном: у стока `display: flex !important`,
+   и инлайновый display ему проигрывает (Иван, 2026-08-14). */
+.navbar-dropdown-item.montemeet-row-off,
+.videoMenuBar div.navbar-dropdown-item.montemeet-row-off {
+    display: none !important;
+}
+
 /* computer-sound button: green while streaming, attention pulse in dance rooms */
 #montemeetPcSoundBtn svg {
     display: block;
@@ -445,6 +453,18 @@ body.montemeet-concert-pip .montemeet-self-pip {
 #bottomButtons.fadein {
     animation-duration: 0.45s !important;
     -webkit-animation-duration: 0.45s !important;
+}
+
+/* На сенсорном экране панель появляется СРАЗУ. Проявление длилось почти
+   полсекунды, и всё это время кнопки были ещё прозрачными, но уже нажимались:
+   палец попадал по невидимой кнопке и выключал камеру. Убираем само состояние
+   «прозрачная, но рабочая» — на телефоне анимации нет (Иван, 2026-08-14). */
+@media (hover: none) and (pointer: coarse) {
+    #bottomButtons.fadein {
+        animation: none !important;
+        -webkit-animation: none !important;
+        opacity: 1 !important;
+    }
 }
 
 /* Кружочки говорящих (телефон, студент на групповом уроке): одноклассник,

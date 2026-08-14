@@ -1269,9 +1269,11 @@ const MontemeetRoles = (() => {
     const isTwin = (peerId) =>
         typeof MontemeetLayout !== 'undefined' && !!MontemeetLayout.isMyTwin && MontemeetLayout.isMyTwin(peerId);
 
+    // Прятать строку меню приходится классом: у стока на .navbar-dropdown-item
+    // висит `display: flex !important`, и инлайновый display он перебивает —
+    // строки оставались на экране, хотя код их «скрыл» (Иван, 2026-08-14).
     function hideDropdownRow(box, suffix) {
-        const row = box.querySelector(`[id$="${suffix}"]`)?.closest('.navbar-dropdown-item');
-        if (row) row.style.display = 'none';
+        box.querySelector(`[id$="${suffix}"]`)?.closest('.navbar-dropdown-item')?.classList.add('montemeet-row-off');
     }
 
     function addStopShareRow(box, peerId) {
@@ -1346,11 +1348,17 @@ const MontemeetRoles = (() => {
         (e) => {
             const wasHidden = tapStartedHidden;
             tapStartedHidden = false;
-            if (!wasHidden || !e.isTrusted) return;
+            if (!e.isTrusted) return;
             // только сенсорные экраны: на компьютере панель показывается по
             // наведению, и клик мышью по ней всегда осознанный
             if (!window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) return;
-            if (!document.getElementById('bottomButtons')?.contains(e.target)) return;
+            const bar = document.getElementById('bottomButtons');
+            if (!bar?.contains(e.target)) return;
+            // Полупрозрачная кнопка не нажимается: панель ещё проявляется, и
+            // человек в неё не целился. Анимацию на телефоне мы сняли, но
+            // условие оставляем — вернётся плавность, вернётся и защита.
+            const halfThere = Number(getComputedStyle(bar).opacity) < 0.9;
+            if (!wasHidden && !halfThere) return;
             e.preventDefault();
             e.stopImmediatePropagation();
         },
@@ -1360,16 +1368,77 @@ const MontemeetRoles = (() => {
     // Переключились в другое приложение и вернулись — браузер успел заморозить
     // вкладку и порвать связь. Сток показывает баннер и ждёт нажатия; пробуем
     // переподключиться сами (Иван, 2026-08-09).
+    // Камера, пережившая уход из вкладки. Браузер глушит захват в неактивной
+    // вкладке; дорожка заканчивается, и сток по событию trackended просто
+    // закрывает продюсера. Со стороны это выглядит так: видео замирает, потом
+    // гаснет совсем и возвращается лишь спустя время — когда обрыв сокета
+    // доводит дело до перезагрузки страницы (Иван, 2026-08-14). Вернулись во
+    // вкладку — поднимаем камеру сами, без перезагрузки.
+    const VIDEO_TYPE = (() => {
+        try {
+            return RoomClient.mediaType.video;
+        } catch (e) {
+            return 'videoType';
+        }
+    })();
+
+    function cameraLive() {
+        try {
+            if (!rc?.producerExist(VIDEO_TYPE)) return false;
+            const track = rc.producers?.get(rc.producerLabel.get(VIDEO_TYPE))?.track;
+            return !!track && track.readyState === 'live' && !track.muted;
+        } catch (e) {
+            return true; // не смогли выяснить — не лезем
+        }
+    }
+
+    let cameraWasOn = false;
+    let reviving = false;
+
+    async function reviveCamera() {
+        if (reviving || !cameraWasOn || cameraLive()) return;
+        if (typeof rc === 'undefined' || !rc || !rc.socket?.connected) return;
+        reviving = true;
+        try {
+            const deviceId = document.getElementById('videoSelect')?.value || null;
+            if (rc.producerExist(VIDEO_TYPE)) {
+                console.log('Montemeet: камера умерла в фоне, перезапускаем дорожку');
+                rc.closeThenProduce(VIDEO_TYPE, deviceId);
+            } else {
+                console.log('Montemeet: камера закрылась в фоне, включаем заново');
+                await rc.produce(VIDEO_TYPE, deviceId);
+            }
+        } catch (e) {
+            console.warn('Montemeet: поднять камеру не удалось', e);
+        } finally {
+            setTimeout(() => {
+                reviving = false;
+            }, 3000);
+        }
+    }
+
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState !== 'visible') return;
+        if (document.visibilityState !== 'visible') {
+            cameraWasOn = cameraLive();
+            return;
+        }
         setTimeout(() => {
             try {
                 if (typeof rc === 'undefined' || !rc || !rc.socket) return;
-                if (rc.socket.connected) return;
-                console.log('Montemeet: соединение потеряно за время в фоне, переподключаемся');
-                rc.socket.connect();
+                if (!rc.socket.connected) {
+                    console.log('Montemeet: соединение потеряно за время в фоне, переподключаемся');
+                    rc.socket.connect();
+                    return; // переподключение само поднимет комнату
+                }
+                reviveCamera();
             } catch (e) {}
         }, 400);
+        // Safari иногда добивает дорожку уже после возврата — смотрим ещё раз
+        setTimeout(() => {
+            try {
+                if (typeof rc !== 'undefined' && rc?.socket?.connected) reviveCamera();
+            } catch (e) {}
+        }, 2500);
     });
 
     // ------------------------------------------------------------------
@@ -1382,7 +1451,18 @@ const MontemeetRoles = (() => {
     // служебный шум, не нужный никому и никогда: блокировка экрана срабатывает
     // на телефоне при каждом гашении экрана и переключении приложения, и сток
     // рапортует о каждом таком событии попапом (Иван, 2026-08-09)
-    const NOISE_ALWAYS_RE = [/Wake Lock/i];
+    // Служебный шум, не нужный никому и никогда.
+    // Wake Lock: срабатывает на телефоне при каждом гашении экрана.
+    // Остальные три — эхо чужого входа: клиент педагога на входе рассылает
+    // текущие настройки комнаты (Rules.js), и все остальные получают сообщение
+    // про запись, лобби и вещание. Ни к чьему действию это не относится, а
+    // запись у нас вообще не используется (Иван, 2026-08-14).
+    const NOISE_ALWAYS_RE = [
+        /Wake Lock/i,
+        /host only recording is (enabled|disabled)/i,
+        /Lobby is (enabled|disabled)/i,
+        /BROADCASTING (On|Off)/i,
+    ];
 
     const NOISE_RE = [
         /whiteboard action:/,
@@ -1426,8 +1506,10 @@ const MontemeetRoles = (() => {
                 return orig(icon, message, ...rest);
             };
         }
-        if (window.RoomClient && RoomClient.prototype) {
-            const proto = RoomClient.prototype;
+        // на window класса нет — эта проверка молчала, и фильтр шума для
+        // студента не ставился вовсе (найдено 2026-08-14)
+        const proto = roomClientProto();
+        if (proto) {
             if (typeof proto.userLog === 'function') {
                 const orig = proto.userLog;
                 proto.userLog = function (icon, message, ...rest) {

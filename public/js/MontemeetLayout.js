@@ -148,12 +148,24 @@ const MontemeetLayout = (() => {
 
     function isMyTwin(peerId) {
         if (typeof rc === 'undefined' || !rc || !peerId || peerId === selfId()) return false;
+        // Копии заводит только педагог: он входит со второго устройства и
+        // остаётся собой. Совпадения имени мало — студент вправе оказаться
+        // тёзкой педагога (а на испытаниях Иван и сам заходит студентом под
+        // своим же именем, и его переставали слышать раскладке, 2026-08-14).
+        if (!isHost()) return false;
         const mine = nameBase(rc.peer_name);
         if (!mine) return false;
-        const theirs = nameBase(
-            rc.peers?.get(peerId)?.peer_info?.peer_name || document.getElementById(peerId + '__name')?.innerText
-        );
-        return !!theirs && theirs.replace(/^⭐️\s*/, '') === mine;
+        const peer = rc.peers?.get(peerId);
+        const label = String(
+            peer?.peer_info?.peer_name || document.getElementById(peerId + '__name')?.innerText || ''
+        ).replace(/^⭐️\s*/, '');
+        // звёздочка в подписи — запасной признак презентера, когда карта
+        // участников ещё не подтянулась
+        const presenter = peer?.peer_info
+            ? !!peer.peer_info.peer_presenter
+            : /^⭐️/.test(document.getElementById(peerId + '__name')?.innerText?.trim() || '');
+        if (!presenter) return false;
+        return !!label && nameBase(label) === mine;
     }
 
     function anchorPeerId() {
@@ -331,7 +343,8 @@ const MontemeetLayout = (() => {
     // A candidate must survive holdMs before the layout switches to them
     function holdCandidate(peer_id) {
         if (peer_id === dom) return;
-        if (isMyTwin(peer_id)) return; // сам себе крупно не показываюсь
+        // сам себе крупно не показываюсь — ни своей копией, ни собой
+        if (peer_id === selfId() || isMyTwin(peer_id)) return;
         if (pending?.peerId === peer_id) return; // already holding this candidate
         if (pending) clearTimeout(pending.timer);
         pending = {
@@ -355,6 +368,19 @@ const MontemeetLayout = (() => {
     // top === false — это не самый громкий из пришедшей тройки: такой годится
     // для кружочков говорящих, но не для смены того, кого показываем крупно,
     // иначе кандидаты чередуются и выдержка никогда не срабатывает.
+    // Собственная речь не должна значить для раскладки ничего: крупно себя мы не
+    // показываем никогда. Заставка концерта ловилась именно на этом — педагог
+    // начинал говорить, «выступающий» становился он сам, и афиша уходила у него
+    // же (Иван, 2026-08-14).
+    //
+    // Сложность в том, что признак top сервер ставит самому громкому из тройки.
+    // Когда громче всех оказываюсь я — а на испытаниях оба устройства стоят на
+    // одном столе — кандидата не выдвигал никто, и студента раскладка не
+    // слышала вовсе. Поэтому услышанный top от себя открывает короткое окно, в
+    // котором годится следующий из той же посылки.
+    const SELF_TOP_MS = 400;
+    let selfTopAt = 0;
+
     function noteActivity(peer_id, volume, top = true) {
         // отметку о речи ведём всегда, а не только в авто-режимах: по ней
         // выбирается активный якорь, когда презентеров в комнате двое, и по ней
@@ -363,10 +389,15 @@ const MontemeetLayout = (() => {
             lastSpokeAt.set(peer_id, Date.now());
             noteSpeakingCircle(peer_id);
         }
-        if (!auto || !top) return;
+        if (!auto || !peer_id) return;
         if ((volume ?? 0) < auto.minVolume) return;
+        if (peer_id === selfId()) {
+            if (top) selfTopAt = Date.now();
+            return;
+        }
+        if (!top && Date.now() - selfTopAt > SELF_TOP_MS) return;
         lastActivityTs = Date.now();
-        if (peer_id) holdCandidate(peer_id);
+        holdCandidate(peer_id);
     }
 
     // dominantSpeaker event → same hold machinery.
@@ -968,7 +999,9 @@ const MontemeetLayout = (() => {
         // заставку, хотя на сцене по-прежнему пусто (Иван, 2026-08-09).
         // Теперь смотрим на выступающего: есть подтверждённый говорящий или
         // ручной пин — сцена занята, иначе показываем заставку.
-        const performing = !!dom || manualPinActive();
+        // «Выступает» — кто-то другой: собственная речь педагога сцену не
+        // занимает, он и есть зал (Иван, 2026-08-14)
+        const performing = (!!dom && dom !== selfId()) || manualPinActive();
         renderSplash(!splashForced && !performing, url);
     }
 
