@@ -1451,18 +1451,26 @@ const MontemeetRoles = (() => {
     // служебный шум, не нужный никому и никогда: блокировка экрана срабатывает
     // на телефоне при каждом гашении экрана и переключении приложения, и сток
     // рапортует о каждом таком событии попапом (Иван, 2026-08-09)
-    // Служебный шум, не нужный никому и никогда.
-    // Wake Lock: срабатывает на телефоне при каждом гашении экрана.
-    // Остальные три — эхо чужого входа: клиент педагога на входе рассылает
-    // текущие настройки комнаты (Rules.js), и все остальные получают сообщение
-    // про запись, лобби и вещание. Ни к чьему действию это не относится, а
-    // запись у нас вообще не используется (Иван, 2026-08-14).
-    const NOISE_ALWAYS_RE = [
-        /Wake Lock/i,
-        /host only recording is (enabled|disabled)/i,
-        /Lobby is (enabled|disabled)/i,
-        /BROADCASTING (On|Off)/i,
-    ];
+    // служебный шум, не нужный никому и никогда: блокировка экрана срабатывает
+    // на телефоне при каждом гашении экрана и переключении приложения, и сток
+    // рапортует о каждом таком событии попапом (Иван, 2026-08-09)
+    const NOISE_ALWAYS_RE = [/Wake Lock/i];
+
+    // Эхо чужого входа. Клиент педагога на входе рассылает по комнате текущие
+    // настройки (Rules.js), и все остальные получают сообщения про запись,
+    // зал ожидания и вещание — ни к чьему действию это не относится, а запись
+    // у нас вообще не используется (Иван, 2026-08-14, «высветился какой-то
+    // попап»). Гасим именно ЭХО: своё собственное подтверждение тот, кто
+    // щёлкнул переключатель, по-прежнему видит.
+    const ECHO_ACTIONS = new Set([
+        'hostOnlyRecordingOn',
+        'hostOnlyRecordingOff',
+        'lobbyOn',
+        'lobbyOff',
+        'globalLobbyOn',
+        'globalLobbyOff',
+        'broadcasting',
+    ]);
 
     const NOISE_RE = [
         /whiteboard action:/,
@@ -1515,6 +1523,15 @@ const MontemeetRoles = (() => {
                 proto.userLog = function (icon, message, ...rest) {
                     if (noisyForStudent(message)) return;
                     return orig.call(this, icon, message, ...rest);
+                };
+            }
+            // emit === false — сообщение пришло по сокету, то есть это чужое
+            // действие, а не наше
+            if (typeof proto.roomAction === 'function') {
+                const orig = proto.roomAction;
+                proto.roomAction = function (action, emit = true, ...rest) {
+                    if (emit === false && typeof action === 'string' && ECHO_ACTIONS.has(action)) return;
+                    return orig.call(this, action, emit, ...rest);
                 };
             }
             // moderator policy toasts arrive on every presenter (re)join push —

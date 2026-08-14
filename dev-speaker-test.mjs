@@ -1181,12 +1181,20 @@ async function runToastScenario() {
             title: 'ПРОВЕРКА-МИКСИНА',
         });
     });
-    // эхо чужого входа гасится фильтром шума и не показывается вовсе
+    // Эхо чужого входа не показывается вовсе. Приходит оно по сокету — ровно так
+    // его и воспроизводим: сток на такое сообщение вызывает roomAction(..., false).
     const noiseSuppressed = await peer.page.evaluate(async () => {
         document.querySelectorAll('.swal2-container').forEach((el) => el.remove());
-        rc.roomStatus('hostOnlyRecordingOff');
+        rc.roomAction('hostOnlyRecordingOff', false);
         await new Promise((r) => setTimeout(r, 600));
         return !document.querySelector('.swal2-popup');
+    });
+    // а своё собственное подтверждение — показывается
+    const ownStaysVisible = await peer.page.evaluate(async () => {
+        document.querySelectorAll('.swal2-container').forEach((el) => el.remove());
+        rc.roomStatus('lobbyOn');
+        await new Promise((r) => setTimeout(r, 600));
+        return !!document.querySelector('.swal2-popup');
     });
 
     await peer.browser.close();
@@ -1198,6 +1206,7 @@ async function runToastScenario() {
             userLogIsToast: viaUserLog.toast === true,
             mixinKeepsParams: viaMixin.toast === true,
             joinEchoSuppressed: noiseSuppressed === true,
+            ownActionStillShown: ownStaysVisible === true,
         },
     };
 }
