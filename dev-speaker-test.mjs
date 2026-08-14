@@ -848,6 +848,15 @@ async function runTwinScenario() {
     await delay(4000);
 
     const twinId = await twin.page.evaluate(() => rc.peer_id);
+    // На стенде педагог узнаётся по ИМЕНИ, а второй тёзка входит как «Имя (2)» и
+    // педагогом уже не считается — двух презентеров по имени не сделать. В жизни
+    // обе копии приходят по почте (вход из кабинета или билет из расписания) и
+    // презентеры обе. Ставим в карте участников тот самый признак, который в
+    // проде приходит с сервера, — дальше работает настоящий код.
+    await teacher.page.evaluate((id) => {
+        const p = rc.peers.get(id);
+        if (p && p.peer_info) p.peer_info.peer_presenter = true;
+    }, twinId);
     const viewOf = (p) => p.page.evaluate(() => MontemeetLayout.view());
     const clickCycle = (p) =>
         p.page.evaluate(() => {
