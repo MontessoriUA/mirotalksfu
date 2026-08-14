@@ -857,8 +857,23 @@ async function runTwinScenario() {
     // презентеры обе. Ставим в карте участников тот самый признак, который в
     // проде приходит с сервера, — дальше работает настоящий код.
     await teacher.page.evaluate((id) => {
-        const p = rc.peers.get(id);
-        if (p && p.peer_info) p.peer_info.peer_presenter = true;
+        const mark = (p) => {
+            if (p && p.peer_info) p.peer_info.peer_presenter = true;
+        };
+        mark(rc.peers.get(id));
+        // Карта участников обновляется с сервера при каждой смене состава и
+        // затирала заплатку — под нагрузкой это ловилось. Ставим признак в
+        // самом ответе сервера, как это и происходит в бою.
+        const orig = rc.getRoomInfo.bind(rc);
+        rc.getRoomInfo = async () => {
+            const info = await orig();
+            if (info?.peers) {
+                const peers = JSON.parse(info.peers);
+                for (const entry of peers) if (entry[0] === id) mark(entry[1]);
+                info.peers = JSON.stringify(peers);
+            }
+            return info;
+        };
     }, twinId);
     const viewOf = (p) => p.page.evaluate(() => MontemeetLayout.view());
     const clickCycle = (p) =>
@@ -942,8 +957,12 @@ async function runSplashScenario() {
     // зал — педагог комнаты по реестру, иначе презентера в комнате нет вовсе
     const hall = await launchPeer('Zal', fixtures.silence, { room });
     await delay(3000);
+    // Зрителей двое, и один с телефона: Иван видел заставку на смартфоне и не
+    // видел на компьютере, так что смотрим обоих сразу (2026-08-14). Заодно
+    // зрителей двое — значит вид «один на один» тут не включается.
     const guest = await launchPeer('Guest1', fixtures.silence, { room });
-    await delay(8000);
+    const phone = await launchPeer('Guest2', fixtures.silence, { room, phone: true });
+    await delay(10000);
 
     const splashOn = (p) =>
         p.page.evaluate(() => !!document.getElementById('montemeetSplash')?.classList.contains('is-on'));
@@ -952,26 +971,27 @@ async function runSplashScenario() {
             document.getElementById(wanted ? 'startVideoButton' : 'stopVideoButton')?.click();
         }, on);
 
-    const guestWhileOn = await splashOn(guest);
+    const whileOn = { пк: await splashOn(guest), телефон: await splashOn(phone) };
     await camera(hall, false);
-    await delay(6000);
-    const guestWhenOff = await splashOn(guest);
+    await delay(7000);
+    const whenOff = { пк: await splashOn(guest), телефон: await splashOn(phone) };
     await camera(hall, true);
-    await delay(6000);
-    const guestAfterBack = await splashOn(guest);
+    await delay(7000);
+    const afterBack = { пк: await splashOn(guest), телефон: await splashOn(phone) };
 
+    await phone.browser.close();
     await guest.browser.close();
     await hall.browser.close();
 
     return {
         scenario: 'splash',
-        guestWhileOn,
-        guestWhenOff,
-        guestAfterBack,
+        whileOn,
+        whenOff,
+        afterBack,
         checks: {
-            quietWhileCameraOn: guestWhileOn === false,
-            shownWhenCameraOff: guestWhenOff === true,
-            goneWhenCameraBack: guestAfterBack === false,
+            quietWhileCameraOn: whileOn.пк === false && whileOn.телефон === false,
+            shownWhenCameraOff: whenOff.пк === true && whenOff.телефон === true,
+            goneWhenCameraBack: afterBack.пк === false && afterBack.телефон === false,
         },
     };
 }
@@ -1154,6 +1174,51 @@ async function runSplashSpeechScenario() {
             heardThePerformer: heardPerformer >= 3,
             goesWhenOtherSpeaks: whilePerformer === false,
             backAfterSilence: afterPerformer === true,
+        },
+    };
+}
+
+// Зал с ОДНИМ зрителем: это всё ещё концерт (афиша работает), но раскладка —
+// «один на один», и педагог видит себя в углу, а не пустую ленту.
+async function runConcertSoloScenario() {
+    const room = 'montemeet-concert';
+    const hall = await launchPeer('Zal', fixtures.silence, { room });
+    await delay(3000);
+    const guest = await launchPeer('Guest1', fixtures.silence, { room });
+    await delay(11000);
+
+    const state = (p) =>
+        p.page.evaluate(() => ({
+            solo: document.body.classList.contains('montemeet-solo'),
+            splash: !!document.getElementById('montemeetSplash')?.classList.contains('is-on'),
+            pip: (() => {
+                const el = document.querySelector('.montemeet-self-pip');
+                return !!el && getComputedStyle(el).display !== 'none';
+            })(),
+        }));
+
+    const hallState = await state(hall);
+    const guestState = await state(guest);
+
+    // афиша не перестала жить от того, что раскладкой владеет вид 1:1
+    await hall.page.evaluate(() => document.getElementById('stopVideoButton')?.click());
+    await delay(7000);
+    const guestWhenCameraOff = await state(guest);
+
+    await guest.browser.close();
+    await hall.browser.close();
+
+    return {
+        scenario: 'concert-solo',
+        hallState,
+        guestState,
+        guestWhenCameraOff,
+        checks: {
+            soloOnHall: hallState.solo === true,
+            soloOnGuest: guestState.solo === true,
+            hallSeesItself: hallState.pip === true,
+            splashOnStage: hallState.splash === true, // никто не выступает — висит афиша
+            splashForGuestWhenCameraOff: guestWhenCameraOff.splash === true,
         },
     };
 }
@@ -1407,6 +1472,11 @@ if (which === 'screen-tile' || which === 'all') {
 }
 if (which === 'splash-speech' || which === 'all') {
     const r = await runSplashSpeechScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'concert-solo' || which === 'all') {
+    const r = await runConcertSoloScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
