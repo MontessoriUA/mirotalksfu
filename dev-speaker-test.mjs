@@ -920,7 +920,8 @@ async function runTwinScenario() {
 // Вернули камеру — заставка ушла.
 async function runSplashScenario() {
     const room = 'montemeet-concert';
-    const hall = await launchPeer('Teacher', fixtures.silence, { room });
+    // зал — педагог комнаты по реестру, иначе презентера в комнате нет вовсе
+    const hall = await launchPeer('Zal', fixtures.silence, { room });
     await delay(3000);
     const guest = await launchPeer('Guest1', fixtures.silence, { room });
     await delay(8000);
