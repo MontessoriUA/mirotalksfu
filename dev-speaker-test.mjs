@@ -856,24 +856,33 @@ async function runTwinScenario() {
     // обе копии приходят по почте (вход из кабинета или билет из расписания) и
     // презентеры обе. Ставим в карте участников тот самый признак, который в
     // проде приходит с сервера, — дальше работает настоящий код.
+    // Карту участников клиент перечитывает с сервера при каждой смене состава,
+    // и любая разовая заплатка затирается. Подменяем само чтение: кто бы ни
+    // положил новую карту, вторая копия в ней всегда придёт педагогом — ровно
+    // так её отдаёт сервер в бою.
     await teacher.page.evaluate((id) => {
-        const mark = (p) => {
-            if (p && p.peer_info) p.peer_info.peer_presenter = true;
-        };
-        mark(rc.peers.get(id));
-        // Карта участников обновляется с сервера при каждой смене состава и
-        // затирала заплатку — под нагрузкой это ловилось. Ставим признак в
-        // самом ответе сервера, как это и происходит в бою.
-        const orig = rc.getRoomInfo.bind(rc);
-        rc.getRoomInfo = async () => {
-            const info = await orig();
-            if (info?.peers) {
-                const peers = JSON.parse(info.peers);
-                for (const entry of peers) if (entry[0] === id) mark(entry[1]);
-                info.peers = JSON.stringify(peers);
-            }
-            return info;
-        };
+        const wrap = (map) =>
+            new Proxy(map, {
+                get(target, prop) {
+                    if (prop === 'get') {
+                        return (key) => {
+                            const value = target.get(key);
+                            if (key === id && value?.peer_info) value.peer_info.peer_presenter = true;
+                            return value;
+                        };
+                    }
+                    const value = Reflect.get(target, prop);
+                    return typeof value === 'function' ? value.bind(target) : value;
+                },
+            });
+        let real = rc.peers;
+        Object.defineProperty(rc, 'peers', {
+            get: () => wrap(real),
+            set: (map) => {
+                real = map;
+            },
+            configurable: true,
+        });
     }, twinId);
     const viewOf = (p) => p.page.evaluate(() => MontemeetLayout.view());
     const clickCycle = (p) =>
