@@ -127,7 +127,40 @@ function applyToRoom(room, roomId) {
         if (ov.startHidden) room._moderator.video_start_hidden = true;
         if (ov.lobby) room._isLobbyEnabled = true;
     }
+    room._mmPolicyStamp = stamp();
     log.debug('Montemeet room policies applied', { roomId, moderator: room._moderator, lobby: room._isLobbyEnabled });
+    return true;
+}
+
+// Комната живёт, пока в ней хоть кто-то есть, а настройки применялись ровно
+// один раз — при её создании. Педагог ставил галочку в кабинете, заходил
+// второй вкладкой (комната-то не опустела) и не находил ни зала ожидания, ни
+// прочего: правка ждала, пока комната умрёт (Иван, 2026-08-14).
+//
+// Поэтому на каждом входе сверяем отметку времени реестра. Изменился реестр —
+// применяем переключатели комнаты заново, и на этот раз в обе стороны: раз в
+// кабинете только что тронули настройку, она и главнее. Между правками
+// кабинета всё, что педагог переключил внутри урока, остаётся как есть.
+function stamp() {
+    load();
+    return cache.mtimeMs;
+}
+
+function refreshRoom(room, roomId) {
+    if (!room) return false;
+    const now = stamp();
+    if (room._mmPolicyStamp === now) return false;
+    room._mmPolicyStamp = now;
+
+    const { roomOverrides = {} } = load() || {};
+    const ov = roomOverrides[roomId];
+    if (!ov) return applyToRoom(room, roomId);
+
+    applyToRoom(room, roomId);
+    room._moderator.audio_start_muted = !!ov.startMuted;
+    room._moderator.video_start_hidden = !!ov.startHidden;
+    room._isLobbyEnabled = !!ov.lobby;
+    log.debug('Montemeet room policies refreshed', { roomId, lobby: room._isLobbyEnabled });
     return true;
 }
 
@@ -220,6 +253,7 @@ function emailFromGrant(cookieHeader, roomId) {
 module.exports = {
     forRoom,
     applyToRoom,
+    refreshRoom,
     endsOnTeacherLeave,
     isLessonRoom,
     isPresenterEmail,

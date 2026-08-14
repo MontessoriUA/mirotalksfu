@@ -570,6 +570,17 @@ const MontemeetLayout = (() => {
             markSelfPip();
             return;
         }
+        // Зал один в комнате — прятать себя не от кого. Наоборот: до начала
+        // концерта педагогу нужно видеть себя крупно, чтобы проверить кадр, а
+        // заставку он на это время снимает кнопкой (Иван, 2026-08-14).
+        if (concertRoom && isHost() && livePeerIds().size <= 1) {
+            const own = rc?.getVideoElementByPeerId?.(selfId());
+            const box = own ? document.getElementById(containerId(own.id)) : null;
+            if (box && box.style.display === 'none') box.style.display = '';
+            wakeSelfVideo();
+            regrid();
+            return false;
+        }
         const videoEl = rc?.getVideoElementByPeerId?.(selfId());
         const container = videoEl ? document.getElementById(videoEl.id + '__video') : null;
         if (container && container.style.display !== 'none') {
@@ -848,6 +859,18 @@ const MontemeetLayout = (() => {
     let soloActive = false;
     let concertRoom = false;
 
+    // Своя плитка на концерте подолгу стоит скрытой (зал убирает себя со сцены),
+    // и стоковый загрузчик так и не дожидается события playing: когда плитка
+    // наконец нужна — в углу крутится кружок вместо картинки (Иван,
+    // 2026-08-14). Показали — значит будим: гасим загрузчик и запускаем воспроизведение.
+    function wakeSelfVideo() {
+        const videoEl = rc?.getVideoElementByPeerId?.(selfId());
+        if (!videoEl) return;
+        const box = document.getElementById(containerId(videoEl.id));
+        box?.querySelector('.video-loader')?.style.setProperty('display', 'none');
+        if (videoEl.paused) videoEl.play().catch(() => {});
+    }
+
     function markSelfPip() {
         const videoEl = rc?.getVideoElementByPeerId?.(selfId());
         const cam = videoEl ? document.getElementById(containerId(videoEl.id)) : null;
@@ -855,6 +878,7 @@ const MontemeetLayout = (() => {
             if (el !== cam) el.classList.remove('montemeet-self-pip');
         }
         if (cam) cam.classList.add('montemeet-self-pip');
+        wakeSelfVideo();
     }
 
     function clearSelfPip() {

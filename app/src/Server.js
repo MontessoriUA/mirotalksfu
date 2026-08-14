@@ -2395,6 +2395,12 @@ function startServer() {
 
             const room = getRoom(socket);
 
+            // Montemeet: настройки комнаты из кабинета применялись только при её
+            // создании, а комната живёт, пока в ней хоть кто-то есть. Педагог
+            // ставил галочку, заходил второй вкладкой и не находил изменений
+            // (Иван, 2026-08-14). Сверяем реестр на каждом входе.
+            montemeetProfiles.refreshRoom(room, socket.room_id);
+
             const {
                 peer_name,
                 peer_id,

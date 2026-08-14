@@ -1377,35 +1377,35 @@ const MontemeetRoles = (() => {
         }
     })();
 
-    // «Камера жива» — намеренно строго: продюсер есть и дорожка не закончилась.
-    // Признак muted сюда НЕ входит: браузер поднимает его и на пару мгновений —
-    // например, когда возвращает захват после фона, — а перезапуск по такому
-    // поводу выглядит как «камера сама выключилась и включилась» (Иван,
-    // 2026-08-14). Перезапускаем только то, что уже мертво.
-    function cameraLive() {
+    function videoTrack() {
         try {
-            if (!rc?.producerExist(VIDEO_TYPE)) return false;
-            const track = rc.producers?.get(rc.producerLabel.get(VIDEO_TYPE))?.track;
-            return !!track && track.readyState !== 'ended';
+            if (!rc?.producerExist(VIDEO_TYPE)) return null;
+            return rc.producers?.get(rc.producerLabel.get(VIDEO_TYPE))?.track ?? null;
         } catch (e) {
-            return true; // не смогли выяснить — не лезем
+            return null;
         }
     }
 
-    let cameraWasOn = false;
+    // Камера считается живой, пока дорожка не кончилась и отдаёт кадры.
+    function cameraLive() {
+        const track = videoTrack();
+        return !!track && track.readyState !== 'ended' && !track.muted;
+    }
+
+    let cameraWasOn = false; // камера работала, когда вкладку свернули
     let reviving = false;
 
-    async function reviveCamera() {
-        if (reviving || !cameraWasOn || cameraLive()) return;
+    async function reviveCamera(why) {
+        if (reviving) return;
         if (typeof rc === 'undefined' || !rc || !rc.socket?.connected) return;
         reviving = true;
         try {
             const deviceId = document.getElementById('videoSelect')?.value || null;
             if (rc.producerExist(VIDEO_TYPE)) {
-                console.log('Montemeet: камера умерла в фоне, перезапускаем дорожку');
+                console.log('Montemeet: камера замерла (' + why + '), перезапускаем дорожку');
                 rc.closeThenProduce(VIDEO_TYPE, deviceId);
             } else {
-                console.log('Montemeet: камера закрылась в фоне, включаем заново');
+                console.log('Montemeet: камера закрылась (' + why + '), включаем заново');
                 await rc.produce(VIDEO_TYPE, deviceId);
             }
         } catch (e) {
@@ -1413,9 +1413,35 @@ const MontemeetRoles = (() => {
         } finally {
             setTimeout(() => {
                 reviving = false;
-            }, 3000);
+            }, 5000);
         }
     }
+
+    // Замершая камера. Вмешиваемся только когда она мертва СТОЙКО: браузер
+    // поднимает muted и на мгновение — например, возвращая захват из фона, — а
+    // лишний перезапуск дёргает раскладку у всех, кто на нас смотрит. Пять
+    // секунд подряд, и только тогда (Иван, 2026-08-14). Пока крутится
+    // прелоадер, картинка ещё может вернуться сама — вот эти секунды мы ей и
+    // даём. Осознанно выключенную камеру не трогаем никогда: продюсера в этом
+    // случае нет вовсе, а мы чиним только существующий, но замерший.
+    const CAMERA_DEAD_MS = 5000;
+    let deadSince = 0;
+    setInterval(() => {
+        if (document.visibilityState !== 'visible' || typeof rc === 'undefined' || !rc?.socket?.connected) {
+            deadSince = 0;
+            return;
+        }
+        const track = videoTrack();
+        if (!track || cameraLive()) {
+            deadSince = 0;
+            return;
+        }
+        if (!deadSince) deadSince = Date.now();
+        else if (Date.now() - deadSince >= CAMERA_DEAD_MS) {
+            deadSince = 0;
+            reviveCamera('замерла надолго');
+        }
+    }, 1000);
 
     // Переключились в другое приложение и вернулись — браузер успел заморозить
     // вкладку и порвать связь. Сток показывает баннер и ждёт нажатия; пробуем
@@ -1433,15 +1459,11 @@ const MontemeetRoles = (() => {
                     rc.socket.connect();
                     return; // переподключение само поднимет комнату
                 }
-                reviveCamera();
+                // камеру закрыли, пока нас не было, — включаем обратно;
+                // замершую (но живую) чинит наблюдатель выше, выждав своё
+                if (cameraWasOn && !rc.producerExist(VIDEO_TYPE)) reviveCamera('пропала за время в фоне');
             } catch (e) {}
-        }, 400);
-        // Safari иногда добивает дорожку уже после возврата — смотрим ещё раз
-        setTimeout(() => {
-            try {
-                if (typeof rc !== 'undefined' && rc?.socket?.connected) reviveCamera();
-            } catch (e) {}
-        }, 2500);
+        }, 800);
     });
 
     // ------------------------------------------------------------------
