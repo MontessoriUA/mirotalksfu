@@ -1245,9 +1245,26 @@ async function runRoomPolicyScenario() {
 async function runConcertSoloScenario() {
     const room = 'montemeet-concert';
     const hall = await launchPeer('Zal', fixtures.silence, { room });
-    await delay(3000);
+    await delay(12000);
+
+    // своя плитка: видна, показывает картинку, а не крутящийся загрузчик
+    const ownTile = (p) =>
+        p.page.evaluate(() => {
+            const v = rc.getVideoElementByPeerId(rc.peer_id);
+            const box = v ? document.getElementById(v.id + '__video') : null;
+            const loader = box?.querySelector('.video-loader');
+            return {
+                видна: !!box && getComputedStyle(box).display !== 'none',
+                ширина: box ? Math.round(box.getBoundingClientRect().width) : 0,
+                идёт: !!v && !v.paused && v.readyState >= 2,
+                загрузчик: !!loader && getComputedStyle(loader).display !== 'none',
+            };
+        });
+    const hallAlone = await ownTile(hall);
+
     const guest = await launchPeer('Guest1', fixtures.silence, { room });
     await delay(11000);
+    const hallWithGuest = await ownTile(hall);
 
     const state = (p) =>
         p.page.evaluate(() => ({
@@ -1272,10 +1289,15 @@ async function runConcertSoloScenario() {
 
     return {
         scenario: 'concert-solo',
+        hallAlone,
+        hallWithGuest,
         hallState,
         guestState,
         guestWhenCameraOff,
         checks: {
+            aloneSeesItselfBig: hallAlone.видна && hallAlone.идёт && !hallAlone.загрузчик && hallAlone.ширина > 600,
+            withGuestSeesItselfSmall:
+                hallWithGuest.видна && hallWithGuest.идёт && !hallWithGuest.загрузчик && hallWithGuest.ширина < 600,
             soloOnHall: hallState.solo === true,
             soloOnGuest: guestState.solo === true,
             hallSeesItself: hallState.pip === true,
