@@ -856,9 +856,10 @@ async function runTwinScenario() {
             btn.click();
             return true;
         });
-    // нужен режим, в котором говорящий вообще всплывает крупно, иначе проверять нечего
-    for (let i = 0; i < 4 && (await viewOf(teacher)) !== 'auto'; i++) await clickCycle(teacher);
-    const modeReady = (await viewOf(teacher)) === 'auto';
+    // Нужен режим, в котором говорящий вообще всплывает крупно, иначе проверять
+    // нечего. Берём «липкий»: он есть всегда, а «авто» из админки могут выключить.
+    for (let i = 0; i < 4 && (await viewOf(teacher)) !== 'sticky'; i++) await clickCycle(teacher);
+    const modeReady = (await viewOf(teacher)) === 'sticky';
 
     const pinnedOn = (p) =>
         p.page.evaluate(
