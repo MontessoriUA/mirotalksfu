@@ -1520,11 +1520,19 @@ const stopShare = (p) =>
         return true;
     });
 
-// клик по СВОЕЙ демонстрации в ленте — она становится крупной, повторный возвращает
-const clickOwnShare = (p) =>
+// клик по плитке участника (закрепление руками — только у педагога)
+const clickPeerTile = (p, peerId) =>
+    p.page.evaluate((id) => {
+        const el = document.querySelector(`#videoMediaContainer video[name="${id}"]`);
+        if (!el) return false;
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+    }, peerId);
+
+// клик по крупному видео — снимает ручное закрепление
+const clickBig = (p) =>
     p.page.evaluate(() => {
-        const me = rc.peer_id;
-        const el = document.querySelector(`video[volume="${me}___pVolume"]:not([name])`);
+        const el = document.querySelector('#videoPinMediaContainer video');
         if (!el) return false;
         el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         return true;
@@ -1532,9 +1540,11 @@ const clickOwnShare = (p) =>
 
 const inStrip = (state, who, what) => state.лента.some((t) => t.кто === who && t.что === what);
 
-// 1к1 и демонстрация: у автора крупно ЛИЦО собеседника, а своя камера и своя
-// демонстрация — в ленте; у второго крупно экран, но лицо автора остаётся в
-// ленте. Обратно всё возвращается само, когда показ закончился.
+// 1к1 и демонстрация: крупно ЭКРАН у обеих сторон — у зрителя чужой, у автора
+// собственный (иначе он не видит, что именно уходит собеседнику). Лицо при этом
+// не пропадает ни у кого, оно в ленте. Показывают оба — каждый видит крупно
+// ЧУЖОЙ экран: свой автор и так видит у себя на столе. Обратно всё
+// возвращается само, когда показ закончился.
 async function runSoloShareScenario() {
     const room = 'montemeet-group';
     const teacher = await launchPeer('Teacher', fixtures.silence, { room });
@@ -1563,6 +1573,12 @@ async function runSoloShareScenario() {
     const sOwn = await lookLayout(student);
     const tSees = await lookLayout(teacher);
 
+    // показывают оба: каждому крупно ЧУЖОЙ экран
+    const startedAgain = await startShare(teacher);
+    await delay(8000);
+    const tBoth = await lookLayout(teacher);
+    const sBoth = await lookLayout(student);
+
     await student.browser.close();
     await teacher.browser.close();
 
@@ -1574,11 +1590,13 @@ async function runSoloShareScenario() {
         tBack,
         sOwn,
         tSees,
+        tBoth,
+        sBoth,
         checks: {
-            sharingStarted: started === true && startedByStudent === true,
-            // педагог показывает
-            authorSeesCompanionFace: tShare.крупно?.кто === ids.student && tShare.крупно?.что === 'камера',
-            authorSeesOwnShare: inStrip(tShare, ids.teacher, 'экран'),
+            sharingStarted: started === true && startedByStudent === true && startedAgain === true,
+            // педагог показывает: крупно его собственный экран, лицо студента в ленте
+            authorSeesOwnShareBig: tShare.крупно?.кто === ids.teacher && tShare.крупно?.что === 'экран',
+            authorKeepsCompanionFace: inStrip(tShare, ids.student, 'камера'),
             authorSeesOwnCamera: inStrip(tShare, ids.teacher, 'камера'),
             authorHasNoCornerPip: tShare.своёОкошко === false,
             viewerSeesShareBig: sShare.крупно?.кто === ids.teacher && sShare.крупно?.что === 'экран',
@@ -1587,17 +1605,23 @@ async function runSoloShareScenario() {
             backToSoloAuthor: tBack.крупно?.кто === ids.student && tBack.своёОкошко === true,
             backToSoloViewer: sBack.крупно?.кто === ids.teacher && sBack.своёОкошко === true,
             // теперь показывает студент — всё зеркально
-            studentAuthorSeesTeacherFace: sOwn.крупно?.кто === ids.teacher && sOwn.крупно?.что === 'камера',
-            studentAuthorSeesOwnShare: inStrip(sOwn, ids.student, 'экран'),
+            studentAuthorSeesOwnShareBig: sOwn.крупно?.кто === ids.student && sOwn.крупно?.что === 'экран',
+            studentKeepsTeacherFace: inStrip(sOwn, ids.teacher, 'камера'),
             teacherSeesStudentShare: tSees.крупно?.кто === ids.student && tSees.крупно?.что === 'экран',
             teacherKeepsStudentFace: inStrip(tSees, ids.student, 'камера'),
+            // показывают оба — крупно чужой экран, свой остаётся в ленте
+            bothSharingTeacherSeesStudentScreen:
+                tBoth.крупно?.кто === ids.student && tBoth.крупно?.что === 'экран' && inStrip(tBoth, ids.teacher, 'экран'),
+            bothSharingStudentSeesTeacherScreen:
+                sBoth.крупно?.кто === ids.teacher && sBoth.крупно?.что === 'экран' && inStrip(sBoth, ids.student, 'экран'),
         },
     };
 }
 
-// Группа: демонстрация педагога у студента крупно, лицо педагога — в ленте.
-// И ручное закрепление СВОЕЙ демонстрации: клик делает её крупной, повторный
-// клик возвращает прежний вид (одинаково в группе и вдвоём).
+// Группа: демонстрация педагога крупно У ВСЕХ, включая его самого; лица не
+// пропадают — они в ленте. Ручное закрепление осталось там, где было: педагог
+// может поднять крупно лицо студента поверх своей демонстрации, а студент не
+// закрепляет ничего (клик по чужой плитке у него не делает ничего).
 async function runGroupShareScenario() {
     const room = 'montemeet-group';
     const teacher = await launchPeer('Teacher', fixtures.silence, { room });
@@ -1618,12 +1642,18 @@ async function runGroupShareScenario() {
     const tShare = await lookLayout(teacher);
     const sShare = await lookLayout(student1);
 
-    const clicked = await clickOwnShare(teacher);
+    // педагог поднимает крупно лицо студента поверх своей демонстрации
+    const clicked = await clickPeerTile(teacher, ids.student1);
     await delay(4000);
-    const tPinned = await lookLayout(teacher);
-    await clickOwnShare(teacher);
-    await delay(5000);
-    const tUnpinned = await lookLayout(teacher);
+    const tPinnedFace = await lookLayout(teacher);
+    // клик по крупному возвращает автоматику — снова своя демонстрация
+    await clickBig(teacher);
+    await delay(6000);
+    const tBack = await lookLayout(teacher);
+    // а студенту закреплять нечего и нечем: клик по чужой плитке ничего не делает
+    await clickPeerTile(student1, ids.student2);
+    await delay(4000);
+    const sAfterClick = await lookLayout(student1);
 
     await student2.browser.close();
     await student1.browser.close();
@@ -1633,20 +1663,21 @@ async function runGroupShareScenario() {
         scenario: 'group-share',
         tShare,
         sShare,
-        tPinned,
-        tUnpinned,
+        tPinnedFace,
+        tBack,
+        sAfterClick,
         checks: {
             sharingStarted: started === true && clicked === true,
-            // у студента экран крупно, а лицо педагога не пропало
+            // экран крупно у всех, лица не пропали
             viewerSeesShareBig: sShare.крупно?.кто === ids.teacher && sShare.крупно?.что === 'экран',
             viewerKeepsTeacherFace: inStrip(sShare, ids.teacher, 'камера'),
-            // у педагога крупно лицо студента, своя демонстрация — в ленте
-            authorSeesStudentFace: tShare.крупно?.что === 'камера' && tShare.крупно?.кто !== ids.teacher,
-            authorSeesOwnShare: inStrip(tShare, ids.teacher, 'экран'),
-            // клик по своей демонстрации поднимает её крупно
-            ownSharePinned: tPinned.крупно?.кто === ids.teacher && tPinned.крупно?.что === 'экран',
-            // повторный клик возвращает лицо студента
-            ownShareUnpinned: tUnpinned.крупно?.что === 'камера' && tUnpinned.крупно?.кто !== ids.teacher,
+            authorSeesOwnShareBig: tShare.крупно?.кто === ids.teacher && tShare.крупно?.что === 'экран',
+            authorKeepsStudentFaces: inStrip(tShare, ids.student1, 'камера') && inStrip(tShare, ids.student2, 'камера'),
+            // ручное закрепление у педагога работает как раньше
+            teacherCanPinFace: tPinnedFace.крупно?.кто === ids.student1 && tPinnedFace.крупно?.что === 'камера',
+            teacherBackToOwnShare: tBack.крупно?.кто === ids.teacher && tBack.крупно?.что === 'экран',
+            // студент по-прежнему не закрепляет ничего
+            studentCannotPin: sAfterClick.крупно?.кто === ids.teacher && sAfterClick.крупно?.что === 'экран',
         },
     };
 }

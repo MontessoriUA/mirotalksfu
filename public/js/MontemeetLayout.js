@@ -276,12 +276,12 @@ const MontemeetLayout = (() => {
         if (anchorView === 'pin' && !rc.isMobileDevice) {
             if (manualPinActive() || current() !== null) return;
             if (auto) return; // the teacher's speaker view owns pinning
-            if (!id) {
-                // у педагога камеры нет и смотреть больше не на кого: крупным
-                // идёт своя демонстрация, а нет её — крупного нет вовсе
-                applyResidual();
-                return;
-            }
+            // Своя демонстрация важнее лица педагога: показывающий смотрит на то
+            // же, что и все, иначе он не видит, что именно уходит в комнату.
+            // Чужая демонстрация важнее своей — её больше нигде не увидеть, и
+            // она уже учтена в anchorVideoId (Иван, 2026-08-18).
+            if (!anyRemoteScreenVideo() && applyOwnShare()) return;
+            if (!id) return;
             if (rc.isVideoPinned) {
                 if (rc.pinnedVideoPlayerId === id) return;
                 unpin(); // the anchor started/stopped sharing → swap the pin
@@ -522,40 +522,29 @@ const MontemeetLayout = (() => {
 
     // Крупное — только для живой картинки (решение Ивана, 2026-08-18).
     //
-    // Смотреть не на кого (у всех камеры выключены): крупным становится СВОЯ
-    // демонстрация — так проверяют, то ли окно показывается и что видит студент,
-    // иначе этого не увидеть ниоткуда. Если не показываю ничего, крупного нет
-    // вовсе: равные плитки честнее и собственного лица во весь экран (смотреть
-    // на себя урок напролёт утомительно), и аватарки во весь экран (в ней ноль
-    // информации). Себя крупно человек видит, только когда он в комнате один —
-    // там это делает обычная сетка из одной плитки.
+    // Своя демонстрация равноправна с чужой: крупным её берёт тот же слот и по
+    // тем же правилам. Автор смотрит на то же, что и остальные, — так принято в
+    // привычных людям конференциях, и только так видно, что именно уходит
+    // студентам: показывают ведь конкретное окно, а не весь экран.
+    //
+    // Чужая демонстрация всё же важнее своей: свою автор видит и у себя на
+    // столе, а чужую — больше нигде.
+    //
+    // Не показываю ничего и смотреть не на кого (у всех камеры выключены) —
+    // крупного нет вовсе: равные плитки честнее и собственного лица во весь
+    // экран (смотреть на себя урок напролёт утомительно), и аватарки во весь
+    // экран (в ней ноль информации). Себя крупно человек видит, только когда он
+    // в комнате один — там это делает обычная сетка из одной плитки.
     //
     // Сетку, выбранную педагогом руками, правило не трогает: там крупного слота
     // нет по его же решению, а нужную плитку он закрепит сам.
-    function residualPinnedId() {
-        const mine = myScreenVideo();
-        return mine && rc?.isVideoPinned && rc.pinnedVideoPlayerId === mine.id ? mine.id : null;
-    }
-
-    function applyResidual() {
+    function applyOwnShare() {
         if (typeof rc === 'undefined' || !rc) return false;
         if (manualPinActive()) return true; // ручное закрепление старше правил
-        const mine = othersWithVideo().size ? null : myScreenVideo();
-        if (mine) {
-            if (pinByVideoEl(mine)) {
-                orderStrip();
-                return true;
-            }
-            return false;
-        }
-        // Условие отпало (кто-то включил камеру, показ закончился) — убираем за
-        // собой и просим следующий проход подобрать, кого показать: иначе
-        // «липкий» вид остался бы с пустым крупным до первой реплики.
-        if (residualPinnedId() && programmaticPinId === residualPinnedId()) {
-            unpin();
-            if (speakerView === 'sticky') seedPending = true;
-        }
-        return false;
+        const mine = myScreenVideo();
+        if (!mine || !pinByVideoEl(mine)) return false;
+        orderStrip();
+        return true;
     }
 
     // Our layout rules own screen shares and pins in profile rooms
@@ -852,11 +841,11 @@ const MontemeetLayout = (() => {
             if (epoch !== layoutEpoch) return; // раскладка успела смениться
             if (ok) return;
         }
-        // silence, self speaking, or no video for the dominant:
-        // Смотреть не на кого — крупным идёт своя демонстрация (Иван, 2026-08-18).
-        // Раньше «липкий» вид держал крупно того, кто выключил камеру: на экране
-        // висела аватарка во весь экран.
-        if (applyResidual()) return;
+        // Говорить некому — крупным идёт своя демонстрация: с чужой это работало
+        // и раньше (блок выше), теперь так же ведёт себя и собственная
+        // (Иван, 2026-08-18). Заодно «липкий» вид больше не держит крупно того,
+        // кто выключил камеру: аватарка во весь экран не нужна никому.
+        if (applyOwnShare()) return;
         if (speakerView === 'sticky' && othersWithVideo().size) return; // keep the LAST speaker pinned
         unpin(); // 'auto' → back to the grid
     }
@@ -989,10 +978,10 @@ const MontemeetLayout = (() => {
     }
 
     // Вдвоём: собеседник крупно, своя картинка в углу. Появилась демонстрация —
-    // обе стороны переходят в ленточный вид: иначе тот, кто НЕ показывает,
-    // теряет лицо собеседника, а тот, кто показывает, не видит собственную
-    // демонстрацию (Иван, 2026-08-18). Крупное выбирается одной лестницей:
-    // экран собеседника → его лицо → своя демонстрация → ничего.
+    // обе стороны переходят в ленточный вид, и крупным идёт ЭКРАН: у зрителя
+    // чужой, у автора собственный. Лицо при этом не пропадает ни у кого — оно
+    // остаётся в ленте (Иван, 2026-08-18). Лестница крупного: экран собеседника
+    // → своя демонстрация → его лицо → ничего.
     async function applySolo() {
         const companion = companionPeerId();
         if (!companion || isMyTwin(companion)) return;
@@ -1007,7 +996,8 @@ const MontemeetLayout = (() => {
         const compCam = compScreen ? null : await resolvePeerVideo(companion);
         if (epoch !== layoutEpoch) return; // вышли из 1:1, пока искали плитку
         const myScreen = myScreenVideo();
-        const big = compScreen || compCam || myScreen;
+        // лестница крупного: экран собеседника → своя демонстрация → его лицо
+        const big = compScreen || myScreen || compCam;
         // Телефон остаётся как был: ленты там нет вовсе (сток отключает
         // закрепление), один кадр на весь экран и своя камера в углу.
         if (rc.isMobileDevice) {
@@ -1122,27 +1112,22 @@ const MontemeetLayout = (() => {
     // Manual pin by clicking the video itself (teacher, pin-view group rooms).
     // Clicking the big manually-pinned video unpins it (mode auto-restores);
     // clicking another tile switches the pin — no stock popup dance.
+    // Закрепление руками — только у педагога и только в групповых комнатах, как
+    // и было. Исключение «свою демонстрацию можно всем» я убрал: студент не
+    // закрепляет ничего, и одно исключение ломало это единственное правило.
+    // Автору демонстрации закрепление больше и не нужно — его экран и так
+    // становится крупным сам (Иван, 2026-08-18).
     function manualPinClick(e) {
-        if (typeof rc === 'undefined' || !rc || rc.isMobileDevice || concertRoom) return;
+        if (typeof rc === 'undefined' || !rc || rc.isMobileDevice) return;
+        if (!isHost() || concertRoom || soloActive || anchorView !== 'pin') return;
         const videoEl = e.target.closest('video[id]');
         if (!videoEl) return;
-        // СВОЯ демонстрация — исключение из всех запретов: человек вправе решить,
-        // что показанное окно сейчас важнее лица собеседника. Работает одинаково
-        // в группе и вдвоём, у педагога и у студента — это его собственная
-        // картинка, чужих раскладок она не трогает (Иван, 2026-08-18).
-        const ownShare = !!myScreenVideo() && videoEl === myScreenVideo();
-        if (!ownShare && (!isHost() || soloActive || anchorView !== 'pin')) return;
         const cam = videoEl.closest('.Camera');
         // the big pinned video loses its .Camera class upstream — allow it too
         const isBigPinned = rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id;
         if (!cam && !isBigPinned) return;
-        if (!ownShare && cam?.classList.contains('montemeet-self')) return; // never pin oneself
+        if (cam?.classList.contains('montemeet-self')) return; // never pin oneself
         if (e.target.closest('button, input, select')) return; // tile buttons keep working
-        // в виде 1:1 крупное держит фокус: он прячет соседей, для ленты его снимаем
-        if (ownShare) {
-            focusOff();
-            clearSelfPip();
-        }
         if (rc.isVideoPinned && rc.pinnedVideoPlayerId === videoEl.id) {
             if (manualPinActive()) {
                 const prev = manualState ? manualState.prevView : speakerView;
