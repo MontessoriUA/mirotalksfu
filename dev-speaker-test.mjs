@@ -122,7 +122,7 @@ function delay(ms) {
 async function launchPeer(
     name,
     audioFile,
-    { audio = 1, video = 1, focusFollow = false, room = ROOM, phone = false } = {}
+    { audio = 1, video = 1, focusFollow = false, room = ROOM, phone = false, memory = null } = {}
 ) {
     const args = [
         '--use-fake-device-for-media-stream',
@@ -168,6 +168,12 @@ async function launchPeer(
             /* page closing */
         }
     });
+    // память браузера о прошлом входе (сток помнит выбор микрофона и камеры)
+    if (memory) {
+        await page.evaluateOnNewDocument((m) => {
+            localStorage.setItem('INIT_CONFIG', JSON.stringify(m));
+        }, memory);
+    }
     await page.goto(`${BASE}/join/${room}?name=${name}&audio=${audio}&video=${video}&notify=0`, {
         waitUntil: 'networkidle2',
         timeout: 30000,
@@ -1818,6 +1824,45 @@ async function runPhonePipsScenario() {
     };
 }
 
+// Микрофон студента на входе решает школа, а не память браузера. Браузер,
+// помнящий прошлый беззвучный вход (так бывает после снятого правила «студенты
+// входят с выключенным микрофоном»), всё равно должен войти слышимым: ребёнок
+// не понимает, почему его не слышат (Иван, 2026-08-19).
+async function runStudentMicScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student = await launchPeer('Student1', fixtures.silence, {
+        room,
+        memory: { audio: false, video: true, audioVideo: true },
+    });
+    await delay(13000);
+
+    const mine = await student.page.evaluate(() => ({
+        микрофонРаботает: !!rc.producerExist(RoomClient.mediaType.audio),
+        память: JSON.parse(localStorage.getItem('INIT_CONFIG') || '{}'),
+        правилоМолчания: !!rc.getModerator()?.audio_start_muted,
+    }));
+    const heard = await teacher.page.evaluate(() =>
+        [...rc.peers.values()].some((p) => p.peer_info?.peer_name === 'Student1' && p.peer_info?.peer_audio)
+    );
+
+    await student.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'student-mic',
+        mine,
+        heard,
+        checks: {
+            noMutePolicy: mine.правилоМолчания === false, // без этого проверка ничего не значит
+            micProducing: mine.микрофонРаботает === true,
+            teacherSeesMicOn: heard === true,
+            memoryHealed: mine.память.audio === true,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -1939,6 +1984,11 @@ if (which === 'solo-share' || which === 'all') {
 }
 if (which === 'group-share' || which === 'all') {
     const r = await runGroupShareScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'student-mic' || which === 'all') {
+    const r = await runStudentMicScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
