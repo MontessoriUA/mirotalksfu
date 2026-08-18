@@ -1465,6 +1465,237 @@ async function runPhantomTapScenario() {
     };
 }
 
+// ---------- демонстрация экрана и раскладка (Иван, 2026-08-18) ----------
+//
+// Правило: крупное — только для живой картинки, а автор трансляции обязан
+// видеть, что он её ведёт. Лестница крупного одна на всех: экран собеседника →
+// его лицо → своя демонстрация → ничего (равные плитки).
+
+// что на экране у участника: крупное, лента, своё окошко в углу
+const lookLayout = (p) =>
+    p.page.evaluate(() => {
+        const owner = (el) =>
+            el
+                ? el.getAttribute('name') ||
+                  (el.getAttribute('volumeBar') || el.getAttribute('volume') || '').replace(/___pVolume$/, '')
+                : null;
+        const kind = (el) => (el ? (el.hasAttribute('name') ? 'камера' : 'экран') : null);
+        const big =
+            document.querySelector('#videoPinMediaContainer video') ||
+            document.querySelector('#videoMediaContainer [focus-mode] video');
+        const strip = [...document.querySelectorAll('#videoMediaContainer .Camera')]
+            .filter((c) => getComputedStyle(c).display !== 'none')
+            .map((c) => {
+                const v = c.querySelector('video');
+                return v
+                    ? { кто: owner(v), что: kind(v) }
+                    : { кто: c.id.replace(/__videoOff$/, ''), что: 'аватарка' };
+            });
+        return {
+            крупно: big ? { кто: owner(big), что: kind(big) } : null,
+            лента: strip,
+            своёОкошко: !!document.querySelector('.montemeet-self-pip'),
+            я: rc.peer_id,
+        };
+    });
+
+const startShare = (p) =>
+    p.page.evaluate(async () => {
+        try {
+            await rc.produce(RoomClient.mediaType.screen);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    });
+
+const stopShare = (p) =>
+    p.page.evaluate(() => {
+        rc.closeProducer(RoomClient.mediaType.screen, 'тест');
+        return true;
+    });
+
+// клик по СВОЕЙ демонстрации в ленте — она становится крупной, повторный возвращает
+const clickOwnShare = (p) =>
+    p.page.evaluate(() => {
+        const me = rc.peer_id;
+        const el = document.querySelector(`video[volume="${me}___pVolume"]:not([name])`);
+        if (!el) return false;
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+    });
+
+const inStrip = (state, who, what) => state.лента.some((t) => t.кто === who && t.что === what);
+
+// 1к1 и демонстрация: у автора крупно ЛИЦО собеседника, а своя камера и своя
+// демонстрация — в ленте; у второго крупно экран, но лицо автора остаётся в
+// ленте. Обратно всё возвращается само, когда показ закончился.
+async function runSoloShareScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(9000);
+
+    const ids = {
+        teacher: await teacher.page.evaluate(() => rc.peer_id),
+        student: await student.page.evaluate(() => rc.peer_id),
+    };
+
+    const before = await lookLayout(teacher);
+    const started = await startShare(teacher);
+    await delay(7000);
+    const tShare = await lookLayout(teacher);
+    const sShare = await lookLayout(student);
+
+    await stopShare(teacher);
+    await delay(7000);
+    const tBack = await lookLayout(teacher);
+    const sBack = await lookLayout(student);
+
+    const startedByStudent = await startShare(student);
+    await delay(7000);
+    const sOwn = await lookLayout(student);
+    const tSees = await lookLayout(teacher);
+
+    await student.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'solo-share',
+        before,
+        tShare,
+        sShare,
+        tBack,
+        sOwn,
+        tSees,
+        checks: {
+            sharingStarted: started === true && startedByStudent === true,
+            // педагог показывает
+            authorSeesCompanionFace: tShare.крупно?.кто === ids.student && tShare.крупно?.что === 'камера',
+            authorSeesOwnShare: inStrip(tShare, ids.teacher, 'экран'),
+            authorSeesOwnCamera: inStrip(tShare, ids.teacher, 'камера'),
+            authorHasNoCornerPip: tShare.своёОкошко === false,
+            viewerSeesShareBig: sShare.крупно?.кто === ids.teacher && sShare.крупно?.что === 'экран',
+            viewerKeepsAuthorFace: inStrip(sShare, ids.teacher, 'камера'),
+            // показ закончился — вернулись к виду 1:1
+            backToSoloAuthor: tBack.крупно?.кто === ids.student && tBack.своёОкошко === true,
+            backToSoloViewer: sBack.крупно?.кто === ids.teacher && sBack.своёОкошко === true,
+            // теперь показывает студент — всё зеркально
+            studentAuthorSeesTeacherFace: sOwn.крупно?.кто === ids.teacher && sOwn.крупно?.что === 'камера',
+            studentAuthorSeesOwnShare: inStrip(sOwn, ids.student, 'экран'),
+            teacherSeesStudentShare: tSees.крупно?.кто === ids.student && tSees.крупно?.что === 'экран',
+            teacherKeepsStudentFace: inStrip(tSees, ids.student, 'камера'),
+        },
+    };
+}
+
+// Группа: демонстрация педагога у студента крупно, лицо педагога — в ленте.
+// И ручное закрепление СВОЕЙ демонстрации: клик делает её крупной, повторный
+// клик возвращает прежний вид (одинаково в группе и вдвоём).
+async function runGroupShareScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student1 = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(2000);
+    const student2 = await launchPeer('Student2', fixtures.silence, { room });
+    await delay(10000);
+
+    const ids = {
+        teacher: await teacher.page.evaluate(() => rc.peer_id),
+        student1: await student1.page.evaluate(() => rc.peer_id),
+        student2: await student2.page.evaluate(() => rc.peer_id),
+    };
+
+    const started = await startShare(teacher);
+    await delay(7000);
+    const tShare = await lookLayout(teacher);
+    const sShare = await lookLayout(student1);
+
+    const clicked = await clickOwnShare(teacher);
+    await delay(4000);
+    const tPinned = await lookLayout(teacher);
+    await clickOwnShare(teacher);
+    await delay(5000);
+    const tUnpinned = await lookLayout(teacher);
+
+    await student2.browser.close();
+    await student1.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'group-share',
+        tShare,
+        sShare,
+        tPinned,
+        tUnpinned,
+        checks: {
+            sharingStarted: started === true && clicked === true,
+            // у студента экран крупно, а лицо педагога не пропало
+            viewerSeesShareBig: sShare.крупно?.кто === ids.teacher && sShare.крупно?.что === 'экран',
+            viewerKeepsTeacherFace: inStrip(sShare, ids.teacher, 'камера'),
+            // у педагога крупно лицо студента, своя демонстрация — в ленте
+            authorSeesStudentFace: tShare.крупно?.что === 'камера' && tShare.крупно?.кто !== ids.teacher,
+            authorSeesOwnShare: inStrip(tShare, ids.teacher, 'экран'),
+            // клик по своей демонстрации поднимает её крупно
+            ownSharePinned: tPinned.крупно?.кто === ids.teacher && tPinned.крупно?.что === 'экран',
+            // повторный клик возвращает лицо студента
+            ownShareUnpinned: tUnpinned.крупно?.что === 'камера' && tUnpinned.крупно?.кто !== ids.teacher,
+        },
+    };
+}
+
+// Крупное — только для живой картинки. Все студенты выключили камеры: крупного
+// нет вовсе (сетка аватарок), а если педагог показывает экран — крупной идёт
+// его демонстрация. Вернулась чужая камера — крупное снова у неё.
+async function runNoVideoBigScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student1 = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(2000);
+    const student2 = await launchPeer('Student2', fixtures.silence, { room });
+    await delay(10000);
+
+    const ids = { teacher: await teacher.page.evaluate(() => rc.peer_id) };
+    const camOff = (p) => p.page.evaluate(() => !!document.getElementById('stopVideoButton')?.click());
+    const camOn = (p) => p.page.evaluate(() => !!document.getElementById('startVideoButton')?.click());
+
+    await camOff(student1);
+    await camOff(student2);
+    await delay(8000);
+    const allDark = await lookLayout(teacher);
+
+    const started = await startShare(teacher);
+    await delay(7000);
+    const withShare = await lookLayout(teacher);
+
+    await camOn(student1);
+    await delay(9000);
+    const cameraBack = await lookLayout(teacher);
+
+    await student2.browser.close();
+    await student1.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'no-video-big',
+        allDark,
+        withShare,
+        cameraBack,
+        checks: {
+            sharingStarted: started === true,
+            // смотреть не на кого и показывать нечего — крупного нет
+            noBigWhenNothingLive: allDark.крупно === null,
+            // ...и уж точно не собственное лицо
+            notOwnFaceBig: allDark.крупно?.кто !== ids.teacher,
+            ownShareTakesBig: withShare.крупно?.кто === ids.teacher && withShare.крупно?.что === 'экран',
+            cameraBackTakesBig: cameraBack.крупно?.что === 'камера' && cameraBack.крупно?.кто !== ids.teacher,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -1576,6 +1807,21 @@ if (which === 'toast' || which === 'all') {
 }
 if (which === 'phantom-tap' || which === 'all') {
     const r = await runPhantomTapScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'solo-share' || which === 'all') {
+    const r = await runSoloShareScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'group-share' || which === 'all') {
+    const r = await runGroupShareScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'no-video-big' || which === 'all') {
+    const r = await runNoVideoBigScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
