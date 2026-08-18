@@ -260,6 +260,7 @@ const MontemeetLayout = (() => {
         if (concertRoom) applyConcert();
         else if (auto) auto.apply();
         else ensureDefault();
+        syncMobilePips();
     }
 
     // Show the anchor if the room is anchored and nothing else claims the screen
@@ -824,7 +825,10 @@ const MontemeetLayout = (() => {
         // исчезло вместе с законченной демонстрацией — во всех случаях
         // показываем кого-то, иначе кнопка обещает говорящего крупно, а на
         // экране сетка (Иван, 2026-08-11).
-        if (dom === null && (seedPending || (speakerView === 'sticky' && !rc.isVideoPinned))) {
+        // Пока идёт СВОЯ демонстрация, подбирать некого: крупное принадлежит ей.
+        // Иначе на возврате из сетки на пару секунд всплывал молчащий студент с
+        // камерой, и только потом место занимала демонстрация (Иван, 2026-08-19).
+        if (dom === null && !myScreenVideo() && (seedPending || (speakerView === 'sticky' && !rc.isVideoPinned))) {
             const seed = seedDom();
             if (seed) {
                 seedPending = false;
@@ -897,7 +901,10 @@ const MontemeetLayout = (() => {
             // Плитки могут ещё строиться (перезаход, телефон): если кандидата
             // нет, помечаем задачу и добираем его на следующем проходе, иначе
             // нажатие кнопки осталось бы без всякого отклика.
-            if (seed && dom === null) {
+            // Своя демонстрация занимает крупное сразу, без промежуточного лица:
+            // человек нажал кнопку и должен увидеть отклик, а не чужую камеру на
+            // две секунды (Иван, 2026-08-19).
+            if (seed && dom === null && !myScreenVideo()) {
                 const picked = seedDom();
                 if (picked) {
                     dom = lastDom = picked;
@@ -956,6 +963,39 @@ const MontemeetLayout = (() => {
         for (const el of document.querySelectorAll('.montemeet-self-pip')) el.classList.remove('montemeet-self-pip');
     }
 
+    // Второе окошко в углу — лицо того, кто ведёт демонстрацию
+    function markPeerPip(cam) {
+        for (const el of document.querySelectorAll('.montemeet-peer-pip')) {
+            if (el !== cam) el.classList.remove('montemeet-peer-pip');
+        }
+        if (cam) cam.classList.add('montemeet-peer-pip');
+    }
+
+    // Телефон: ленты плиток там нет, поэтому всё, что не крупно, показываем
+    // окошками в углу — свою камеру и лицо автора демонстрации. В группе на
+    // телефоне не было видно ни себя, ни лица показывающего: фокус гасит все
+    // плитки, кроме одной (Иван, 2026-08-19).
+    //
+    // Крупного нет (у всех камеры выключены) — окошек тоже нет: плитки стоят
+    // обычной сеткой, как и на большом экране.
+    function syncMobilePips() {
+        if (typeof rc === 'undefined' || !rc?.isMobileDevice || concertRoom) return;
+        const bigId = current();
+        const big = bigId ? document.getElementById(bigId) : null;
+        if (!big) {
+            clearSelfPip();
+            markPeerPip(null);
+            return;
+        }
+        markSelfPip();
+        // крупное держит демонстрация — значит лицо её автора где-то потерялось
+        const owner = big.hasAttribute('name')
+            ? null
+            : (big.getAttribute('volumeBar') || big.getAttribute('volume') || '').replace(/___pVolume$/, '');
+        const face = owner && owner !== selfId() ? rc.getVideoElementByPeerId(owner) : null;
+        markPeerPip(face ? document.getElementById(containerId(face.id)) : null);
+    }
+
     // rc.peers is a join-time snapshot (the first joiner never learns about
     // later peers there) — the DOM is the live source of participant identity
     function livePeerIds() {
@@ -986,10 +1026,13 @@ const MontemeetLayout = (() => {
         const companion = companionPeerId();
         if (!companion || isMyTwin(companion)) return;
         if (manualPinActive()) {
-            // педагог сам закрепил свою демонстрацию — не спорим
-            clearSelfPip();
-            orderStrip();
-            return;
+            // педагог сам поднял чьё-то лицо крупно — не спорим, пока идёт показ
+            if (soloStripActive()) {
+                clearSelfPip();
+                orderStrip();
+                return;
+            }
+            unpin(); // показ закончился — возвращаем обычный вид 1:1
         }
         const epoch = layoutEpoch;
         const compScreen = peerScreenVideo(companion);
@@ -1002,7 +1045,7 @@ const MontemeetLayout = (() => {
         // закрепление), один кадр на весь экран и своя камера в углу.
         if (rc.isMobileDevice) {
             big ? focusOn(big.id) : focusOff();
-            markSelfPip();
+            syncMobilePips();
             return;
         }
         if (compScreen || myScreen) {
@@ -1022,6 +1065,10 @@ const MontemeetLayout = (() => {
         unpin();
         focusOff();
         clearSelfPip();
+        // Пересчитать размеры обязательно: сюда приходят из ленточного вида, где
+        // плитки были ужаты под узкую колонку, а сток пересчитывает сетку только
+        // на смену состава — плитки так и оставались крошечными (Иван, 2026-08-19).
+        regrid();
     }
 
     // Solo also applies at concerts with a single online guest (Ivan,
@@ -1107,6 +1154,21 @@ const MontemeetLayout = (() => {
             tile.dataset.mmSeen = '1';
             if (tile !== anchorNode) container.insertBefore(tile, anchorNode);
         }
+        raiseSilentSpeaker(container, selfTile);
+    }
+
+    // Говорящего с выключенной камерой крупно не показать — показывать во весь
+    // экран аватарку незачем. Тогда поднимаем его плитку в начало ленты: иначе
+    // на групповом уроке непонятно, кто вообще говорит (Иван, 2026-08-19).
+    // Поднятая плитка остаётся наверху, пока не заговорит следующий: лента,
+    // пляшущая на каждую реплику, читается хуже неподвижной.
+    function raiseSilentSpeaker(container, selfTile) {
+        if (!dom || dom === selfId() || isMyTwin(dom)) return;
+        if (rc.getVideoElementByPeerId(dom) || peerScreenVideo(dom)) return; // его и так видно крупно
+        const tile = document.getElementById(dom + '__videoOff');
+        if (!tile || tile.parentElement !== container) return;
+        const first = selfTile && selfTile.parentElement === container ? selfTile.nextSibling : container.firstChild;
+        if (tile !== first) container.insertBefore(tile, first);
     }
 
     // Manual pin by clicking the video itself (teacher, pin-view group rooms).
@@ -1117,9 +1179,19 @@ const MontemeetLayout = (() => {
     // закрепляет ничего, и одно исключение ломало это единственное правило.
     // Автору демонстрации закрепление больше и не нужно — его экран и так
     // становится крупным сам (Иван, 2026-08-18).
+    // В виде 1:1 раскладкой распоряжается комната, но во время демонстрации там
+    // появляется лента — и педагог вправе поднять из неё лицо студента, если
+    // разговор сейчас важнее показа (Иван, 2026-08-19).
+    function soloStripActive() {
+        if (!soloActive || rc?.isMobileDevice) return false;
+        const companion = companionPeerId();
+        return !!(myScreenVideo() || (companion && peerScreenVideo(companion)));
+    }
+
     function manualPinClick(e) {
         if (typeof rc === 'undefined' || !rc || rc.isMobileDevice) return;
-        if (!isHost() || concertRoom || soloActive || anchorView !== 'pin') return;
+        if (!isHost() || concertRoom || anchorView !== 'pin') return;
+        if (soloActive && !soloStripActive()) return;
         const videoEl = e.target.closest('video[id]');
         if (!videoEl) return;
         const cam = videoEl.closest('.Camera');

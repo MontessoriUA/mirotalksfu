@@ -1496,10 +1496,18 @@ const lookLayout = (p) =>
                     ? { кто: owner(v), что: kind(v) }
                     : { кто: c.id.replace(/__videoOff$/, ''), что: 'аватарка' };
             });
+        const pips = [...document.querySelectorAll('.montemeet-self-pip, .montemeet-peer-pip')].map((c) => {
+            const v = c.querySelector('video');
+            return {
+                кто: v ? owner(v) : c.id.replace(/__videoOff$/, ''),
+                что: c.classList.contains('montemeet-peer-pip') ? 'лицо-автора' : 'своё',
+            };
+        });
         return {
             крупно: big ? { кто: owner(big), что: kind(big) } : null,
             лента: strip,
-            своёОкошко: !!document.querySelector('.montemeet-self-pip'),
+            окошки: pips,
+            своёОкошко: pips.some((p) => p.что === 'своё'),
             я: rc.peer_id,
         };
     });
@@ -1744,6 +1752,72 @@ async function runNoVideoBigScenario() {
     };
 }
 
+// Телефон: ленты плиток там нет, поэтому своя камера и лицо автора демонстрации
+// висят окошками в углу — и вдвоём, и в группе. Раньше в группе на телефоне не
+// было видно ни себя, ни лица показывающего (Иван, 2026-08-19).
+async function runPhonePipsScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const phone = await launchPeer('Student1', fixtures.silence, { room, phone: true });
+    await delay(9000);
+
+    const ids = {
+        teacher: await teacher.page.evaluate(() => rc.peer_id),
+        phone: await phone.page.evaluate(() => rc.peer_id),
+    };
+    const mobileDetected = await phone.page.evaluate(() => !!rc.isMobileDevice);
+    const pip = (state, кто, что) => state.окошки.some((p) => p.кто === кто && p.что === что);
+
+    const soloBefore = await lookLayout(phone);
+    await startShare(teacher);
+    await delay(8000);
+    const soloShare = await lookLayout(phone);
+    await stopShare(teacher);
+    await delay(8000);
+    const soloBack = await lookLayout(phone);
+
+    const student2 = await launchPeer('Student2', fixtures.silence, { room });
+    await delay(10000);
+    const groupBefore = await lookLayout(phone);
+    await startShare(teacher);
+    await delay(8000);
+    const groupShare = await lookLayout(phone);
+
+    await student2.browser.close();
+    await phone.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'phone-pips',
+        soloBefore,
+        soloShare,
+        soloBack,
+        groupBefore,
+        groupShare,
+        checks: {
+            mobileDetected, // без этого проверка ничего не значит
+            // вдвоём: педагог крупно, своя камера окошком
+            soloTeacherBig: soloBefore.крупно?.кто === ids.teacher && soloBefore.крупно?.что === 'камера',
+            soloOwnPip: pip(soloBefore, ids.phone, 'своё'),
+            // вдвоём и показ: экран крупно, в углу лицо педагога И своя камера
+            soloShareBig: soloShare.крупно?.кто === ids.teacher && soloShare.крупно?.что === 'экран',
+            soloShareAuthorFace: pip(soloShare, ids.teacher, 'лицо-автора'),
+            soloShareOwnPip: pip(soloShare, ids.phone, 'своё'),
+            // показ закончился — вернулись
+            soloBackBig: soloBack.крупно?.кто === ids.teacher && soloBack.крупно?.что === 'камера',
+            soloBackNoAuthorPip: !pip(soloBack, ids.teacher, 'лицо-автора'),
+            // группа: своя камера окошком (её раньше не было вовсе)
+            groupOwnPip: pip(groupBefore, ids.phone, 'своё'),
+            groupTeacherBig: groupBefore.крупно?.кто === ids.teacher && groupBefore.крупно?.что === 'камера',
+            // группа и показ: экран крупно, лицо педагога окошком
+            groupShareBig: groupShare.крупно?.кто === ids.teacher && groupShare.крупно?.что === 'экран',
+            groupShareAuthorFace: pip(groupShare, ids.teacher, 'лицо-автора'),
+            groupShareOwnPip: pip(groupShare, ids.phone, 'своё'),
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -1865,6 +1939,11 @@ if (which === 'solo-share' || which === 'all') {
 }
 if (which === 'group-share' || which === 'all') {
     const r = await runGroupShareScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'phone-pips' || which === 'all') {
+    const r = await runPhonePipsScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }

@@ -184,17 +184,24 @@ body.montemeet-strip.montemeet-pinned #videoMediaContainer .Camera {
 }
 
 /*
- * Solo (1:1) lesson layout, Google-Meet style: the companion is focused
- * fullscreen by MontemeetLayout, the own tile floats as a small overlay
- * (the stock focus mode hides siblings with inline display:none — the
- * !important below wins it back for the own tile only).
+ * Окошки в углу: своя картинка и — во время демонстрации — лицо того, кто её
+ * ведёт. Сток в режиме фокуса гасит соседние плитки инлайновым display:none,
+ * поэтому !important ниже возвращает нужные обратно.
+ *
+ * На телефоне ленты плиток нет вовсе, и без второго окошка автора показа не
+ * видно совсем, а в группе не было видно и себя (Иван, 2026-08-19). Кому висеть
+ * в углу, решает MontemeetLayout — классов на body правилам больше не нужно.
  */
-body.montemeet-solo .montemeet-self-pip,
-body.montemeet-concert-pip .montemeet-self-pip {
+:root {
+    --mm-pip-bottom: 96px; /* от нижней грани экрана до своего окошка */
+    --mm-pip-step: 120px; /* высота окошка с зазором: второе встаёт над первым */
+}
+.montemeet-self-pip,
+.montemeet-peer-pip {
     display: block !important;
     position: fixed !important;
     right: 16px;
-    bottom: 96px;
+    bottom: var(--mm-pip-bottom);
     width: 200px !important;
     height: auto !important;
     aspect-ratio: 16 / 9 !important;
@@ -203,6 +210,9 @@ body.montemeet-concert-pip .montemeet-self-pip {
     border-radius: 10px;
     overflow: hidden;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.montemeet-peer-pip {
+    bottom: calc(var(--mm-pip-bottom) + var(--mm-pip-step));
 }
 
 /* Скрытая панель не должна ловить нажатия: сток прячет её прозрачностью, и тап
@@ -215,31 +225,35 @@ body.montemeet-concert-pip .montemeet-self-pip {
     }
 }
 
-/* Своя картинка в углу на телефоне: меньше и выше панели кнопок */
+/* Окошки в углу на телефоне: меньше и выше панели кнопок */
 @media screen and (max-width: 1024px) {
-    body.montemeet-solo .montemeet-self-pip,
-    body.montemeet-concert-pip .montemeet-self-pip {
+    :root {
+        --mm-pip-bottom: 20px;
+        --mm-pip-step: 74px;
+    }
+    /* панель открыта — приподнимаем, закрылась — возвращаем на место */
+    body.montemeet-bar-visible {
+        --mm-pip-bottom: 145px;
+    }
+    .montemeet-self-pip,
+    .montemeet-peer-pip {
         width: 118px !important;
         right: 10px;
-        bottom: 20px;
         border-radius: 12px;
         transition: bottom 0.25s ease-in-out;
     }
-    /* панель открыта — приподнимаем, закрылась — возвращаем на место */
-    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
-    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
-        bottom: 92px;
-    }
 }
 @media screen and (max-width: 380px) {
-    body.montemeet-solo .montemeet-self-pip,
-    body.montemeet-concert-pip .montemeet-self-pip {
-        width: 96px !important;
-        bottom: 16px;
+    :root {
+        --mm-pip-bottom: 16px;
+        --mm-pip-step: 62px;
     }
-    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
-    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
-        bottom: 84px;
+    body.montemeet-bar-visible {
+        --mm-pip-bottom: 128px;
+    }
+    .montemeet-self-pip,
+    .montemeet-peer-pip {
+        width: 96px !important;
     }
 }
 
@@ -405,20 +419,6 @@ body.montemeet-concert-pip .montemeet-self-pip {
     #whiteboard main {
         flex: 1 1 auto !important;
         min-height: 0 !important;
-    }
-}
-
-/* Своя картинка ещё выше над панелью кнопок (Иван, 2026-08-09) */
-@media screen and (max-width: 1024px) {
-    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
-    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
-        bottom: 145px;
-    }
-}
-@media screen and (max-width: 380px) {
-    body.montemeet-bar-visible.montemeet-solo .montemeet-self-pip,
-    body.montemeet-bar-visible.montemeet-concert-pip .montemeet-self-pip {
-        bottom: 128px;
     }
 }
 
