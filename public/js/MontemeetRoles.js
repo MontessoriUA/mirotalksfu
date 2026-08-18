@@ -693,73 +693,6 @@ const MontemeetRoles = (() => {
         }
     }
 
-    // Микрофон и камера студента на входе решает ШКОЛА, а не память браузера.
-    //
-    // Сток запоминает последний выбор с экрана входа и молча повторяет его в
-    // следующий раз. Достаточно один раз войти беззвучным — например, когда в
-    // админке стояло «студенты входят с выключенным микрофоном», — и так будет
-    // всегда, даже спустя месяцы после того, как правило сняли. Ребёнок этого
-    // не понимает: он говорит, а его не слышат (Иван, 2026-08-19). С камерой
-    // ровно то же самое, поэтому правило одно на оба устройства.
-    //
-    // Один раз, сразу после входа, приводим микрофон и камеру к школьному
-    // правилу и чиним саму память — иначе экран входа продолжал бы показывать
-    // перечёркнутые значки, пока мы устройства тихо включаем. Дальше студент
-    // распоряжается ими сам: нажатия во время урока не трогаем.
-    //
-    // Концертов правило не касается: там зал слушает и смотрит, а не выступает.
-    const mediaSeeded = { audio: false, video: false };
-    let mediaHealed = false;
-
-    function seedTrack(kind) {
-        if (mediaSeeded[kind]) return true;
-        const mod = rc.getModerator() || {};
-        const ov = MontemeetProfile.overrides ? MontemeetProfile.overrides() : null;
-        const blocked =
-            kind === 'audio'
-                ? mod.audio_start_muted || mod.audio_cant_unmute || (ov && ov.startMuted)
-                : mod.video_start_hidden || mod.video_cant_unhide || mod.video_start_privacy || (ov && ov.startHidden);
-        if (blocked) return true; // школа велела молчать / не показываться
-        const allowed = kind === 'audio' ? isAudioAllowed : isVideoAllowed;
-        if (typeof allowed === 'undefined') return false;
-        if (allowed) {
-            mediaSeeded[kind] = true; // устройство поднимется само, вмешиваться не в чем
-            return true;
-        }
-        const btn = document.getElementById(kind === 'audio' ? 'startAudioButton' : 'startVideoButton');
-        if (!btn || typeof btn.onclick !== 'function') return false; // кнопку ещё не привязали
-        mediaSeeded[kind] = true;
-        btn.click(); // стоковый путь: знает и про выбор устройства, и про запреты модератора
-        if (typeof lS !== 'undefined' && lS && typeof lS.setInitConfig === 'function') {
-            lS.setInitConfig(kind === 'audio' ? lS.MEDIA_TYPE.audio : lS.MEDIA_TYPE.video, true);
-            mediaHealed = true;
-        }
-        console.log(`Montemeet: ${kind === 'audio' ? 'микрофон' : 'камера'} студента включён по школьному правилу`);
-        return true;
-    }
-
-    function ensureStudentMedia() {
-        try {
-            if (MontemeetProfile.roles() !== 'lesson') return true;
-            if (typeof rc === 'undefined' || !rc || !rc.peer_id || typeof rc.getModerator !== 'function') return false;
-            // ждём ответа сервера о входе: роль и правила комнаты приходят одним
-            // пакетом, а своя плитка строится уже после него
-            if (!document.querySelector('#videoMediaContainer .Camera')) return false;
-            if (typeof isPresenter !== 'undefined' && isPresenter) return true; // педагог сам себе хозяин
-            const done = seedTrack('audio') && seedTrack('video');
-            // Общий флаг памяти гасит СРАЗУ ОБА устройства, поэтому чиним и его:
-            // иначе на следующем входе всё повторится, только с миганием значков.
-            if (done && mediaHealed && typeof lS !== 'undefined' && lS?.getLocalStorageInitConfig) {
-                const cfg = lS.getLocalStorageInitConfig() || {};
-                if (cfg.audio && cfg.video && !cfg.audioVideo) lS.setInitConfig(lS.MEDIA_TYPE.audioVideo, true);
-                mediaHealed = false;
-            }
-            return done;
-        } catch (e) {
-            return true;
-        }
-    }
-
     // The teacher can re-enable a participant's camera right from the avatar
     // tile (Ivan, 2026-08-06) — a hidden camera has no video tile, and the
     // stock videoOff button set has no camera control at all.
@@ -865,10 +798,6 @@ const MontemeetRoles = (() => {
                     if (ensureBlurDefault()) clearInterval(blurPoll);
                 }, 500);
                 setTimeout(() => clearInterval(blurPoll), 30000);
-                const mediaPoll = setInterval(() => {
-                    if (ensureStudentMedia()) clearInterval(mediaPoll);
-                }, 400);
-                setTimeout(() => clearInterval(mediaPoll), 30000);
                 // the student extras wait until the role is settled (own tile built)
                 const studentPoll = setInterval(() => {
                     if (

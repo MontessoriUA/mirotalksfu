@@ -1824,11 +1824,11 @@ async function runPhonePipsScenario() {
     };
 }
 
-// Микрофон И КАМЕРА студента на входе решает школа, а не память браузера.
-// Браузер, помнящий прошлый вход без микрофона и без камеры (так бывает после
-// снятых правил «студенты входят с выключенным микрофоном / без видео»), всё
-// равно должен войти слышимым и видимым: ребёнок не понимает, почему его не
-// слышат и не видят (Иван, 2026-08-19).
+// Каждый урок начинается с чистого листа: браузер, помнящий прошлый вход без
+// микрофона и камеры, всё равно приводит человека на экран входа с включёнными
+// устройствами — и в комнату он попадает слышимым и видимым. Ребёнок не
+// понимает, почему его не слышат и не видят (Иван, 2026-08-19). Сам экран входа
+// при этом остаётся территорией человека: что он выключил там, мы не трогаем.
 async function runStudentMicScenario() {
     const room = 'montemeet-group';
     const teacher = await launchPeer('Teacher', fixtures.silence, { room });
@@ -1865,9 +1865,10 @@ async function runStudentMicScenario() {
             cameraProducing: mine.камераРаботает === true,
             teacherSeesMicOn: seen.слышно === true,
             teacherSeesCameraOn: seen.видно === true,
-            memoryHealedAudio: mine.память.audio === true,
-            memoryHealedVideo: mine.память.video === true,
-            memoryHealedBoth: mine.память.audioVideo === true,
+            // память прошлого входа сброшена ДО экрана входа
+            memoryResetAudio: mine.память.audio === true,
+            memoryResetVideo: mine.память.video === true,
+            memoryResetBoth: mine.память.audioVideo === true,
         },
     };
 }
