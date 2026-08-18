@@ -1824,28 +1824,32 @@ async function runPhonePipsScenario() {
     };
 }
 
-// Микрофон студента на входе решает школа, а не память браузера. Браузер,
-// помнящий прошлый беззвучный вход (так бывает после снятого правила «студенты
-// входят с выключенным микрофоном»), всё равно должен войти слышимым: ребёнок
-// не понимает, почему его не слышат (Иван, 2026-08-19).
+// Микрофон И КАМЕРА студента на входе решает школа, а не память браузера.
+// Браузер, помнящий прошлый вход без микрофона и без камеры (так бывает после
+// снятых правил «студенты входят с выключенным микрофоном / без видео»), всё
+// равно должен войти слышимым и видимым: ребёнок не понимает, почему его не
+// слышат и не видят (Иван, 2026-08-19).
 async function runStudentMicScenario() {
     const room = 'montemeet-group';
     const teacher = await launchPeer('Teacher', fixtures.silence, { room });
     await delay(3000);
     const student = await launchPeer('Student1', fixtures.silence, {
         room,
-        memory: { audio: false, video: true, audioVideo: true },
+        memory: { audio: false, video: false, audioVideo: false },
     });
-    await delay(13000);
+    await delay(14000);
 
     const mine = await student.page.evaluate(() => ({
         микрофонРаботает: !!rc.producerExist(RoomClient.mediaType.audio),
+        камераРаботает: !!rc.producerExist(RoomClient.mediaType.video),
         память: JSON.parse(localStorage.getItem('INIT_CONFIG') || '{}'),
         правилоМолчания: !!rc.getModerator()?.audio_start_muted,
+        правилоБезВидео: !!rc.getModerator()?.video_start_hidden,
     }));
-    const heard = await teacher.page.evaluate(() =>
-        [...rc.peers.values()].some((p) => p.peer_info?.peer_name === 'Student1' && p.peer_info?.peer_audio)
-    );
+    const seen = await teacher.page.evaluate(() => {
+        const one = [...rc.peers.values()].find((p) => p.peer_info?.peer_name === 'Student1');
+        return { слышно: !!one?.peer_info?.peer_audio, видно: !!one?.peer_info?.peer_video };
+    });
 
     await student.browser.close();
     await teacher.browser.close();
@@ -1853,12 +1857,16 @@ async function runStudentMicScenario() {
     return {
         scenario: 'student-mic',
         mine,
-        heard,
+        seen,
         checks: {
-            noMutePolicy: mine.правилоМолчания === false, // без этого проверка ничего не значит
+            noMutePolicy: mine.правилоМолчания === false, // без этого проверки ничего не значат
+            noHiddenPolicy: mine.правилоБезВидео === false,
             micProducing: mine.микрофонРаботает === true,
-            teacherSeesMicOn: heard === true,
-            memoryHealed: mine.память.audio === true,
+            cameraProducing: mine.камераРаботает === true,
+            teacherSeesMicOn: seen.слышно === true,
+            teacherSeesCameraOn: seen.видно === true,
+            memoryHealedAudio: mine.память.audio === true,
+            memoryHealedVideo: mine.память.video === true,
         },
     };
 }
