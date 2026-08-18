@@ -168,9 +168,13 @@ async function launchPeer(
             /* page closing */
         }
     });
-    // память браузера о прошлом входе (сток помнит выбор микрофона и камеры)
+    // Память браузера о ПРОШЛОМ входе (сток помнит выбор микрофона и камеры).
+    // Портим ровно один раз: страница по дороге к комнате перезагружается, и
+    // порча на каждый документ переписывала бы то, что мы проверяем.
     if (memory) {
         await page.evaluateOnNewDocument((m) => {
+            if (sessionStorage.getItem('mmMemorySeeded')) return;
+            sessionStorage.setItem('mmMemorySeeded', '1');
             localStorage.setItem('INIT_CONFIG', JSON.stringify(m));
         }, memory);
     }
