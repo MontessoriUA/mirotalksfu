@@ -693,6 +693,53 @@ const MontemeetRoles = (() => {
         }
     }
 
+    // Микрофон студента на входе решает ШКОЛА, а не память браузера.
+    //
+    // Сток запоминает последний выбор с экрана входа и молча повторяет его в
+    // следующий раз. Достаточно один раз войти беззвучным — например, когда в
+    // админке стояло «студенты входят с выключенным микрофоном», — и так будет
+    // всегда, даже спустя месяцы после того, как правило сняли. Ребёнок этого
+    // не понимает: он говорит, а его не слышат (Иван, 2026-08-19).
+    //
+    // Поэтому один раз, сразу после входа, приводим микрофон к школьному
+    // правилу и чиним саму память — иначе экран входа продолжал бы показывать
+    // перечёркнутый микрофон, пока мы его тихо включаем. Дальше студент
+    // распоряжается микрофоном сам: нажатия во время урока не трогаем.
+    //
+    // Концертов правило не касается: там зал слушает, а не говорит.
+    let micSeeded = false;
+    function ensureStudentMic() {
+        if (micSeeded) return true;
+        try {
+            if (MontemeetProfile.roles() !== 'lesson') return true;
+            if (typeof rc === 'undefined' || !rc || !rc.peer_id || typeof rc.getModerator !== 'function') return false;
+            // ждём ответа сервера о входе: роль и правила комнаты приходят одним
+            // пакетом, а своя плитка строится уже после него
+            if (!document.querySelector('#videoMediaContainer .Camera')) return false;
+            if (typeof isPresenter !== 'undefined' && isPresenter) return true; // педагог сам себе хозяин
+            const mod = rc.getModerator() || {};
+            if (mod.audio_start_muted || mod.audio_cant_unmute) return true; // школа велела молчать
+            const ov = MontemeetProfile.overrides ? MontemeetProfile.overrides() : null;
+            if (ov && ov.startMuted) return true;
+            if (typeof isAudioAllowed === 'undefined') return false;
+            if (isAudioAllowed) {
+                micSeeded = true; // микрофон поднимется сам, вмешиваться не в чем
+                return true;
+            }
+            const btn = document.getElementById('startAudioButton');
+            if (!btn || typeof btn.onclick !== 'function') return false; // кнопку ещё не привязали
+            micSeeded = true;
+            btn.click(); // стоковый путь: знает и про выбор устройства, и про запреты модератора
+            if (typeof lS !== 'undefined' && lS && typeof lS.setInitConfig === 'function') {
+                lS.setInitConfig(lS.MEDIA_TYPE.audio, true);
+            }
+            console.log('Montemeet: микрофон студента включён по школьному правилу');
+            return true;
+        } catch (e) {
+            return true;
+        }
+    }
+
     // The teacher can re-enable a participant's camera right from the avatar
     // tile (Ivan, 2026-08-06) — a hidden camera has no video tile, and the
     // stock videoOff button set has no camera control at all.
@@ -798,6 +845,10 @@ const MontemeetRoles = (() => {
                     if (ensureBlurDefault()) clearInterval(blurPoll);
                 }, 500);
                 setTimeout(() => clearInterval(blurPoll), 30000);
+                const micPoll = setInterval(() => {
+                    if (ensureStudentMic()) clearInterval(micPoll);
+                }, 400);
+                setTimeout(() => clearInterval(micPoll), 30000);
                 // the student extras wait until the role is settled (own tile built)
                 const studentPoll = setInterval(() => {
                     if (
