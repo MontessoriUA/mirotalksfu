@@ -1684,7 +1684,8 @@ async function runGroupShareScenario() {
 
 // Крупное — только для живой картинки. Все студенты выключили камеры: крупного
 // нет вовсе (сетка аватарок), а если педагог показывает экран — крупной идёт
-// его демонстрация. Вернулась чужая камера — крупное снова у неё.
+// его демонстрация. Вернувшаяся камера демонстрацию НЕ вытесняет — показ и есть
+// «смотрите сюда»; крупное уходит к ней, только когда показ закончился.
 async function runNoVideoBigScenario() {
     const room = 'montemeet-group';
     const teacher = await launchPeer('Teacher', fixtures.silence, { room });
@@ -1711,6 +1712,10 @@ async function runNoVideoBigScenario() {
     await delay(9000);
     const cameraBack = await lookLayout(teacher);
 
+    await stopShare(teacher);
+    await delay(8000);
+    const shareOver = await lookLayout(teacher);
+
     await student2.browser.close();
     await student1.browser.close();
     await teacher.browser.close();
@@ -1720,6 +1725,7 @@ async function runNoVideoBigScenario() {
         allDark,
         withShare,
         cameraBack,
+        shareOver,
         checks: {
             sharingStarted: started === true,
             // смотреть не на кого и показывать нечего — крупного нет
@@ -1727,7 +1733,13 @@ async function runNoVideoBigScenario() {
             // ...и уж точно не собственное лицо
             notOwnFaceBig: allDark.крупно?.кто !== ids.teacher,
             ownShareTakesBig: withShare.крупно?.кто === ids.teacher && withShare.крупно?.что === 'экран',
-            cameraBackTakesBig: cameraBack.крупно?.что === 'камера' && cameraBack.крупно?.кто !== ids.teacher,
+            // камера вернулась — показ остаётся крупным, лицо идёт в ленту
+            shareKeepsBigWhenCameraReturns:
+                cameraBack.крупно?.кто === ids.teacher &&
+                cameraBack.крупно?.что === 'экран' &&
+                cameraBack.лента.some((t) => t.что === 'камера' && t.кто !== ids.teacher),
+            // показ закончился — крупное досталось живой камере
+            cameraTakesBigAfterShare: shareOver.крупно?.что === 'камера' && shareOver.крупно?.кто !== ids.teacher,
         },
     };
 }
