@@ -1,5 +1,7 @@
 const fs = require('fs');
 
+const path = require('path');
+
 const chokidar = require('chokidar');
 
 const Logger = require('./Logger');
@@ -70,11 +72,48 @@ class HtmlInjector {
             });
     }
 
+    // Montemeet: к нашим файлам дописываем отметку времени.
+    //
+    // Подключены они без версии, а браузер вправе держать прежнюю копию сколько
+    // угодно: на телефоне Ивана правка так и не «приехала», хотя на сервере
+    // лежала новая (2026-08-19). Отметка считается по самому свежему из наших
+    // файлов, поэтому достаточно выложить код — страница сама попросит новые.
+    // Значение пересчитывается не чаще раза в десять секунд: страницу открывают
+    // редко, а лишний обход каталога ни к чему.
+    montemeetAssetVersion() {
+        const now = Date.now();
+        if (this._mmAssets && now - this._mmAssets.at < 10000) return this._mmAssets.value;
+        let newest = 0;
+        for (const [dir, re] of [
+            ['js', /^Montemeet[\w.]*\.js$/],
+            ['css', /^Montemeet[\w.]*\.css$/],
+        ]) {
+            const full = path.join(__dirname, '../../public', dir);
+            try {
+                for (const name of fs.readdirSync(full)) {
+                    if (!re.test(name)) continue;
+                    const { mtimeMs } = fs.statSync(path.join(full, name));
+                    if (mtimeMs > newest) newest = mtimeMs;
+                }
+            } catch (err) {
+                /* каталога нет — обойдёмся без отметки */
+            }
+        }
+        this._mmAssets = { at: now, value: Math.floor(newest) };
+        return this._mmAssets.value;
+    }
+
+    stampMontemeetAssets(html) {
+        const version = this.montemeetAssetVersion();
+        if (!version) return html;
+        return html.replace(/(\.\.\/(?:js|css)\/Montemeet[\w.]*\.(?:js|css))"/g, `$1?v=${version}"`);
+    }
+
     // Function to inject dynamic data (e.g., OG, TITLE, etc.) into a given file
     injectHtml(filePath, res) {
         // Check if HTML injection is enabled in the config
         if (!this.config?.htmlInjection) {
-            return res.send(this.cache[filePath]);
+            return res.send(this.stampMontemeetAssets(this.cache[filePath] || ''));
         }
 
         if (!this.cache[filePath]) {
@@ -87,9 +126,8 @@ class HtmlInjector {
 
         try {
             // Replace placeholders with dynamic data (OG, TITLE, etc.)
-            const modifiedHTML = this.cache[filePath].replace(
-                /{{(OG_[A-Z_]+)}}/g,
-                (_, key) => this.injectData[key] || ''
+            const modifiedHTML = this.stampMontemeetAssets(
+                this.cache[filePath].replace(/{{(OG_[A-Z_]+)}}/g, (_, key) => this.injectData[key] || '')
             );
 
             if (!res.headersSent) {
