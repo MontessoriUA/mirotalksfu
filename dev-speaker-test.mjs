@@ -15,6 +15,11 @@ import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { pathToFileURL } from 'node:url';
 
+// Сценарий room-policy подгружает MontemeetProfiles, тот тянет dotenv, а dotenv
+// с 17-й версии печатает в вывод рекламную подсказку — и она попадала в JSON
+// отчёта первой строкой, ломая разбор (Иван, 2026-08-18).
+process.env.DOTENV_CONFIG_QUIET = 'true';
+
 // overridable so the same suite can be pointed at a real deployment:
 //   MM_TEST_BASE=http://192.168.35.11 node dev-speaker-test.mjs
 const CHROME = process.env.MM_TEST_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
