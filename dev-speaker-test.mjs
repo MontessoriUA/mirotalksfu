@@ -1831,5 +1831,8 @@ if (which === 'no-video-big' || which === 'all') {
     results.push(r);
 }
 
+// Отчёт машинам: сценарий room-policy подгружает наш загрузчик профилей, а он
+// пишет в тот же поток — метка отделяет отчёт от посторонних строк (Иван, 2026-08-18)
+console.log('---РЕЗУЛЬТАТЫ---');
 console.log(JSON.stringify(results, null, 2));
 process.exitCode = results.every((r) => r.pass) ? 0 : 1;
