@@ -1867,6 +1867,7 @@ async function runStudentMicScenario() {
             teacherSeesCameraOn: seen.видно === true,
             memoryHealedAudio: mine.память.audio === true,
             memoryHealedVideo: mine.память.video === true,
+            memoryHealedBoth: mine.память.audioVideo === true,
         },
     };
 }

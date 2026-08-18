@@ -709,6 +709,7 @@ const MontemeetRoles = (() => {
     //
     // Концертов правило не касается: там зал слушает и смотрит, а не выступает.
     const mediaSeeded = { audio: false, video: false };
+    let mediaHealed = false;
 
     function seedTrack(kind) {
         if (mediaSeeded[kind]) return true;
@@ -731,6 +732,7 @@ const MontemeetRoles = (() => {
         btn.click(); // стоковый путь: знает и про выбор устройства, и про запреты модератора
         if (typeof lS !== 'undefined' && lS && typeof lS.setInitConfig === 'function') {
             lS.setInitConfig(kind === 'audio' ? lS.MEDIA_TYPE.audio : lS.MEDIA_TYPE.video, true);
+            mediaHealed = true;
         }
         console.log(`Montemeet: ${kind === 'audio' ? 'микрофон' : 'камера'} студента включён по школьному правилу`);
         return true;
@@ -744,7 +746,15 @@ const MontemeetRoles = (() => {
             // пакетом, а своя плитка строится уже после него
             if (!document.querySelector('#videoMediaContainer .Camera')) return false;
             if (typeof isPresenter !== 'undefined' && isPresenter) return true; // педагог сам себе хозяин
-            return seedTrack('audio') && seedTrack('video');
+            const done = seedTrack('audio') && seedTrack('video');
+            // Общий флаг памяти гасит СРАЗУ ОБА устройства, поэтому чиним и его:
+            // иначе на следующем входе всё повторится, только с миганием значков.
+            if (done && mediaHealed && typeof lS !== 'undefined' && lS?.getLocalStorageInitConfig) {
+                const cfg = lS.getLocalStorageInitConfig() || {};
+                if (cfg.audio && cfg.video && !cfg.audioVideo) lS.setInitConfig(lS.MEDIA_TYPE.audioVideo, true);
+                mediaHealed = false;
+            }
+            return done;
         } catch (e) {
             return true;
         }
