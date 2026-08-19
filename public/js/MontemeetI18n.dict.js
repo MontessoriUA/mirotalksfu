@@ -68,6 +68,10 @@ window.MontemeetDict = {
         'Shortcuts': { uk: 'Гарячі клавіші', ru: 'Горячие клавиши' },
         'General Shortcuts': { uk: 'Загальні гарячі клавіші', ru: 'Общие горячие клавиши' },
         'Start Recording': { uk: 'Почати запис', ru: 'Начать запись' },
+        'Your presence implies you agree to being recorded': {
+            uk: 'Залишаючись у кімнаті, ви погоджуєтесь на запис',
+            ru: 'Оставаясь в комнате, вы соглашаетесь на запись',
+        },
         'Stop Recording': { uk: 'Зупинити запис', ru: 'Остановить запись' },
         'Accepted: any file type': { uk: 'Приймаються файли будь-якого типу', ru: 'Принимаются файлы любого типа' },
         'Show on msg': { uk: 'Відкривати при повідомленні', ru: 'Открывать при сообщении' },
@@ -506,6 +510,22 @@ window.MontemeetDict = {
     },
 
     RULES: [
+        // уведомление о записи приходит с именем впереди: «Имя Started conference recording»
+        {
+            re: /^(.+) Started conference recording$/,
+            uk: '$1 почав запис заняття',
+            ru: '$1 начал запись занятия',
+        },
+        {
+            re: /^(.+) Start conference recording$/,
+            uk: '$1 почав запис заняття',
+            ru: '$1 начал запись занятия',
+        },
+        {
+            re: /^(.+) Stop conference recording$/,
+            uk: '$1 зупинив запис заняття',
+            ru: '$1 остановил запись занятия',
+        },
         { re: /^(\d+) - frame-per-second$/, uk: '$1 — кадрів/с', ru: '$1 — кадров/с' },
         {
             re: /^(\d+) conversations?$/,

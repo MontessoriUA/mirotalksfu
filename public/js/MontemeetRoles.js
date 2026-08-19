@@ -681,6 +681,7 @@ const MontemeetRoles = (() => {
             defaultTabPicked = true;
         }
         splitParticipantsFromChat();
+        muteSpeech();
         applyRecording();
         ensureFileShareButton();
         ensurePcSoundButton();
@@ -708,6 +709,31 @@ const MontemeetRoles = (() => {
         }
     }
 
+    // Синтезированная речь — нигде и никогда.
+    //
+    // Сток проговаривает вслух уведомления о действиях в комнате и входящие
+    // сообщения чата. На уроке это лишний голос поверх занятия, да ещё
+    // по-английски (Иван, 2026-08-19). Глушим все три точки входа сразу — и те,
+    // что зависят от настройки, и те, что от неё не зависят вовсе.
+    function muteSpeech() {
+        const proto = roomClientProto();
+        if (!proto || proto._mmNoSpeech) return;
+        for (const name of ['speechText', 'speechMessage', 'speechElementText']) {
+            if (typeof proto[name] === 'function') proto[name] = function () {};
+        }
+        proto._mmNoSpeech = true;
+        if (typeof rc !== 'undefined' && rc) rc.speechInMessages = false;
+        // на всякий случай: если сток заговорит в обход своих же методов
+        try {
+            if (window.speechSynthesis && !window.speechSynthesis._mmNoSpeech) {
+                window.speechSynthesis.speak = function () {};
+                window.speechSynthesis._mmNoSpeech = true;
+            }
+        } catch (e) {
+            /* браузер не даёт переопределить — молчим */
+        }
+    }
+
     // Запись урока: школьный запрет и путь без лишнего вопроса.
     //
     // Сток на каждое нажатие спрашивает «камеру или экран». Педагогу нужен
@@ -717,6 +743,10 @@ const MontemeetRoles = (() => {
     // Запрет школы прячет кнопку у всех, включая педагога: ставится галочкой
     // в общих настройках кабинета (Иван, 2026-08-19).
     function applyRecording() {
+        // Сводка после остановки («Locally Recording Info», размер, кодеки) педагогу
+        // не нужна: файл и так уходит в загрузки, а попап на английском поверх
+        // урока только мешает (Иван, 2026-08-19). У стока для этого свой рубильник.
+        if (typeof recShowInfo !== 'undefined' && recShowInfo) recShowInfo = false;
         const off = MontemeetProfile.recordingOff && MontemeetProfile.recordingOff();
         if (off) {
             for (const id of ['startRecButton', 'stopRecButton']) {
