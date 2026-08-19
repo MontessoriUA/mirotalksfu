@@ -25,6 +25,13 @@ const MontemeetRoles = (() => {
         'documentPiPButton',
         'snapshotRoomButton',
         'emojiRoomButton',
+        // из подменю шестерёнки: обмен файлами живёт кнопкой в самой панели, а
+        // «скрыть себя», «во весь экран» и «о программе» на уроке не нужны
+        // (Иван, 2026-08-19)
+        'fileShareExtraButton',
+        'hideMeButton',
+        'fullScreenButton',
+        'aboutButton',
     ];
     // additionally hidden for students
     // Запись — только педагогу: на сервере это уже запрещено (HOST_ONLY_RECORDING),
@@ -32,11 +39,13 @@ const MontemeetRoles = (() => {
     const HIDE_STUDENT = [
         ...HIDE_BOTH,
         'shareButton',
-        'hideMeButton',
         'participantsButton',
         'whiteboardButton',
         'startRecButton',
         'stopRecButton',
+        // после всех урезаний в подменю студенту не остаётся ни одного пункта —
+        // прячем саму стрелку у шестерёнки (Иван, 2026-08-19)
+        'settingsExtraDropdown',
     ];
     // concerts: no screen sharing and no chat for anyone (Ivan, 2026-08-05)
     const HIDE_CONCERT = [...HIDE_BOTH, 'startScreenButton', 'chatButton', 'whiteboardButton'];
