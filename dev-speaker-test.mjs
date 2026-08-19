@@ -168,6 +168,18 @@ async function launchPeer(
             /* page closing */
         }
     });
+    // Считаем, сколько раз браузер собирался заговорить вслух: озвучки в уроке
+    // быть не должно нигде (Иван, 2026-08-19).
+    await page.evaluateOnNewDocument(() => {
+        window.__spoken = [];
+        const orig = window.speechSynthesis?.speak?.bind(window.speechSynthesis);
+        if (orig) {
+            window.speechSynthesis.speak = function (u) {
+                window.__spoken.push(String(u?.text || ''));
+                return orig(u);
+            };
+        }
+    });
     // Память браузера о ПРОШЛОМ входе (сток помнит выбор микрофона и камеры).
     // Портим ровно один раз: страница по дороге к комнате перезагружается, и
     // порча на каждый документ переписывала бы то, что мы проверяем.
@@ -1911,7 +1923,17 @@ async function runRecordingScenario() {
         };
     });
     await teacher.page.evaluate(() => document.getElementById('stopRecButton')?.click());
-    await delay(3000);
+    await delay(9000);
+
+    // после остановки сводка о файле показываться не должна, и вслух — тишина
+    const финал = await teacher.page.evaluate(() => ({
+        попапы: [...document.querySelectorAll('.swal2-container')].map((c) => c.innerText.slice(0, 60)),
+        озвучено: window.__spoken || [],
+    }));
+    const уведомление = await student.page.evaluate(() => ({
+        текст: [...document.querySelectorAll('.swal2-container')].map((c) => c.innerText).join(' '),
+        озвучено: window.__spoken || [],
+    }));
 
     await student.browser.close();
     await teacher.browser.close();
@@ -1921,12 +1943,20 @@ async function runRecordingScenario() {
         уПедагога,
         уСтудента,
         пуск,
+        финал,
+        уведомление,
         checks: {
             noSchoolBan: уПедагога.запрет === false, // без этого проверки ничего не значат
             teacherHasButton: уПедагога.кнопка === true && уПедагога.группа === true,
             studentHasNoButton: уСтудента.кнопка === false && уСтудента.группа === false,
             noExtraQuestion: пуск.вопрос === false,
             recordingStarted: пуск.идёт === true,
+            noInfoPopupAfterStop: финал.попапы.length === 0,
+            nothingSpokenTeacher: финал.озвучено.length === 0,
+            nothingSpokenStudent: уведомление.озвучено.length === 0,
+            // студент увидел уведомление, и оно переведено (не осталось английским)
+            studentNoticeTranslated:
+                уведомление.текст.length > 0 && !/conference recording|implies you agree/i.test(уведомление.текст),
         },
     };
 }
