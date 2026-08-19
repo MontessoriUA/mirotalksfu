@@ -755,6 +755,15 @@ const MontemeetRoles = (() => {
             }
             return;
         }
+        // Кнопку возвращаем явно: сток решает её судьбу в handleButtons, а наши
+        // флаги приезжают к нему когда придётся — и кнопка то есть, то нет
+        // (Иван, 2026-08-19). Студенту она скрыта списком ролей.
+        const start = document.getElementById('startRecButton');
+        const recording = typeof rc !== 'undefined' && rc && typeof rc.isRecording === 'function' && rc.isRecording();
+        if (start && isHost() && !recording) {
+            start.classList.remove('hidden');
+            if (start.style.display === 'none') start.style.display = '';
+        }
         const proto = roomClientProto();
         if (!proto || proto._mmRecOne || typeof proto.recordingOptions !== 'function') return;
         proto.recordingOptions = function (options, audioMixerTracks) {

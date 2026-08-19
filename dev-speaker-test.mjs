@@ -1922,6 +1922,11 @@ async function runRecordingScenario() {
             идёт: typeof rc.isRecording === 'function' ? !!rc.isRecording() : null,
         };
     });
+    // уведомление студенту живёт шесть секунд — читаем сразу, а не в конце
+    const уведомление = await student.page.evaluate(() => ({
+        текст: [...document.querySelectorAll('.swal2-container')].map((c) => c.innerText).join(' '),
+        озвучено: window.__spoken || [],
+    }));
     await teacher.page.evaluate(() => document.getElementById('stopRecButton')?.click());
     await delay(9000);
 
@@ -1930,10 +1935,7 @@ async function runRecordingScenario() {
         попапы: [...document.querySelectorAll('.swal2-container')].map((c) => c.innerText.slice(0, 60)),
         озвучено: window.__spoken || [],
     }));
-    const уведомление = await student.page.evaluate(() => ({
-        текст: [...document.querySelectorAll('.swal2-container')].map((c) => c.innerText).join(' '),
-        озвучено: window.__spoken || [],
-    }));
+    const тишинаУСтудента = await student.page.evaluate(() => (window.__spoken || []).length);
 
     await student.browser.close();
     await teacher.browser.close();
@@ -1953,7 +1955,7 @@ async function runRecordingScenario() {
             recordingStarted: пуск.идёт === true,
             noInfoPopupAfterStop: финал.попапы.length === 0,
             nothingSpokenTeacher: финал.озвучено.length === 0,
-            nothingSpokenStudent: уведомление.озвучено.length === 0,
+            nothingSpokenStudent: тишинаУСтудента === 0,
             // студент увидел уведомление, и оно переведено (не осталось английским)
             studentNoticeTranslated:
                 уведомление.текст.length > 0 && !/conference recording|implies you agree/i.test(уведомление.текст),
