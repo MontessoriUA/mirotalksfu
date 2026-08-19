@@ -37,6 +37,14 @@ body.montemeet-strip.montemeet-pinned #videoMediaContainer {
     padding-top: 48px !important;
 }
 
+/* Пара «кнопка + стрелка» распадается, когда стрелку прячут ролью: сток
+   скругляет кнопке только левый край, а правый оставляет прямым — под стрелку,
+   которой уже нет (Иван, 2026-08-19). Одинокой кнопке возвращаем обычный вид. */
+#bottomButtons .split-btn.montemeet-lone > button:not(.device-dropdown-toggle) {
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+
 /* the view-cycle button: center the inline SVG */
 #montemeetSpeakerViewBtn svg {
     display: block;

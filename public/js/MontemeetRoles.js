@@ -672,6 +672,7 @@ const MontemeetRoles = (() => {
                 wrap.style.display = 'none';
             }
         }
+        markLoneSplitButtons();
         hideSettingRow('switchDominantSpeakerFocus');
         hideSettingRow('switchPushToTalk');
         hideSettingRow('videoQuality');
@@ -715,6 +716,21 @@ const MontemeetRoles = (() => {
             return true;
         } catch (e) {
             return true;
+        }
+    }
+
+    // Кнопка со спрятанной стрелкой перестаёт быть половинкой пары: помечаем
+    // её, чтобы CSS вернул скругление справа (Иван, 2026-08-19).
+    function markLoneSplitButtons() {
+        for (const wrap of document.querySelectorAll('#bottomButtons .split-btn')) {
+            const toggle = wrap.querySelector('.device-dropdown-toggle');
+            const holder = toggle?.closest('.dropdown') || toggle;
+            const shown =
+                !!toggle &&
+                !toggle.classList.contains('hidden') &&
+                getComputedStyle(toggle).display !== 'none' &&
+                (!holder || getComputedStyle(holder).display !== 'none');
+            wrap.classList.toggle('montemeet-lone', !shown);
         }
     }
 
