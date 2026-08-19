@@ -27,7 +27,17 @@ const MontemeetRoles = (() => {
         'emojiRoomButton',
     ];
     // additionally hidden for students
-    const HIDE_STUDENT = [...HIDE_BOTH, 'shareButton', 'hideMeButton', 'participantsButton', 'whiteboardButton'];
+    // Запись — только педагогу: на сервере это уже запрещено (HOST_ONLY_RECORDING),
+    // но кнопку студенту показывать всё равно незачем
+    const HIDE_STUDENT = [
+        ...HIDE_BOTH,
+        'shareButton',
+        'hideMeButton',
+        'participantsButton',
+        'whiteboardButton',
+        'startRecButton',
+        'stopRecButton',
+    ];
     // concerts: no screen sharing and no chat for anyone (Ivan, 2026-08-05)
     const HIDE_CONCERT = [...HIDE_BOTH, 'startScreenButton', 'chatButton', 'whiteboardButton'];
 
@@ -36,7 +46,11 @@ const MontemeetRoles = (() => {
     // never created. Split: for everyone at lessons / student extras.
     const BUTTONS_LESSON_BOTH = {
         settings: {
-            tabRecording: false,
+            // Одним этим флагом сток гасит И вкладку записи в настройках, И саму
+            // кнопку записи в подменю шестерёнки. Мы гасили вкладку — и заодно
+            // молча лишили педагога записи (Иван, 2026-08-19). Вкладку прячем
+            // отдельно, по имени, а кнопку оставляем.
+            tabRecording: true,
             broadcastingButton: false,
             tabRTMPStreamingBtn: false,
             activeRooms: false,
@@ -667,6 +681,7 @@ const MontemeetRoles = (() => {
             defaultTabPicked = true;
         }
         splitParticipantsFromChat();
+        applyRecording();
         ensureFileShareButton();
         ensurePcSoundButton();
         updatePcSoundBtn();
@@ -691,6 +706,31 @@ const MontemeetRoles = (() => {
         } catch (e) {
             return true;
         }
+    }
+
+    // Запись урока: школьный запрет и путь без лишнего вопроса.
+    //
+    // Сток на каждое нажатие спрашивает «камеру или экран». Педагогу нужен
+    // экран — там урок целиком: раскладка, доска, демонстрация. Вопрос убираем,
+    // сразу открывается выбор окна (его показывает сам браузер, обойти нельзя).
+    //
+    // Запрет школы прячет кнопку у всех, включая педагога: ставится галочкой
+    // в общих настройках кабинета (Иван, 2026-08-19).
+    function applyRecording() {
+        const off = MontemeetProfile.recordingOff && MontemeetProfile.recordingOff();
+        if (off) {
+            for (const id of ['startRecButton', 'stopRecButton']) {
+                const el = document.getElementById(id);
+                if (el && el.style.display !== 'none') el.style.display = 'none';
+            }
+            return;
+        }
+        const proto = roomClientProto();
+        if (!proto || proto._mmRecOne || typeof proto.recordingOptions !== 'function') return;
+        proto.recordingOptions = function (options, audioMixerTracks) {
+            return this.startDesktopRecording(options, audioMixerTracks);
+        };
+        proto._mmRecOne = true;
     }
 
     // The teacher can re-enable a participant's camera right from the avatar

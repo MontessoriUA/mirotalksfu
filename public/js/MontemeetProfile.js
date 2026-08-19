@@ -84,5 +84,6 @@ const MontemeetProfile = (() => {
         overrides: () => (profile && profile.overrides) || null,
         style: () => (profile && profile.style) || null,
         isMusic: () => !!(profile && profile.audio && profile.audio.noiseSuppression === false),
+        recordingOff: () => !!(profile && profile.recordingOff), // школа запретила запись урока
     };
 })();

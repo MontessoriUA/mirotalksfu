@@ -61,6 +61,7 @@ function forRoom(roomId) {
         devicePriority = null,
         googleClientId = null,
         style = null,
+        lessonPolicies = {},
     } = load() || {};
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -79,6 +80,10 @@ function forRoom(roomId) {
         devicePriority, // installation-wide (e.g. SplitCam on school computers)
         googleClientId: googleClientId || null, // One Tap name prefill (optional)
         style: style || null, // conference appearance, forced identically on everyone
+        // Запись урока. Остальные политики школы применяются на сервере флагами
+        // модератора, а этой соответствующего флага в стоке нет — поэтому её
+        // отдаём клиенту, и он прячет кнопку записи (Иван, 2026-08-19).
+        recordingOff: !!lessonPolicies.recordingOff,
     };
 }
 
