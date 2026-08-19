@@ -103,6 +103,17 @@ class HtmlInjector {
         return this._mmAssets.value;
     }
 
+    // Montemeet: сама страница не кешируется никогда.
+    //
+    // Сток отдаёт её вообще без заголовков о кешировании — только ETag, — и
+    // браузер вправе брать её из своего кеша вместе со СТАРОЙ отметкой версии
+    // наших файлов. Именно на это Иван и наступил: выкладки до его браузера не
+    // доезжали, хотя на сервере лежало новое (2026-08-19). Страница — лёгкая
+    // оболочка, её незачем кешировать; всё тяжёлое лежит в файлах с версией.
+    noStore(res) {
+        if (!res.headersSent) res.set('Cache-Control', 'no-store');
+    }
+
     stampMontemeetAssets(html) {
         const version = this.montemeetAssetVersion();
         if (!version) return html;
@@ -113,6 +124,7 @@ class HtmlInjector {
     injectHtml(filePath, res) {
         // Check if HTML injection is enabled in the config
         if (!this.config?.htmlInjection) {
+            this.noStore(res);
             return res.send(this.stampMontemeetAssets(this.cache[filePath] || ''));
         }
 
@@ -131,6 +143,7 @@ class HtmlInjector {
             );
 
             if (!res.headersSent) {
+                this.noStore(res);
                 res.send(modifiedHTML);
             }
         } catch (error) {
