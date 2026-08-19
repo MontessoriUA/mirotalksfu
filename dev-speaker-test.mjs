@@ -1949,6 +1949,9 @@ async function runRecordingScenario() {
         уведомление,
         checks: {
             noSchoolBan: уПедагога.запрет === false, // без этого проверки ничего не значат
+            // а без этого проверка кнопки соврёт: в засорённой комнате «Teacher»
+            // может войти вторым именем и презентером не считаться
+            teacherIsPresenter: уПедагога.педагог === true,
             teacherHasButton: уПедагога.кнопка === true && уПедагога.группа === true,
             studentHasNoButton: уСтудента.кнопка === false && уСтудента.группа === false,
             noExtraQuestion: пуск.вопрос === false,
