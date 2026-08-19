@@ -1877,6 +1877,60 @@ async function runStudentMicScenario() {
     };
 }
 
+// Запись урока. Кнопка живёт в подменю у шестерёнки и положена только педагогу;
+// лишнего вопроса «камеру или экран» быть не должно — сразу выбор окна, его
+// показывает сам браузер (Иван, 2026-08-19). Школьный запрет проверяется руками:
+// он меняет общую настройку, а её на живом сервере трогать в наборе нельзя.
+async function runRecordingScenario() {
+    const room = 'montemeet-group';
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(11000);
+
+    const menu = (p) =>
+        p.page.evaluate(() => {
+            document.getElementById('settingsExtraMenu')?.classList.remove('hidden'); // открываем подменю
+            const el = document.getElementById('startRecButton');
+            const header = [...document.querySelectorAll('.extra-menu-group')].find((h) =>
+                (h.dataset.buttons || '').includes('startRecButton')
+            );
+            const видно = (x) => !!x && !x.classList.contains('hidden') && getComputedStyle(x).display !== 'none';
+            return { педагог: !!isPresenter, кнопка: видно(el), группа: !!header && getComputedStyle(header).display !== 'none', запрет: !!MontemeetProfile.recordingOff() };
+        });
+
+    const уПедагога = await menu(teacher);
+    const уСтудента = await menu(student);
+
+    const пуск = await teacher.page.evaluate(async () => {
+        document.getElementById('startRecButton')?.click();
+        await new Promise((r) => setTimeout(r, 5000));
+        return {
+            вопрос: !!document.querySelector('.swal2-container'),
+            идёт: typeof rc.isRecording === 'function' ? !!rc.isRecording() : null,
+        };
+    });
+    await teacher.page.evaluate(() => document.getElementById('stopRecButton')?.click());
+    await delay(3000);
+
+    await student.browser.close();
+    await teacher.browser.close();
+
+    return {
+        scenario: 'recording',
+        уПедагога,
+        уСтудента,
+        пуск,
+        checks: {
+            noSchoolBan: уПедагога.запрет === false, // без этого проверки ничего не значат
+            teacherHasButton: уПедагога.кнопка === true && уПедагога.группа === true,
+            studentHasNoButton: уСтудента.кнопка === false && уСтудента.группа === false,
+            noExtraQuestion: пуск.вопрос === false,
+            recordingStarted: пуск.идёт === true,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -1998,6 +2052,11 @@ if (which === 'solo-share' || which === 'all') {
 }
 if (which === 'group-share' || which === 'all') {
     const r = await runGroupShareScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'recording' || which === 'all') {
+    const r = await runRecordingScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
