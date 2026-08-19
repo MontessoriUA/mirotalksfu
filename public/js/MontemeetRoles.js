@@ -743,6 +743,16 @@ const MontemeetRoles = (() => {
     // Запрет школы прячет кнопку у всех, включая педагога: ставится галочкой
     // в общих настройках кабинета (Иван, 2026-08-19).
     function applyRecording() {
+        try {
+            applyRecordingInner();
+        } catch (e) {
+            // Не роняем весь общий проход из-за записи: рядом в нём стоят чат,
+            // кнопки и звук компьютера (Иван, 2026-08-19).
+            console.warn('Montemeet: настройка записи не удалась —', e);
+        }
+    }
+
+    function applyRecordingInner() {
         // Сводка после остановки («Locally Recording Info», размер, кодеки) педагогу
         // не нужна: файл и так уходит в загрузки, а попап на английском поверх
         // урока только мешает (Иван, 2026-08-19). У стока для этого свой рубильник.
@@ -760,7 +770,8 @@ const MontemeetRoles = (() => {
         // (Иван, 2026-08-19). Студенту она скрыта списком ролей.
         const start = document.getElementById('startRecButton');
         const recording = typeof rc !== 'undefined' && rc && typeof rc.isRecording === 'function' && rc.isRecording();
-        if (start && isHost() && !recording) {
+        const teacher = typeof isPresenter !== 'undefined' && isPresenter;
+        if (start && teacher && !recording) {
             start.classList.remove('hidden');
             if (start.style.display === 'none') start.style.display = '';
         }
