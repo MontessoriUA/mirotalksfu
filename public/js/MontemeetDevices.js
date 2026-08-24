@@ -105,10 +105,42 @@ const MontemeetDevices = (() => {
         }
     }
 
+    // Профиль звука комнаты — КАЖДОМУ захвату, а не только тому, что делает
+    // сама конференция.
+    //
+    // На входе поток берётся с обычными audio: true, и при входе в комнату
+    // конференция переиспользует именно его (produce c init: true). То есть
+    // музыкальная комната всё это время работала с речевой обработкой: шумодав
+    // и авто-громкость съедали тихие хвосты рояля, а наши настройки применялись
+    // только к кодеку (Иван, 2026-08-19). Теперь настройки профиля
+    // подмешиваются в любой захват звука, где бы он ни случился.
+    async function withProfileAudio(constraints) {
+        try {
+            if (!constraints?.audio) return constraints;
+            await MontemeetProfile.ready;
+            const a = MontemeetProfile.audio ? MontemeetProfile.audio() : null;
+            if (!a) return constraints;
+            const base = typeof constraints.audio === 'object' ? constraints.audio : {};
+            const audio = {
+                ...base,
+                echoCancellation:
+                    typeof a.echoCancellation === 'string' ? a.echoCancellation : a.echoCancellation !== false,
+                autoGainControl: a.autoGainControl !== false,
+                noiseSuppression: a.noiseSuppression !== false,
+            };
+            if (a.voiceIsolation !== undefined) audio.voiceIsolation = !!a.voiceIsolation;
+            if (a.channelCount) audio.channelCount = a.channelCount;
+            return { ...constraints, audio };
+        } catch (e) {
+            return constraints;
+        }
+    }
+
     function installBusyFallback() {
         const md = navigator.mediaDevices;
         if (!md || md._mmBusy || typeof md.getUserMedia !== 'function') return;
-        const stock = md.getUserMedia.bind(md);
+        const stockRaw = md.getUserMedia.bind(md);
+        const stock = async (c) => stockRaw(await withProfileAudio(c));
         md.getUserMedia = async function (constraints) {
             try {
                 return await stock(constraints);
