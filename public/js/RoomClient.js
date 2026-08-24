@@ -2784,12 +2784,26 @@ class RoomClient {
             noiseSuppression: useBuiltInNoiseSuppression,
         };
 
-        // Montemeet: room profile overrides (music rooms capture raw sound)
+        // Montemeet: room profile overrides (music rooms capture raw sound).
+        //
+        // echoCancellation принимает не только да/нет: значение 'remote-only'
+        // просит браузер гасить лишь то, что пришло из конференции и вышло в
+        // колонки, а не всё подряд, что похоже на посторонний звук. Полная
+        // обработка подъедала затухание рояля (Иван, 2026-08-19). Отключать
+        // эхоподавление совсем нельзя: микрофон и колонки стоят рядом.
+        //
+        // voiceIsolation — отдельный «голосовой» фильтр браузера и системы: он
+        // бережёт речь и режет остальное, то есть ровно музыку. Значения
+        // подставляем как есть (ideal), поэтому браузер, который их не знает,
+        // просто их не заметит.
         const mmAudio = typeof MontemeetProfile !== 'undefined' ? MontemeetProfile.audio() : null;
         if (mmAudio) {
-            audioConstraints.echoCancellation = mmAudio.echoCancellation !== false;
+            audioConstraints.echoCancellation =
+                typeof mmAudio.echoCancellation === 'string' ? mmAudio.echoCancellation : mmAudio.echoCancellation !== false;
             audioConstraints.autoGainControl = mmAudio.autoGainControl !== false;
             audioConstraints.noiseSuppression = mmAudio.noiseSuppression !== false;
+            if (mmAudio.voiceIsolation !== undefined) audioConstraints.voiceIsolation = !!mmAudio.voiceIsolation;
+            if (mmAudio.channelCount) audioConstraints.channelCount = mmAudio.channelCount;
         }
         /* 
         deviceId handling is platform-dependent:
