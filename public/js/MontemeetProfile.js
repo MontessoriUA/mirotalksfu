@@ -79,6 +79,21 @@ const MontemeetProfile = (() => {
         get: () => profile,
         name: () => (profile && profile.name) || 'default',
         audio: () => (profile && profile.audio) || null,
+        // Профиль звука с поправкой на платформу. На Android запрос обычного
+        // эхоподавления переводит микрофон в голосовой пресет, и вендорский DSP
+        // вырезает фортепиано (стуки проходят, ноты нет — Иван, 2026-08-19).
+        // Поэтому музыкальные профили несут отдельное значение для Android:
+        // 'remote-only' не включает платформенные эффекты, микрофон открывается
+        // обычным трактом, а эхо собеседника снимает программный AEC3
+        // (Chrome 141+; старый браузер молча превратит строку в true — то есть
+        // в сегодняшнее поведение). Десктоп это поле не читает вовсе.
+        audioResolved: () => {
+            const a = profile && profile.audio;
+            if (!a) return null;
+            const android = /android/i.test(navigator.userAgent);
+            if (!android || a.echoCancellationAndroid === undefined || a.echoCancellation === false) return a;
+            return { ...a, echoCancellation: a.echoCancellationAndroid };
+        },
         layout: () => (profile && profile.layout) || null,
         roles: () => (profile && profile.roles) || null,
         overrides: () => (profile && profile.overrides) || null,

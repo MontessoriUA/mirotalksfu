@@ -2796,7 +2796,7 @@ class RoomClient {
         // бережёт речь и режет остальное, то есть ровно музыку. Значения
         // подставляем как есть (ideal), поэтому браузер, который их не знает,
         // просто их не заметит.
-        const mmAudio = typeof MontemeetProfile !== 'undefined' ? MontemeetProfile.audio() : null;
+        const mmAudio = typeof MontemeetProfile !== 'undefined' ? MontemeetProfile.audioResolved() : null;
         if (mmAudio) {
             audioConstraints.echoCancellation =
                 typeof mmAudio.echoCancellation === 'string' ? mmAudio.echoCancellation : mmAudio.echoCancellation !== false;

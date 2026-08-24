@@ -125,7 +125,7 @@ const MontemeetDevices = (() => {
         try {
             if (!constraints?.audio) return constraints;
             await profileReady();
-            const a = MontemeetProfile.audio ? MontemeetProfile.audio() : null;
+            const a = MontemeetProfile.audioResolved ? MontemeetProfile.audioResolved() : null;
             if (!a) return constraints;
             const base = typeof constraints.audio === 'object' ? constraints.audio : {};
             const audio = {
@@ -143,6 +143,24 @@ const MontemeetDevices = (() => {
         }
     }
 
+    // Что браузер применил на самом деле — в консоль: сегодняшняя история с
+    // необъяснимым эхом стоила часа именно потому, что фактический режим
+    // микрофона не было видно нигде (Иван, 2026-08-19).
+    function logApplied(stream) {
+        try {
+            const t = stream?.getAudioTracks?.()[0];
+            if (!t || !t.getSettings) return;
+            const s = t.getSettings();
+            console.log('Montemeet: микрофон —', {
+                эхоподавление: s.echoCancellation,
+                шумодав: s.noiseSuppression,
+                автоГромкость: s.autoGainControl,
+            });
+        } catch (e) {
+            /* не мешаем захвату */
+        }
+    }
+
     function installBusyFallback() {
         const md = navigator.mediaDevices;
         if (!md || md._mmBusy || typeof md.getUserMedia !== 'function') return;
@@ -150,7 +168,9 @@ const MontemeetDevices = (() => {
         const stock = async (c) => stockRaw(await withProfileAudio(c));
         md.getUserMedia = async function (constraints) {
             try {
-                return await stock(constraints);
+                const stream = await stock(constraints);
+                if (constraints?.audio) logApplied(stream);
+                return stream;
             } catch (err) {
                 const key = constraints?.video ? 'video' : constraints?.audio ? 'audio' : null;
                 if (!BUSY.has(err?.name) || !key) throw err;
