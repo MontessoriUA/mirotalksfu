@@ -155,6 +155,12 @@ const MontemeetDevices = (() => {
                 эхоподавление: s.echoCancellation,
                 шумодав: s.noiseSuppression,
                 автоГромкость: s.autoGainControl,
+                // Частота — честный индикатор тракта на мобильных: голосовой
+                // отдаёт 16 кГц, медийный — 48 кГц. Слову echoCancellation в
+                // настройках верить нельзя — оно рапортует запрошенное, а не
+                // действительное (2026-08-22, практика библиотеки Recorder).
+                частота: s.sampleRate,
+                каналов: s.channelCount,
             });
             showMicBadge(s);
         } catch (e) {
@@ -185,7 +191,8 @@ const MontemeetDevices = (() => {
             `mmec=${mmec}
 эхо: ${JSON.stringify(s.echoCancellation)}
 шумодав: ${s.noiseSuppression}
-авто: ${s.autoGainControl}`;
+авто: ${s.autoGainControl}
+частота: ${s.sampleRate || '?'} (16000 — голосовой тракт, 48000 — медийный)`;
     }
 
     function installBusyFallback() {
