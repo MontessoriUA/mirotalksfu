@@ -34,10 +34,17 @@
 })();
 
 const MontemeetDevices = (() => {
+    // Ждать профиль дольше секунды нельзя: и список устройств, и захват звука
+    // идут через нас, а человек не должен сидеть перед пустым экраном из-за
+    // медленной сети (Иван, 2026-08-19 — перед живым уроком).
+    const READY_MS = 1000;
+    const profileReady = () =>
+        Promise.race([MontemeetProfile.ready, new Promise((r) => setTimeout(r, READY_MS))]).catch(() => null);
+
     // паттерны из реестра: приоритетное устройство (SplitCam) и то, что при нём прячем
     async function patterns() {
         try {
-            await MontemeetProfile.ready;
+            await profileReady();
             const dp = MontemeetProfile.get()?.devicePriority || {};
             return { match: String(dp.match || '').toLowerCase(), hide: String(dp.hide || '').toLowerCase() };
         } catch (e) {
@@ -117,7 +124,7 @@ const MontemeetDevices = (() => {
     async function withProfileAudio(constraints) {
         try {
             if (!constraints?.audio) return constraints;
-            await MontemeetProfile.ready;
+            await profileReady();
             const a = MontemeetProfile.audio ? MontemeetProfile.audio() : null;
             if (!a) return constraints;
             const base = typeof constraints.audio === 'object' ? constraints.audio : {};
