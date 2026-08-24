@@ -90,6 +90,21 @@ const MontemeetProfile = (() => {
         audioResolved: () => {
             const a = profile && profile.audio;
             if (!a) return null;
+            // Диагностика с реального устройства: ?mmec=off|remote|on в адресе
+            // комнаты переопределяет эхоподавление. Стендовый Линукс не покажет,
+            // как поведёт себя пресет микрофона на настоящем Android, — а этот
+            // переключатель даёт проверить три режима за пять минут без сборки
+            // (Иван, 2026-08-22).
+            const mmec = (() => {
+                try {
+                    return new URL(location.href).searchParams.get('mmec');
+                } catch (e) {
+                    return null;
+                }
+            })();
+            if (mmec === 'off') return { ...a, echoCancellation: false };
+            if (mmec === 'remote') return { ...a, echoCancellation: 'remote-only' };
+            if (mmec === 'on') return { ...a, echoCancellation: true };
             const android = /android/i.test(navigator.userAgent);
             if (!android || a.echoCancellationAndroid === undefined || a.echoCancellation === false) return a;
             return { ...a, echoCancellation: a.echoCancellationAndroid };

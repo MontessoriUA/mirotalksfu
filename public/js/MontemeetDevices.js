@@ -156,9 +156,36 @@ const MontemeetDevices = (() => {
                 шумодав: s.noiseSuppression,
                 автоГромкость: s.autoGainControl,
             });
+            showMicBadge(s);
         } catch (e) {
             /* не мешаем захвату */
         }
+    }
+
+    // Бейдж с фактическим режимом микрофона — только при ?mmec=… в адресе:
+    // на телефоне консоль не открыть, а видеть применённое нужно именно там
+    function showMicBadge(s) {
+        let mmec = null;
+        try {
+            mmec = new URL(location.href).searchParams.get('mmec');
+        } catch (e) {
+            /* адрес не разобрался — значит и бейдж не нужен */
+        }
+        if (!mmec) return;
+        let el = document.getElementById('mmMicBadge');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'mmMicBadge';
+            el.style.cssText =
+                'position:fixed;top:8px;left:8px;z-index:99999;background:rgba(0,0,0,.8);color:#7CFC00;' +
+                'font:12px/1.5 monospace;padding:6px 10px;border-radius:8px;pointer-events:none;white-space:pre;';
+            document.body.appendChild(el);
+        }
+        el.textContent =
+            `mmec=${mmec}
+эхо: ${JSON.stringify(s.echoCancellation)}
+шумодав: ${s.noiseSuppression}
+авто: ${s.autoGainControl}`;
     }
 
     function installBusyFallback() {
