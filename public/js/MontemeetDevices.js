@@ -51,19 +51,35 @@ const MM_APPLE_TOUCH = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || MM_
         }
         return d;
     };
+    // и система — чтобы в журнале событий iPad не значился «macOS 10.15.7»
+    const patchOs = (o) => {
+        if (!o) return o;
+        if (MM_TOUCH_TABLET === 'ipad' && o.name === 'macOS') {
+            o.name = 'iPadOS';
+            o.version = undefined; // строка «полной версии» настоящую не сообщает
+        } else if (MM_TOUCH_TABLET === 'android' && o.name === 'Linux') {
+            o.name = 'Android';
+        }
+        return o;
+    };
     const Parser = function (ua, ...rest) {
         const p = new Stock(ua, ...rest);
         // чинить можно только своё устройство: чужую строку по нашему экрану не судят
         if (ua && ua !== navigator.userAgent) return p;
         const getResult = p.getResult;
         const getDevice = p.getDevice;
+        const getOS = p.getOS;
         p.getResult = function () {
             const r = getResult.apply(this, arguments);
             patch(r && r.device);
+            patchOs(r && r.os);
             return r;
         };
         p.getDevice = function () {
             return patch(getDevice.apply(this, arguments));
+        };
+        p.getOS = function () {
+            return patchOs(getOS.apply(this, arguments));
         };
         return p;
     };

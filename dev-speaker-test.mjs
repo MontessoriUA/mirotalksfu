@@ -2062,6 +2062,7 @@ async function runTabletScenario() {
                 планшет: isTabletDevice,
                 компьютер: isDesktopDevice,
                 iPad: isIPadDevice,
+                ОС: parserResult.os.name,
                 iOS: MontemeetDevices.appleTouch,
                 устройствоМикрофона:
                     RoomClient.prototype.getAudioConstraints.call(
@@ -2109,6 +2110,8 @@ async function runTabletScenario() {
         onDesk,
         checks: {
             ipadIsTablet: ipad.планшет === true && ipad.компьютер === false && ipad.iPad === true,
+            // в журнале событий iPad не должен значиться «macOS»
+            systemsNamedRight: ipad.ОС === 'iPadOS' && android.ОС === 'Android' && mac.ОС === 'macOS',
             ipadMicRoutedByOs: ipad.iOS === true && ipad.устройствоМикрофона === null,
             androidIsTablet: android.планшет === true && android.компьютер === false && android.iPad === false,
             androidMicExact: android.устройствоМикрофона?.exact === 'mic-1',

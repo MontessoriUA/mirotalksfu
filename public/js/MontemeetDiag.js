@@ -68,16 +68,19 @@ const MontemeetDiag = (() => {
     // приложение, и захват в этот момент система вправе остановить
     document.addEventListener('visibilitychange', () => report('visibility', { hidden: document.hidden }));
 
-    // браузер не дал играть звук без касания: собеседник «молчит», хотя поток идёт
+    // браузер не дал играть звук без касания: собеседник «молчит», хотя поток идёт.
+    // Только для элементов с потоком собеседника: звуковые эффекты («дзынь» при
+    // входе) браузер тоже не пускает без касания, но к «не слышно» они отношения
+    // не имеют — на iPad их набиралось по семь штук на каждый вход
     try {
         const play = HTMLMediaElement.prototype.play;
         HTMLMediaElement.prototype.play = function () {
             const p = play.apply(this, arguments);
             if (p && typeof p.then === 'function') {
                 p.then(null, (err) => {
-                    if (err?.name !== 'NotAllowedError' || this._mmAutoplay) return;
+                    if (err?.name !== 'NotAllowedError' || this._mmAutoplay || !this.srcObject) return;
                     this._mmAutoplay = true;
-                    report('autoplay-blocked', { el: this.tagName.toLowerCase(), stream: !!this.srcObject });
+                    report('autoplay-blocked', { el: this.tagName.toLowerCase() });
                 });
             }
             return p;
