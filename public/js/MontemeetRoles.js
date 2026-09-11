@@ -600,8 +600,10 @@ const MontemeetRoles = (() => {
     function ensurePcSoundButton() {
         if (pcSoundBtnDone || MontemeetProfile.roles() !== 'lesson') return;
         if (!(typeof isPresenter !== 'undefined' && isPresenter)) return;
-        // системный звук браузеру на телефоне недоступен — кнопка была бы мёртвой
-        if (rc?.isMobileDevice) return;
+        // браузер без захвата экрана не даст и звук компьютера — кнопка была бы
+        // мёртвой. Прежде судили по «телефон ли это», и на планшете она
+        // оставалась: у Олены Ступак на iPad нажималась впустую (Иван, 2026-09-11)
+        if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') return;
         const bar = document.getElementById('bottomButtons');
         if (!bar || typeof rc === 'undefined' || !rc) return;
         const btn = document.createElement('button');
@@ -952,6 +954,40 @@ const MontemeetRoles = (() => {
     }
     disableSurvey();
     document.addEventListener('DOMContentLoaded', disableSurvey);
+
+    // «Завершить для всех» — только после вопроса.
+    //
+    // В меню выхода педагога этот пункт стоит вплотную к обычному «Выйти», и на
+    // планшете его легко задеть пальцем: 06.09.2026 из урока Олены Ступак разом
+    // вылетели все — и студентка, и второе устройство самой Олены (Иван,
+    // 2026-09-11). Сам пункт оставляем: закрыть комнату педагогу бывает нужно.
+    // Нажатие ловим раньше стока и переспрашиваем.
+    document.addEventListener(
+        'click',
+        (e) => {
+            const btn = e.target && e.target.closest ? e.target.closest('#exitLeaveAllBtn') : null;
+            if (!btn || !MontemeetProfile.roles()) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            document.getElementById('exitMenu')?.classList.add('hidden');
+            const concert = MontemeetProfile.roles() === 'concert';
+            Swal.fire({
+                background: typeof swalBackground !== 'undefined' ? swalBackground : undefined,
+                position: 'center',
+                icon: 'warning',
+                title: mmT(concert ? 'Завершить концерт для всех?' : 'Завершить урок для всех?'),
+                text: mmT('Все участники выйдут из комнаты.'),
+                showDenyButton: true,
+                confirmButtonText: mmT('Завершить'),
+                denyButtonText: mmT('Отмена'),
+                showClass: { popup: 'animate__animated animate__fadeInDown' },
+                hideClass: { popup: 'animate__animated animate__fadeOutUp' },
+            }).then((r) => {
+                if (r.isConfirmed && typeof handleExitLeaveForAll === 'function') handleExitLeaveForAll();
+            });
+        },
+        true
+    );
 
     // Наушники, воткнутые посреди урока, в списке микрофонов не появлялись.
     // Стоковый обработчик смены устройств живёт внутри настройки быстрых

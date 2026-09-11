@@ -492,6 +492,11 @@ window.MontemeetDict = {
 
         // ---- our own strings (russian sources; en needed, ru is the original) ----
         'Отправить файл': { uk: 'Надіслати файл', en: 'Send a file' },
+        'Завершить урок для всех?': { uk: 'Завершити урок для всіх?', en: 'End the lesson for everyone?' },
+        'Завершить концерт для всех?': { uk: 'Завершити концерт для всіх?', en: 'End the concert for everyone?' },
+        'Все участники выйдут из комнаты.': { uk: 'Усі учасники вийдуть з кімнати.', en: 'Everyone will leave the room.' },
+        'Завершить': { uk: 'Завершити', en: 'End' },
+        'Отмена': { uk: 'Скасувати', en: 'Cancel' },
         'Включить камеру участнику': { uk: 'Увімкнути камеру учаснику', en: "Turn on the participant's camera" },
         'Транслировать звук компьютера': { uk: "Транслювати звук комп'ютера", en: 'Share computer sound' },
         'Звук компьютера: транслируется (клик — выключить)': { uk: "Звук комп'ютера: транслюється (клік — вимкнути)", en: 'Computer sound: sharing (click to stop)' },
