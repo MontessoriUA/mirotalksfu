@@ -2812,7 +2812,12 @@ class RoomClient {
             - Desktop: `exact` is reliable.
         */
         if (deviceId) {
-            if (this.isMobileSafari) {
+            // Montemeet: «iOS Safari» у стока — только телефон с Safari. iPad в
+            // любом браузере и Chrome на iPhone получали жёсткий deviceId, хотя
+            // маршрут звука на iOS решает система, — первый подозреваемый в уроке
+            // Олены Ступак с iPad (2026-09-06), где студентка её не слышала
+            const mmAppleTouch = typeof MontemeetDevices !== 'undefined' && MontemeetDevices.appleTouch;
+            if (this.isMobileSafari || mmAppleTouch) {
                 // ignore
             } else if (this.isMobileDevice) {
                 audioConstraints.deviceId = { ideal: deviceId };

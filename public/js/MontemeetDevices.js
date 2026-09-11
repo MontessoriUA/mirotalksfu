@@ -10,6 +10,69 @@
  * machines have no SplitCam; explicit role gating arrives with stage 2 roles.
  */
 
+// Планшет, который выдаёт себя за компьютер.
+//
+// Safari на iPad по умолчанию просит «полную версию сайта» и присылает строку
+// браузера от Mac; Chrome на Android-планшете делает то же и называется Linux.
+// Сток определяет тип устройства только по этой строке и включает такому
+// планшету ветку для мыши: меню по наведению, быстрые списки устройств и свой
+// обработчик смены устройств, который заново захватывает микрофон и камеру
+// (Иван, 2026-09-11: так заходили Олена Ступак с iPad и её студентка с
+// Android-планшета). Отличаем по тому, чем устройство реально управляется:
+// сенсорного Mac не бывает, а Linux-компьютер под пальцем почти не встречается.
+const MM_TOUCH_TABLET = (() => {
+    try {
+        const ua = navigator.userAgent || '';
+        const touch = navigator.maxTouchPoints || 0;
+        const coarse = !!window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        if (/Macintosh/.test(ua) && touch > 1) return 'ipad';
+        if (/X11; Linux/.test(ua) && !/CrOS/.test(ua) && touch > 0 && coarse) return 'android';
+    } catch (e) {
+        /* нет данных — остаётся так, как решил сток */
+    }
+    return null;
+})();
+
+// iPhone и iPad: у любого браузера там один движок, а маршрут звука решает система
+const MM_APPLE_TOUCH = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || MM_TOUCH_TABLET === 'ipad';
+
+// Поправка стокового определения: Room.js спрашивает UAParser один раз, при
+// разборе файла, поэтому подменяем сам разборщик — до того, как тот выполнится.
+(() => {
+    if (!MM_TOUCH_TABLET || typeof UAParser !== 'function' || UAParser._mm) return;
+    const Stock = UAParser;
+    const patch = (d) => {
+        if (d && !d.type) {
+            d.type = 'tablet';
+            if (MM_TOUCH_TABLET === 'ipad') {
+                d.model = 'iPad';
+                d.vendor = 'Apple';
+            }
+        }
+        return d;
+    };
+    const Parser = function (ua, ...rest) {
+        const p = new Stock(ua, ...rest);
+        // чинить можно только своё устройство: чужую строку по нашему экрану не судят
+        if (ua && ua !== navigator.userAgent) return p;
+        const getResult = p.getResult;
+        const getDevice = p.getDevice;
+        p.getResult = function () {
+            const r = getResult.apply(this, arguments);
+            patch(r && r.device);
+            return r;
+        };
+        p.getDevice = function () {
+            return patch(getDevice.apply(this, arguments));
+        };
+        return p;
+    };
+    Object.assign(Parser, Stock);
+    Parser.prototype = Stock.prototype;
+    Parser._mm = true;
+    window.UAParser = Parser;
+})();
+
 // Каждый урок начинается с чистого листа: микрофон и камера на экране входа
 // включены, чем бы ни закончился прошлый раз.
 //
@@ -195,6 +258,24 @@ const MontemeetDevices = (() => {
 частота: ${s.sampleRate || '?'} (16000 — голосовой тракт, 48000 — медийный)`;
     }
 
+    // Отказ в захвате — в журнал событий сервера: с чужого планшета консоль не
+    // прочитать, а без этого «меня не слышно» разбирается одними догадками
+    function reportGumError(constraints, err) {
+        try {
+            if (typeof MontemeetDiag === 'undefined') return;
+            const a = !!constraints?.audio;
+            const v = !!constraints?.video;
+            MontemeetDiag.report('gum-error', {
+                kind: a && v ? 'both' : a ? 'audio' : 'video',
+                name: err?.name || 'Error',
+                constraint: err?.constraint || null,
+                device: !!(deviceIdOf(constraints, 'audio') || deviceIdOf(constraints, 'video')),
+            });
+        } catch (e) {
+            /* не мешаем захвату */
+        }
+    }
+
     function installBusyFallback() {
         const md = navigator.mediaDevices;
         if (!md || md._mmBusy || typeof md.getUserMedia !== 'function') return;
@@ -207,7 +288,10 @@ const MontemeetDevices = (() => {
                 return stream;
             } catch (err) {
                 const key = constraints?.video ? 'video' : constraints?.audio ? 'audio' : null;
-                if (!BUSY.has(err?.name) || !key) throw err;
+                if (!BUSY.has(err?.name) || !key) {
+                    reportGumError(constraints, err);
+                    throw err;
+                }
                 const kind = key === 'video' ? 'videoinput' : 'audioinput';
                 const { match } = await patterns();
                 const failed = deviceIdOf(constraints, key);
@@ -219,11 +303,13 @@ const MontemeetDevices = (() => {
                         const stream = await stock(withDevice(constraints, key, dev.deviceId));
                         console.warn(`MontemeetDevices: устройство занято, перешли на «${dev.label || dev.deviceId}»`);
                         rememberChoice(key, dev.deviceId);
+                        if (typeof MontemeetDiag !== 'undefined') MontemeetDiag.report('gum-fallback', { kind: key, name: err.name });
                         return stream;
                     } catch (e) {
                         /* и это занято — пробуем следующее */
                     }
                 }
+                reportGumError(constraints, err);
                 throw err;
             }
         };
@@ -287,5 +373,5 @@ const MontemeetDevices = (() => {
         }
     }
 
-    return { applyPriority };
+    return { applyPriority, touchTablet: MM_TOUCH_TABLET, appleTouch: MM_APPLE_TOUCH };
 })();
