@@ -27,4 +27,5 @@ security
 # virtual background
 custom
 montemeet-journal.ndjson
+montemeet-events/
 public/images/montemeet-splash.*

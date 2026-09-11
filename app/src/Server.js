@@ -101,6 +101,7 @@ const Validator = require('./Validator');
 const HtmlInjector = require('./HtmlInjector');
 const montemeetProfiles = require('./MontemeetProfiles');
 const montemeetJournal = require('./MontemeetJournal');
+const montemeetEvents = require('./MontemeetEvents');
 const log = new Logger('Server');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
@@ -506,6 +507,7 @@ const authHost = new Host(); // Authenticated IP by Login
 const roomList = new Map(); // All Rooms
 
 montemeetJournal.start(roomList, log); // Montemeet: session journal poller
+montemeetEvents.start({ io, roomList, log }); // Montemeet: room events (who joined, sent, heard)
 
 const presenters = {}; // Collect presenters grp by roomId
 
@@ -1849,6 +1851,21 @@ function startServer() {
             return res.status(403).json({ error: 'Unauthorized!' });
         }
         res.json({ days: montemeetJournal.daily({ days: Number(req.query.days) || 30 }) });
+    });
+
+    // Montemeet: room events of one day, ?day=YYYY-MM-DD&room=slug (auth like /meetings)
+    app.get(restApi.basePath + '/montemeet/events', (req, res) => {
+        const { host, authorization } = req.headers;
+        const api = new ServerApi(host, authorization);
+        if (!api.isAuthorized()) {
+            return res.status(403).json({ error: 'Unauthorized!' });
+        }
+        res.json({
+            events: montemeetEvents.read({
+                day: req.query.day ? String(req.query.day) : undefined,
+                room: req.query.room ? String(req.query.room) : undefined,
+            }),
+        });
     });
 
     // request meeting room endpoint
