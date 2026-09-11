@@ -119,10 +119,78 @@ function delay(ms) {
     return new Promise((r) => setTimeout(r, ms));
 }
 
+// Планшет глазами страницы: несколько точек касания и «грубый» указатель —
+// ровно то, по чему MontemeetDevices отличает планшет в «полной версии сайта»
+async function emulateTouch(page) {
+    const cdp = await page.createCDPSession();
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await cdp.send('Emulation.setEmulatedMedia', {
+        features: [
+            { name: 'pointer', value: 'coarse' },
+            { name: 'hover', value: 'none' },
+        ],
+    });
+}
+
+// Строки браузеров с урока Олены Ступак (06.09.2026): оба планшета называли себя компьютерами
+const IPAD_SAFARI_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5.2 Safari/605.1.15';
+const ANDROID_TABLET_DESKTOP_UA =
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36';
+
+// Журнал событий сервера — через его же API. Ключ берём из .env конференции:
+// набор гоняют там же, где она живёт (на деве — у себя, на Борисе — на Борисе).
+function apiKey() {
+    try {
+        const env = fs.readFileSync(path.join(import.meta.dirname, '.env'), 'utf-8');
+        const m = env.match(/^API_KEY_SECRET=([^\s#]+)/m);
+        return m ? m[1] : '';
+    } catch (e) {
+        return '';
+    }
+}
+
+async function readEvents(room) {
+    const day = new Date().toLocaleDateString('sv');
+    const url = new URL(`${BASE}/api/v1/montemeet/events?room=${encodeURIComponent(room)}&day=${day}`);
+    const https = await import('node:https');
+    const http = await import('node:http');
+    const lib = url.protocol === 'https:' ? https : http;
+    return new Promise((resolve) => {
+        const req = lib.get(
+            url,
+            // на деве сертификат самоподписанный, на Борисе — настоящий
+            { headers: { authorization: apiKey() }, rejectUnauthorized: !/localhost|127\./.test(url.hostname) },
+            (res) => {
+                let body = '';
+                res.on('data', (c) => (body += c));
+                res.on('end', () => {
+                    try {
+                        resolve(JSON.parse(body).events || []);
+                    } catch (e) {
+                        resolve([]);
+                    }
+                });
+            }
+        );
+        req.on('error', () => resolve([]));
+    });
+}
+
 async function launchPeer(
     name,
     audioFile,
-    { audio = 1, video = 1, focusFollow = false, room = ROOM, phone = false, memory = null } = {}
+    {
+        audio = 1,
+        video = 1,
+        focusFollow = false,
+        room = ROOM,
+        phone = false,
+        memory = null,
+        ua = null, // своя строка браузера (планшет в «полной версии сайта»)
+        touch = false, // сенсорный экран и палец вместо мыши
+        noScreenShare = false, // браузер без захвата экрана, как на планшете
+    } = {}
 ) {
     const args = [
         '--use-fake-device-for-media-stream',
@@ -153,7 +221,12 @@ async function launchPeer(
         args,
     });
     const page = await browser.newPage();
-    await page.setUserAgent(phone ? PHONE_UA : UA);
+    await page.setUserAgent(ua || (phone ? PHONE_UA : UA));
+    if (touch) await emulateTouch(page);
+    if (noScreenShare)
+        await page.evaluateOnNewDocument(() => {
+            delete MediaDevices.prototype.getDisplayMedia;
+        });
     if (phone)
         await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
     // Collect dominantSpeaker events via the client handler's console.log
@@ -1966,6 +2039,193 @@ async function runRecordingScenario() {
     };
 }
 
+// Планшеты, которые выдают себя за компьютер (урок Олены Ступак, 06.09.2026):
+// Safari на iPad шлёт строку от Mac, Chrome на Android-планшете — от Linux.
+// Страница должна видеть в них планшет; iPad не должен получать жёсткого
+// устройства микрофона (на iOS маршрут звука решает система); педагогу на
+// планшете без захвата экрана не место мёртвой кнопке «звук компьютера».
+async function runTabletScenario() {
+    const room = 'montemeet-group';
+    // определение смотрим на экране входа: входить незачем, а чужой движок под
+    // строкой Safari mediasoup-client в комнату всё равно бы не пустил
+    const classify = async (ua, touch) => {
+        const args = ['--ignore-certificate-errors', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
+        if (process.platform === 'linux') args.push('--no-sandbox', '--disable-dev-shm-usage');
+        const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, acceptInsecureCerts: true, args });
+        try {
+            const page = await browser.newPage();
+            await page.setUserAgent(ua);
+            if (touch) await emulateTouch(page);
+            await page.goto(`${BASE}/join/${room}`, { waitUntil: 'networkidle2', timeout: 30000 });
+            await delay(2000);
+            return await page.evaluate(() => ({
+                планшет: isTabletDevice,
+                компьютер: isDesktopDevice,
+                iPad: isIPadDevice,
+                iOS: MontemeetDevices.appleTouch,
+                устройствоМикрофона:
+                    RoomClient.prototype.getAudioConstraints.call(
+                        { isMobileSafari: false, isMobileDevice: false, isRNNoiseSupported: false },
+                        'mic-1'
+                    ).audio.deviceId || null,
+            }));
+        } finally {
+            await browser.close();
+        }
+    };
+    const ipad = await classify(IPAD_SAFARI_UA, true);
+    const android = await classify(ANDROID_TABLET_DESKTOP_UA, true);
+    const mac = await classify(IPAD_SAFARI_UA, false); // та же строка без сенсора — настоящий Mac
+
+    // педагог на Android-планшете без захвата экрана — и для сравнения за компьютером
+    const tabletTeacher = await launchPeer('Teacher', fixtures.silence, {
+        room,
+        ua: ANDROID_TABLET_DESKTOP_UA,
+        touch: true,
+        noScreenShare: true,
+    });
+    await delay(12000);
+    const onTablet = await tabletTeacher.page.evaluate(() => ({
+        педагог: !!isPresenter,
+        планшет: isTabletDevice,
+        кнопкаЗвука: !!document.getElementById('montemeetPcSoundBtn'),
+    }));
+    await tabletTeacher.browser.close();
+    await delay(4000); // прежний «Teacher» должен уйти, иначе войдём вторым именем
+    const deskTeacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(12000);
+    const onDesk = await deskTeacher.page.evaluate(() => ({
+        педагог: !!isPresenter,
+        кнопкаЗвука: !!document.getElementById('montemeetPcSoundBtn'),
+    }));
+    await deskTeacher.browser.close();
+
+    return {
+        scenario: 'tablet',
+        ipad,
+        android,
+        mac,
+        onTablet,
+        onDesk,
+        checks: {
+            ipadIsTablet: ipad.планшет === true && ipad.компьютер === false && ipad.iPad === true,
+            ipadMicRoutedByOs: ipad.iOS === true && ipad.устройствоМикрофона === null,
+            androidIsTablet: android.планшет === true && android.компьютер === false && android.iPad === false,
+            androidMicExact: android.устройствоМикрофона?.exact === 'mic-1',
+            macStaysComputer: mac.компьютер === true && mac.iOS === false && mac.устройствоМикрофона?.exact === 'mic-1',
+            tabletTeacherIsPresenter: onTablet.педагог === true && onTablet.планшет === true,
+            noDeadSoundButton: onTablet.кнопкаЗвука === false,
+            desktopKeepsSoundButton: onDesk.педагог === true && onDesk.кнопкаЗвука === true,
+        },
+    };
+}
+
+// «Завершить для всех» — только после вопроса (урок Олены Ступак, 06.09.2026:
+// пункт задели пальцем на iPad, и вылетели все). Отмена никого не трогает,
+// согласие выгоняет всех, как и раньше, и попадает в журнал событий.
+async function runEndForAllScenario() {
+    const room = 'montemeet-group';
+    const since = Date.now() - 5000;
+    const teacher = await launchPeer('Teacher', fixtures.silence, { room });
+    await delay(3000);
+    const student = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(12000);
+
+    const ask = () =>
+        teacher.page.evaluate(async () => {
+            document.getElementById('exitButton')?.click(); // меню выхода педагога
+            await new Promise((r) => setTimeout(r, 500));
+            document.getElementById('exitLeaveAllBtn')?.click();
+            await new Promise((r) => setTimeout(r, 1000));
+            const pop = document.querySelector('.swal2-popup');
+            return { вопрос: !!pop, текст: pop ? pop.innerText.slice(0, 160) : '' };
+        });
+    const inRoom = () =>
+        student.page
+            .evaluate(
+                () =>
+                    !!(typeof rc !== 'undefined' && rc && rc.socket && rc.socket.connected) &&
+                    location.pathname.includes('/join/')
+            )
+            .catch(() => false); // выгнанного уводит со страницы — это и есть «не в комнате»
+
+    const первый = await ask();
+    await teacher.page.evaluate(() => document.querySelector('.swal2-deny')?.click());
+    await delay(4000);
+    const послеОтмены = await inRoom();
+    const второй = await ask();
+    await teacher.page.evaluate(() => document.querySelector('.swal2-confirm')?.click());
+    await delay(6000);
+    const послеСогласия = await inRoom();
+
+    await student.browser.close();
+    await teacher.browser.close();
+    await delay(3000);
+    const журнал = (await readEvents(room)).filter((e) => Date.parse(e.t) >= since);
+
+    return {
+        scenario: 'end-for-all',
+        первый,
+        второй,
+        послеОтмены,
+        послеСогласия,
+        checks: {
+            asksFirst: первый.вопрос === true,
+            asksInOurWords: /для всіх|для всех|everyone/i.test(первый.текст),
+            cancelKeepsStudent: послеОтмены === true,
+            asksAgain: второй.вопрос === true,
+            confirmEndsForAll: послеСогласия === false,
+            journaled: журнал.some((e) => e.ev === 'end-for-all' && e.peer === 'Teacher'),
+        },
+    };
+}
+
+// Журнал событий: по нему разбирается «меня не было слышно». Педагог говорит,
+// студент молчит, выключает и включает микрофон, уходит — всё это должно лечь
+// в журнал вместе с тем, с какого устройства вошли и сколько было слышно звука.
+async function runEventsScenario() {
+    const room = 'montemeet-group';
+    const since = Date.now() - 5000;
+    const teacher = await launchPeer('Teacher', fixtures.speech, { room });
+    await delay(3000);
+    const student = await launchPeer('Student1', fixtures.silence, { room });
+    await delay(12000);
+    await student.page.evaluate(() => document.getElementById('stopAudioButton')?.click());
+    await delay(5000);
+    await student.page.evaluate(() => document.getElementById('startAudioButton')?.click());
+    await delay(33000); // сводка звука пишется раз в 30 секунд
+    await student.browser.close();
+    await delay(4000);
+    await teacher.browser.close();
+    await delay(3000);
+
+    const events = (await readEvents(room)).filter((e) => Date.parse(e.t) >= since);
+    const of = (ev, peer) => events.filter((e) => e.ev === ev && (!peer || e.peer === peer));
+    const teacherAudio = of('audio')
+        .map((e) => e.peers?.Teacher)
+        .filter(Boolean);
+    const counts = {};
+    for (const e of events) counts[e.ev] = (counts[e.ev] || 0) + 1;
+
+    return {
+        scenario: 'events',
+        counts,
+        teacherAudio,
+        checks: {
+            teacherJoin: of('join', 'Teacher').some((e) => e.role === 'teacher' && e.dev === 'computer' && !!e.br),
+            studentJoin: of('join', 'Student1').some((e) => e.role === 'student'),
+            teacherMicSent: of('send-start', 'Teacher').some((e) => e.media === 'mic'),
+            studentReceivesTeacher: of('receive', 'Student1').some((e) => e.from === 'Teacher' && e.media === 'mic'),
+            linkUp: of('link', 'Student1').some((e) => e.ice === 'connected' || e.ice === 'completed'),
+            micOffOn: of('mic-off', 'Student1').length > 0 && of('mic-on', 'Student1').length > 0,
+            micPauseSeen: of('send-pause', 'Student1').some((e) => e.media === 'mic'),
+            teacherHeard: teacherAudio.some((a) => a.mic === 'on' && a.heard > 0 && a.kbps > 0),
+            deviceReported: of('device', 'Teacher').some((e) => e.what === 'info' && e.dev === 'computer'),
+            studentLeft: of('leave', 'Student1').length > 0,
+        },
+    };
+}
+
 const fixtures = ensureFixtures();
 const which = process.argv[2] || 'all';
 const results = [];
@@ -2107,6 +2367,21 @@ if (which === 'phone-pips' || which === 'all') {
 }
 if (which === 'no-video-big' || which === 'all') {
     const r = await runNoVideoBigScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'tablet' || which === 'all') {
+    const r = await runTabletScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'end-for-all' || which === 'all') {
+    const r = await runEndForAllScenario();
+    r.pass = Object.values(r.checks).every(Boolean);
+    results.push(r);
+}
+if (which === 'events' || which === 'all') {
+    const r = await runEventsScenario();
     r.pass = Object.values(r.checks).every(Boolean);
     results.push(r);
 }
