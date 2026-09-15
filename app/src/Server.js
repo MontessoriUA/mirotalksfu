@@ -299,6 +299,51 @@ const io = socketIo(server, {
     cors: corsOptions,
 });
 
+// Montemeet: один кривой пакет не должен ронять сервер.
+//
+// Стоковые обработчики зовут функцию подтверждения на любой ветке и разбирают
+// данные без проверок. Пакет без подтверждения (голый `exitRoom`,
+// `getRouterRtpCapabilities`) или без данных валит синхронный обработчик,
+// исключение доходит до `uncaughtException` в конце файла, и процесс
+// останавливается — вместе со всеми идущими уроками. Послать такой пакет может
+// любой, кто открыл страницу комнаты (Иван, 2026-09-16).
+//
+// Оборачиваем каждый обработчик сокета: ошибку пишем в журнал, отвечаем тому,
+// кто спросил, и остаёмся в живых. Асинхронный отказ ловим тем же местом —
+// иначе он уходил в `unhandledRejection`, а спросивший ждал ответа до выхода.
+// Слушатель ставится ПЕРВЫМ: подмена `socket.on` должна попасть и в журнал
+// событий (`montemeetEvents.start` ниже), и в основной обработчик соединения.
+io.on('connection', (socket) => {
+    const rawOn = socket.on.bind(socket);
+    socket.on = (event, handler) => {
+        if (typeof handler !== 'function') return rawOn(event, handler);
+        return rawOn(event, function (...args) {
+            const last = args[args.length - 1];
+            const ack = typeof last === 'function' ? last : null;
+            const failed = (err) => {
+                log.error('Socket handler failed', {
+                    event: event,
+                    socket_id: socket.id,
+                    room_id: socket.room_id,
+                    error: err && err.message ? err.message : String(err),
+                });
+                try {
+                    if (ack) ack({ error: 'internal server error' });
+                } catch (ackErr) {
+                    // подтверждение уже отправлено или сокет закрыт — не беда
+                }
+            };
+            try {
+                const result = handler.apply(this, args);
+                if (result && typeof result.catch === 'function') result.catch(failed);
+                return result;
+            } catch (err) {
+                failed(err);
+            }
+        });
+    };
+});
+
 const host = config?.server?.hostUrl || `http://localhost:${config?.server?.listen?.port || 3010}`;
 const trustProxy = Boolean(config?.server?.trustProxy);
 
