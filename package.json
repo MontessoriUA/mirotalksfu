@@ -4,7 +4,8 @@
     "description": "WebRTC SFU browser-based video calls",
     "main": "Server.js",
     "scripts": {
-        "test": "mocha tests/*.js",
+        "pretest": "\"$npm_node_execpath\" -e \"process.versions.node.split('.')[0] >= 24 || (console.error('npm test: нужен Node 24+, запущен ' + process.version), process.exit(1))\"",
+        "test": "\"$npm_node_execpath\" node_modules/mocha/bin/mocha.js tests/*.js",
         "start": "node app/src/Server.js",
         "start-dev": "nodemon app/src/Server.js",
         "debug": "DEBUG='mediasoup*' node app/src/Server.js",
