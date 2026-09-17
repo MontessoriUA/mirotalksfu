@@ -63,7 +63,10 @@ function write(roomId, rec, at) {
             stream.on('error', (err) => logger.error('Montemeet events write failed', err.message));
             streamDay = day;
         }
-        stream.write(JSON.stringify({ t: new Date(now).toISOString(), room: roomId, ...rec }) + '\n');
+        // время и комната — всегда серверные: повторное присваивание оставляет
+        // ключи первыми в строке, но значения берёт наши, что бы ни пришло в rec
+        const own = { t: new Date(now).toISOString(), room: roomId };
+        stream.write(JSON.stringify(Object.assign({}, own, rec, own)) + '\n');
     } catch (err) {
         logger.error('Montemeet events write failed', err.message);
     }
@@ -184,7 +187,8 @@ function attachSocket(socket) {
         const rec = sanitizeDiag(data);
         if (!rec) return;
         const peer = roomList.get(socket.room_id)?.peers?.get(socket.id);
-        write(socket.room_id, { ev: 'device', peer: peerName(peer), ...rec });
+        const own = { ev: 'device', peer: peerName(peer) };
+        write(socket.room_id, Object.assign({}, own, rec, own));
     });
 }
 
@@ -201,12 +205,18 @@ const DIAG_TYPES = new Set([
     'audio-core', // здоровье звукового ядра: перезапуски, пропуски, включённые обработки
 ]);
 
+// Поля записи, которые ставит сам сервер: время и комнату — write(), вид и
+// участника — обработчик mmDiag, вид сообщения — здесь же (type → what). Клиент
+// подложил бы в журнал чужую комнату или чужое имя, поэтому такие ключи от него
+// не берём — ни в каком регистре (Иван, 2026-09-17)
+const SERVER_FIELDS = new Set(['t', 'room', 'ev', 'peer', 'what', 'type']);
+
 function sanitizeDiag(data) {
     if (!data || typeof data !== 'object' || !DIAG_TYPES.has(data.type)) return null;
     const out = { what: data.type };
     let n = 0;
     for (const [k, v] of Object.entries(data)) {
-        if (k === 'type' || k === 't' || n >= 10 || !/^[a-z]{1,16}$/i.test(k)) continue;
+        if (SERVER_FIELDS.has(k.toLowerCase()) || n >= 10 || !/^[a-z]{1,16}$/i.test(k)) continue;
         if (typeof v === 'string') out[k] = v.slice(0, 80);
         else if (typeof v === 'number' || typeof v === 'boolean' || v === null) out[k] = v;
         else continue;
