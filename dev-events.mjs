@@ -88,6 +88,10 @@ function line(e) {
         case 'receive-ok':
             return `       ${p}: приём звука выровнялся (оценка ${e.score})`;
         case 'link':
+            if (e.ice === 'failed') {
+                const dir = e.dir === 'recv' ? 'приём' : e.dir === 'send' ? 'передача' : 'транспорт';
+                return `!!     ${p} ${dir}: медиа не соединилось за ${e.wait} с (транспорту ${e.age} с, dtls=${e.dtls})`;
+            }
             return `СВЯЗЬ  ${p} ${e.dir === 'recv' ? 'приём' : 'передача'}: ice=${e.ice} dtls=${e.dtls}${e.proto ? ' ' + e.proto : ''}${e.via ? ' через ' + e.via : ''}${e.net ? ' из ' + e.net : ''}`;
         case 'end-for-all':
             return `!!     ${p} ЗАВЕРШИЛ ДЛЯ ВСЕХ`;

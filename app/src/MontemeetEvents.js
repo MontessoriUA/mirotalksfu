@@ -35,8 +35,23 @@ const JOIN_SETTLE_MS = 1500; // стоковый вход асинхронный
 const POOR_SCORE = 3; // оценка качества mediasoup 0..10: ниже — поток рвётся
 const OK_SCORE = 7;
 const DIAG_PER_MINUTE = 60;
+// Сколько ждём, пока транспорт, который клиент начал соединять, так и не
+// соединился, прежде чем записать сбой. У ICE-lite mediasoup нет состояния
+// failed: несоединившийся транспорт просто остаётся в new. На проде путь от
+// входа до соединения — медиана 1,6 с, 90 % укладываются в 6,5 с, и это вместе
+// с загрузкой медиа; единственный вход по TCP соединился за 0,3 с (журнал
+// 11–15.09). 20 с — втрое больше медленного случая и меньше 35 с, после
+// которых сервер сам закрывает потерявшийся транспорт (iceConsentTimeout)
+// (Иван, 2026-09-17)
+const ICE_FAILED_MS = 20000;
 
 const MEDIA = { audioType: 'mic', videoType: 'cam', screenType: 'screen', audioTab: 'pcsound' };
+
+// Когда клиент начал соединять транспорт (connectTransport): transportId -> { at, sid }.
+// Отсчёт сбоя идёт от этой минуты, а не от создания: принимающий транспорт
+// создаётся при входе, но соединяется, только когда есть что принимать, и у
+// педагога, который ждёт класс в одиночестве, простаивает сколько угодно.
+const connecting = new Map();
 
 let roomList = null;
 let logger = console;
@@ -140,6 +155,15 @@ function attachSocket(socket) {
 
     socket.on('exitRoom', () => logLeave(socket, 'exit'));
     socket.on('disconnect', (reason) => logLeave(socket, reason));
+
+    socket.on('connectTransport', (data) => {
+        const id = data?.transport_id;
+        if (typeof id !== 'string' || id.length > 64 || connecting.has(id)) return;
+        connecting.set(id, { at: Date.now(), sid: socket.id });
+    });
+    socket.on('disconnect', () => {
+        for (const [id, c] of connecting) if (c.sid === socket.id) connecting.delete(id);
+    });
 
     socket.on('cmd', (data) => {
         if (data?.type !== 'ejectAll' || !managed(socket.room_id)) return;
@@ -477,11 +501,59 @@ function pollTransports(roomId, peer, ps, name) {
         const was = ps.transports.get(tid);
         // направление выясняется только с первым консьюмером — его смену не пишем
         const changed = !was || was.ice !== now.ice || was.dtls !== now.dtls || was.proto !== now.proto || was.net !== now.net;
-        ps.transports.set(tid, now);
+        const started = connecting.get(tid);
+        const seen = {
+            ...now,
+            // время создания — когда транспорт впервые попался опросу (точность
+            // POLL_MS), но не позже, чем клиент начал его соединять
+            born: was?.born ?? Math.min(Date.now(), started?.at ?? Infinity),
+            // приём узнаётся по консьюмерам, а они уходят вместе с собеседником —
+            // направление запоминаем, пока оно было видно
+            knownDir: was?.knownDir || (recvIds.has(tid) ? 'recv' : null),
+            failed: was?.failed ?? false,
+        };
+        ps.transports.set(tid, seen);
+        if (now.ice === 'new' && !seen.failed && started && Date.now() - started.at >= ICE_FAILED_MS) {
+            seen.failed = true;
+            reportIceFailed(roomId, name, t, seen, started.at);
+        }
         if (!changed || (!was && now.ice === 'new')) continue;
         write(roomId, { ev: 'link', peer: name, ...now });
     }
-    for (const tid of ps.transports.keys()) if (!peer.transports.has(tid)) ps.transports.delete(tid);
+    for (const tid of ps.transports.keys()) {
+        if (peer.transports.has(tid)) continue;
+        ps.transports.delete(tid);
+        connecting.delete(tid);
+    }
+}
+
+// Медиа у человека не соединилось: закрыты порты, неверный объявленный адрес,
+// сеть без UDP и TCP наружу. Одна запись на транспорт; если потом он всё же
+// соединится, это покажет обычная запись link. Направление берём из того, что к
+// транспорту уже привязано: соединение не случилось, но передача или приём на
+// нём заведены. Пары кандидатов нет — proto, via и net пустые.
+function reportIceFailed(roomId, name, t, seen, startedAt) {
+    const at = Date.now();
+    const rec = {
+        ev: 'link',
+        peer: name,
+        dir: seen.knownDir,
+        ice: 'failed',
+        dtls: t.dtlsState,
+        proto: null,
+        via: null,
+        net: null,
+        age: Math.round((at - seen.born) / 1000), // секунд с создания транспорта
+        wait: Math.round((at - startedAt) / 1000), // секунд с начала соединения
+    };
+    t.dump()
+        .then((d) => {
+            const sends = d.producerIds?.length || d.dataProducerIds?.length;
+            const receives = d.consumerIds?.length || d.dataConsumerIds?.length;
+            rec.dir = sends ? 'send' : receives ? 'recv' : rec.dir;
+        })
+        .catch(() => {})
+        .finally(() => write(roomId, rec, at));
 }
 
 // сводка звука: кто слышен, сколько секунд за полминуты, пик и битрейт потока
