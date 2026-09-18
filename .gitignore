@@ -29,3 +29,8 @@ custom
 montemeet-journal.ndjson
 montemeet-events/
 public/images/montemeet-splash.*
+
+# Montemeet: снимки экрана от прогонов (dev-speaker-test.mjs) и локальный
+# сертификат стенда — в репозиторий не кладём
+montemeet-*peer*.png
+spec-*.png
