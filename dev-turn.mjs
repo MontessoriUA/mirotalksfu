@@ -7,7 +7,9 @@
 //             которая сходится с общим секретом; личных данных в имени нет;
 //   forced  — комната из TURN_FORCE_RELAY_ROOMS получает режим «только
 //             ретранслятор», обычная комната — нет;
-//   lobby   — ожидающему в зале ожидания транспорта и учётных данных не дают.
+//   lobby   — ожидающему в зале ожидания транспорта и учётных данных не дают;
+//   relay-flag — журнал метит ретранслированный вход по адресу И порту: адреса
+//             мало, у участника из сети сервера он тот же.
 //
 // Скрипт сам поднимает отдельный сервер на :3014 со своим набором переменных и
 // в конце гасит его. Комнаты spec-lesson, spec-music и spec-lobby должны быть в
@@ -223,10 +225,35 @@ async function lobby() {
     }
 }
 
+// ---------- relay-flag: метка ретранслированного входа ----------
+//
+// Отдельный сценарий без сервера: считать вход ретранслированным по одному
+// адресу нельзя — у участника из сети сервера (и у пробного браузера на самом
+// Борисе) адрес тот же. Проверяем, что отличает порт.
+
+async function relayFlag() {
+    const { default: turn } = await import('./app/src/MontemeetTurn.js');
+    const prevIp = process.env.TURN_RELAY_IP;
+    const prevPorts = process.env.TURN_RELAY_PORTS;
+    process.env.TURN_RELAY_IP = '192.168.35.11';
+    process.env.TURN_RELAY_PORTS = '61000-61999';
+    try {
+        check('relay-flag', {
+            relayPortMarked: turn.isRelayed('192.168.35.11', 61123) === true,
+            sameIpOtherPortNot: turn.isRelayed('192.168.35.11', 54321) === false,
+            otherIpNot: turn.isRelayed('10.0.0.5', 61123) === false,
+            noPortNot: turn.isRelayed('192.168.35.11', undefined) === false,
+        });
+    } finally {
+        process.env.TURN_RELAY_IP = prevIp ?? '';
+        process.env.TURN_RELAY_PORTS = prevPorts ?? '';
+    }
+}
+
 // ---------- запуск ----------
 
 const only = process.argv[2];
-const all = { off, on: () => onAndForced('on'), forced: () => onAndForced('forced'), lobby };
+const all = { off, on: () => onAndForced('on'), forced: () => onAndForced('forced'), lobby, 'relay-flag': relayFlag };
 
 if (only && !all[only]) {
     console.error('Сценарии: ' + Object.keys(all).join(', '));

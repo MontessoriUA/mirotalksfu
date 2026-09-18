@@ -13,8 +13,11 @@
 //   TURN_TTL_SEC             срок учётных данных, по умолчанию 43200 (12 ч)
 //   TURN_FORCE_RELAY_ROOMS   комнаты, где медиа идёт только через ретранслятор
 //                            (для проверки; обычным комнатам не задавать)
-//   TURN_RELAY_IP            адрес ретранслятора со стороны сервера встреч —
-//                            по нему журнал отмечает ретранслированные входы
+//   TURN_RELAY_IP            адрес ретранслятора со стороны сервера встреч
+//   TURN_RELAY_PORTS         его порты ретрансляции, «начало-конец» (по умолчанию
+//                            61000-61999 — как min-port и max-port у coturn).
+//                            По адресу и порту журнал отмечает вход через
+//                            ретранслятор
 
 const crypto = require('crypto');
 
@@ -30,6 +33,17 @@ const list = (value) =>
 const urls = () => list(process.env.TURN_URLS);
 const secret = () => String(process.env.TURN_SHARED_SECRET || '');
 const relayIp = () => String(process.env.TURN_RELAY_IP || '').trim();
+
+// Порты ретрансляции: адреса мало — у участника из той же сети (или у пробного
+// браузера на самом сервере) адрес совпадает с адресом ретранслятора, и вход
+// помечался бы ретранслированным зря. Порт же у ретранслятора всегда свой.
+function relayPorts() {
+    const m = String(process.env.TURN_RELAY_PORTS || '61000-61999').match(/^(\d+)\s*-\s*(\d+)$/);
+    if (!m) return null;
+    const from = Number(m[1]);
+    const to = Number(m[2]);
+    return from > 0 && to >= from ? { from, to } : null;
+}
 
 function ttlSec() {
     const n = parseInt(process.env.TURN_TTL_SEC, 10);
@@ -61,10 +75,14 @@ function forPeer(roomId, tag) {
     return out;
 }
 
-// Пришёл ли участник через наш ретранслятор: у пары кандидатов его адрес.
-function isRelayed(remoteIp) {
+// Пришёл ли участник через наш ретранслятор: у пары кандидатов его адрес и
+// порт из диапазона ретрансляции.
+function isRelayed(remoteIp, remotePort) {
     const ip = relayIp();
-    return !!ip && !!remoteIp && remoteIp === ip;
+    const ports = relayPorts();
+    if (!ip || !ports || !remoteIp || remoteIp !== ip) return false;
+    const port = Number(remotePort);
+    return Number.isFinite(port) && port >= ports.from && port <= ports.to;
 }
 
-module.exports = { enabled, credentials, forPeer, isRelayed, relayIp, ttlSec, urls };
+module.exports = { enabled, credentials, forPeer, isRelayed, relayIp, relayPorts, ttlSec, urls };

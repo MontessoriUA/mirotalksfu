@@ -499,7 +499,7 @@ function pollTransports(roomId, peer, ps, name) {
             via: local && !/^(0\.0\.0\.0|::)$/.test(local) ? local : null,
             net: tuple ? maskIp(tuple.remoteIp) : null,
             // медиа пришло через наш ретранслятор, а не напрямую (TURN.md §7)
-            relay: tuple && turn.isRelayed(tuple.remoteIp) ? true : undefined,
+            relay: tuple && turn.isRelayed(tuple.remoteIp, tuple.remotePort) ? true : undefined,
         };
         const was = ps.transports.get(tid);
         // направление выясняется только с первым консьюмером — его смену не пишем
