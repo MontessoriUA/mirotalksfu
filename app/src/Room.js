@@ -2,6 +2,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const config = require('./config');
+const montemeetTurn = require('./MontemeetTurn');
 const RtmpStreaming = require('./RtmpStreaming');
 const Logger = require('./Logger');
 const log = new Logger('Room');
@@ -713,6 +714,9 @@ module.exports = class Room {
             iceCandidates: iceCandidates,
             dtlsParameters: dtlsParameters,
             sctpParameters: sctpParameters,
+            // Montemeet: адреса ретранслятора и временные учётные данные; пока
+            // TURN_URLS пуст, полей нет и всё идёт как прежде (TURN.md §5, §7)
+            ...montemeetTurn.forPeer(this.id, socket_id),
         };
     }
 
