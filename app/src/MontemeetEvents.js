@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const profiles = require('./MontemeetProfiles');
+const turn = require('./MontemeetTurn');
 
 const DIR =
     process.env.MONTEMEET_EVENTS_DIR ||
@@ -497,6 +498,8 @@ function pollTransports(roomId, peer, ps, name) {
             proto: tuple?.protocol || null,
             via: local && !/^(0\.0\.0\.0|::)$/.test(local) ? local : null,
             net: tuple ? maskIp(tuple.remoteIp) : null,
+            // медиа пришло через наш ретранслятор, а не напрямую (TURN.md §7)
+            relay: tuple && turn.isRelayed(tuple.remoteIp) ? true : undefined,
         };
         const was = ps.transports.get(tid);
         // направление выясняется только с первым консьюмером — его смену не пишем
