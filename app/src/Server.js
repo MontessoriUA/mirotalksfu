@@ -3438,6 +3438,9 @@ function startServer() {
             if (!roomExists(socket)) return;
 
             const data = checkXSS(dataObject);
+            // Montemeet: без данных `data.room = …` ниже бросает, и сокетный обработчик
+            // роняет весь процесс со всеми уроками (PROTOCOL.md §3.4).
+            if (!data || typeof data !== 'object') return;
 
             const room = getRoom(socket);
 
@@ -3473,7 +3476,9 @@ function startServer() {
             if (data.lobby_status === 'accept') {
                 for (const peer_id of pears_id) {
                     const peer = room.getPeer(peer_id);
-                    if (!peer.peer_lobby) continue;
+                    // Montemeet: гость мог уйти, пока педагог нажимал «впустить», — раньше
+                    // здесь падал весь сервер (PROTOCOL.md §3.4).
+                    if (!peer?.peer_lobby) continue;
 
                     // Montemeet: пропуск на случай обрыва связи — мобильный
                     // браузер рвёт сессию при уходе в другое приложение
