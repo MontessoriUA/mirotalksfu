@@ -2555,8 +2555,12 @@ function startServer() {
                 return cb('isBanned');
             }
 
+            // Montemeet: перезаход приложения после обрыва — имя, занятое его же прежним
+            // сокетом, не считается занятым (см. montemeetRejoinKeys).
+            const mmReplaced = montemeetReplacedSocket(socket, room, data, peer_uuid);
+
             const usernameExists = [...room.getPeers().values()].some(
-                (peer) => peer.id !== socket.id && peer.peer_name === peer_name
+                (peer) => peer.id !== socket.id && peer.id !== mmReplaced && peer.peer_name === peer_name
             );
             if (usernameExists) return cb('isNameInUse');
 
@@ -2731,6 +2735,18 @@ function startServer() {
             if (socket.room_id.includes('_breakout_')) {
                 notifyMainRoomBreakoutCountChanged(socket.room_id);
             }
+
+            // Montemeet: вход принят — прежний сокет того же клиента снимаем (до `toJson`,
+            // чтобы в составе комнаты его уже не было), свой ключ запоминаем.
+            if (mmReplaced && montemeetDropReplaced(mmReplaced)) {
+                log.info('[Join] - Montemeet: rejoin replaced the dead socket', {
+                    room_id: socket.room_id,
+                    peer_name,
+                    old: mmReplaced,
+                    new: socket.id,
+                });
+            }
+            montemeetRememberKey(socket, data, peer_uuid);
 
             const roomJson = room.toJson();
 
@@ -4904,6 +4920,8 @@ function startServer() {
         });
 
         socket.on('disconnect', (reason) => {
+            montemeetRejoinKeys.delete(socket.id);
+
             if (!roomExists(socket)) {
                 // Clean up socket listeners even if room doesn't exist
                 socket.removeAllListeners();
@@ -4937,8 +4955,15 @@ function startServer() {
 
             room.broadCast(socket.id, 'removeMe', removeMeData(room, peer_name, isPresenter));
 
-            // Montemeet: admin policy — the teacher leaving ends the lesson for everyone
-            if (isPresenter && room.getPeersCount() > 0 && montemeetProfiles.endsOnTeacherLeave(socket.room_id)) {
+            // Montemeet: admin policy — the teacher leaving ends the lesson for everyone.
+            // Сокет, заменённый перезаходом того же клиента (montemeetDropReplaced), —
+            // не уход: педагог уже снова в комнате.
+            if (
+                isPresenter &&
+                !socket.mmReplaced &&
+                room.getPeersCount() > 0 &&
+                montemeetProfiles.endsOnTeacherLeave(socket.room_id)
+            ) {
                 room.broadCast(socket.id, 'cmd', { type: 'ejectAll', peer_name, broadcast: true });
             }
 
@@ -5226,6 +5251,50 @@ function startServer() {
         const now = Date.now();
         for (const [key, expires] of room) if (expires < now) room.delete(key);
         room.set(uuid, now + MONTEMEET_LOBBY_PASS_MS);
+    }
+
+    // Montemeet: перезаход приложения после обрыва сети.
+    //
+    // Сменил человек Wi-Fi на мобильный — у него новый сокет, а прежний сервер держит, пока
+    // не истечёт перекличка socket.io (до 25 + 20 с). Всё это время имя занято «призраком»,
+    // и педагог в приложении ждал его освобождения до минуты (живой заход 29.09): роль в
+    // комнате без почты даётся по имени, под «Имя (2)» он вернулся бы без прав.
+    //
+    // Приложение само знает, что прежний сокет мёртв, — оно его и потеряло. Поэтому при
+    // каждом входе оно оставляет здесь случайный ключ (`mm_key`), а при перезаходе
+    // предъявляет id прежнего сокета и этот ключ (`mm_rejoin`). Совпало — прежний сокет
+    // снимаем сразу, и имя свободно. Ключ знает только сам клиент: в `peer_info` его нет,
+    // никому он не рассылается, так что чужой сокет так не снять. Веб ключей не шлёт — для
+    // него ничего не меняется.
+    const MONTEMEET_KEY_RE = /^[0-9a-f]{32,64}$/;
+    const montemeetRejoinKeys = new Map(); // socket.id -> { key, room_id, peer_uuid }
+
+    function montemeetRememberKey(socket, data, peer_uuid) {
+        const key = data?.mm_key;
+        if (typeof key !== 'string' || !MONTEMEET_KEY_RE.test(key) || !peer_uuid) return;
+        montemeetRejoinKeys.set(socket.id, { key, room_id: socket.room_id, peer_uuid });
+    }
+
+    // id прежнего сокета, который этот вход вправе заменить, — или null.
+    function montemeetReplacedSocket(socket, room, data, peer_uuid) {
+        const prev = data?.mm_rejoin;
+        if (!prev || typeof prev.id !== 'string' || typeof prev.key !== 'string') return null;
+        if (prev.id === socket.id || !peer_uuid) return null;
+        const stored = montemeetRejoinKeys.get(prev.id);
+        if (!stored || stored.key !== prev.key) return null;
+        if (stored.room_id !== socket.room_id || stored.peer_uuid !== peer_uuid) return null;
+        if (!room.getPeer(prev.id) || !io.sockets.sockets.has(prev.id)) return null;
+        return prev.id;
+    }
+
+    // Снять заменённый сокет. Обычный обработчик `disconnect` уберёт участника и разошлёт
+    // `removeMe`; пометка говорит ему, что это не уход педагога и урок завершать не надо.
+    function montemeetDropReplaced(oldId) {
+        const old = io.sockets.sockets.get(oldId);
+        if (!old) return false;
+        old.mmReplaced = true;
+        old.disconnect(true);
+        return true;
     }
 
     function isPeerPresenter(room_id, peer_id, peer_name, peer_uuid) {
