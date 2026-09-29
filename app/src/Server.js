@@ -905,6 +905,27 @@ function startServer() {
         res.status(200).json({ message: config?.ui?.themes ? config.ui.themes : false });
     });
 
+    // Montemeet: Android App Links. Приложение Montessori Meet объявляет ссылки
+    // `/join/<комната>` своими (autoVerify), и Android отдаёт их ему сразу, без выбора и
+    // без браузера, — если этот файл называет пакет и отпечаток сертификата подписи.
+    // Отпечаток ниже — ключ загрузки: им подписаны сборки, которые ставим на телефоны сами.
+    // Когда приложение будет в Play, добавить второй — ключ подписи Play (Play Console →
+    // «Целостность приложения»): у установивших из Play ссылки иначе откроются в браузере.
+    app.get('/.well-known/assetlinks.json', (req, res) => {
+        res.status(200).json([
+            {
+                relation: ['delegate_permission/common.handle_all_urls'],
+                target: {
+                    namespace: 'android_app',
+                    package_name: 'ua.montessori.meet',
+                    sha256_cert_fingerprints: [
+                        '34:C4:AF:BD:8A:B0:8E:5F:7F:65:4F:42:10:2A:D6:B5:7B:03:C7:1B:0E:AC:35:5A:E0:82:60:5D:0C:D1:16:18',
+                    ],
+                },
+            },
+        ]);
+    });
+
     // Montemeet: room profile (audio/layout presets) for the client
     app.get('/profile/:roomId', (req, res) => {
         res.status(200).json(montemeetProfiles.forRoom(req.params.roomId));
