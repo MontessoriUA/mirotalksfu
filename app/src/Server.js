@@ -4960,17 +4960,12 @@ function startServer() {
 
             room.broadCast(socket.id, 'removeMe', removeMeData(room, peer_name, isPresenter));
 
-            // Montemeet: admin policy — the teacher leaving ends the lesson for everyone.
-            // Сокет, заменённый перезаходом того же клиента (montemeetDropReplaced), —
-            // не уход: педагог уже снова в комнате.
-            if (
-                isPresenter &&
-                !socket.mmReplaced &&
-                room.getPeersCount() > 0 &&
-                montemeetProfiles.endsOnTeacherLeave(socket.room_id)
-            ) {
-                room.broadCast(socket.id, 'cmd', { type: 'ejectAll', peer_name, broadcast: true });
-            }
+            // Montemeet: политику «уход педагога завершает урок» здесь НЕ применяем.
+            // Разрыв — это не решение педагога: сменилась сеть, села батарея, закрылась
+            // вкладка, перезаход заменил прежний сокет. Иван, 2026-09-29: обрыв сети не
+            // должен выбивать студентов, урок для всех завершает только умышленное
+            // «Завершить для всех». Политика осталась на `exitRoom` — там это выход
+            // по кнопке.
 
             // Notify main room when a peer leaves a breakout room
             if (socket.room_id.includes('_breakout_')) {
@@ -5293,11 +5288,10 @@ function startServer() {
     }
 
     // Снять заменённый сокет. Обычный обработчик `disconnect` уберёт участника и разошлёт
-    // `removeMe`; пометка говорит ему, что это не уход педагога и урок завершать не надо.
+    // `removeMe`; урок при этом ни для кого не завершается — разрыв этого не делает.
     function montemeetDropReplaced(oldId) {
         const old = io.sockets.sockets.get(oldId);
         if (!old) return false;
-        old.mmReplaced = true;
         old.disconnect(true);
         return true;
     }
