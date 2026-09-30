@@ -2696,6 +2696,12 @@ function startServer() {
                     'The user is currently waiting to join the room because the lobby is enabled, and they are not a presenter'
                 );
                 peer.updatePeerInfo({ type: 'lobby', status: true });
+                // Montemeet: ключ перезахода запоминаем и тем, кто ждёт в зале. Впускают его
+                // без нового `join`, и раньше ключа за его сокетом не было вовсе: после обрыва
+                // впущенный студент возвращался «Имя (2)», а прежний сокет висел до конца
+                // переклички (живой заход 30.09). Прежний сокет того же клиента снимаем и здесь.
+                if (mmReplaced) montemeetDropReplaced(mmReplaced);
+                montemeetRememberKey(socket, data, peer_uuid);
                 room.broadCast(socket.id, 'roomLobby', {
                     peer_id: peer_id,
                     peer_name: peer_name,
