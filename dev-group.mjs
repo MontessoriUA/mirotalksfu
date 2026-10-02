@@ -6,6 +6,11 @@
 //
 // share / share-stop — показ экрана педагогом и его конец (план приложения 4.5): источник
 // «весь экран» выбирается сам, без окна (флаги как в dev-speaker-test, сценарий screen-tile).
+// peek — что принимает этот веб-участник: видео на странице, их владельцы и размер кадра
+// (план приложения 4.6: виден ли показ экрана из приложения).
+//
+// NAME — под каким именем войти (по умолчанию Zal — педагог montemeet-smoke; другое имя —
+// студент, когда педагогом входит само приложение).
 //
 // Usage: WAIT=40 ACTIONS=mute,hide node dev-group.mjs [room] [base]
 import puppeteer from 'puppeteer-core';
@@ -15,6 +20,7 @@ const BASE = process.argv[3] || 'https://meet.montessori.ua';
 const WAIT = Number(process.env.WAIT || 40);
 const PAUSE = Number(process.env.PAUSE || 8);
 const ACTIONS = (process.env.ACTIONS || 'mute,hide').split(',').filter(Boolean);
+const NAME = process.env.NAME || 'Zal';
 // Без подмены mediasoup-client не узнаёт HeadlessChrome (как в dev-smoke).
 const UA =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36';
@@ -34,8 +40,11 @@ const browser = await puppeteer.launch({ executablePath: CHROME, headless: true,
 const page = await browser.newPage();
 await page.setUserAgent(UA);
 await page.setViewport({ width: 1280, height: 800 });
-await page.goto(`${BASE}/join/${ROOM}?name=Zal&audio=1&video=1&notify=0`, { waitUntil: 'networkidle2', timeout: 30000 });
-console.log(now(), 'педагог вошёл, жду', WAIT, 'с');
+await page.goto(`${BASE}/join/${ROOM}?name=${encodeURIComponent(NAME)}&audio=1&video=1&notify=0`, {
+    waitUntil: 'networkidle2',
+    timeout: 30000,
+});
+console.log(now(), NAME, 'вошёл, жду', WAIT, 'с');
 await delay(WAIT * 1000);
 for (const action of ACTIONS) {
     // rec-start / rec-stop — начало и конец записи урока (план приложения 3.5): веб шлёт
@@ -47,6 +56,19 @@ for (const action of ACTIONS) {
             return 'ушло';
         }, action);
         console.log(now(), 'запись:', action, '—', res);
+        await delay(PAUSE * 1000);
+        continue;
+    }
+    if (action === 'peek') {
+        const seen = await page.evaluate(() =>
+            [...document.querySelectorAll('video')].map((v) => ({
+                id: v.id,
+                name: v.getAttribute('name'),
+                bar: v.getAttribute('volumeBar'),
+                size: `${v.videoWidth}x${v.videoHeight}`,
+            }))
+        );
+        console.log(now(), 'видео на странице:', JSON.stringify(seen));
         await delay(PAUSE * 1000);
         continue;
     }
