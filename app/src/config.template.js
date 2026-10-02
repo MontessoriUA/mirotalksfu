@@ -1744,6 +1744,38 @@ module.exports = {
                     channels: 2, // Stereo audio
                 },
 
+                // Montemeet (02.10.2026, решение Ивана «всё видео — на H264»): H.264 — первым.
+                // Первый общий кодек роутера браузер и приложение берут по умолчанию. H.264
+                // телефоны кодируют и декодируют аппаратно, браузеры его умеют все; программный
+                // VP8 на телефоне вместе со звуковым трактом упирался в процессор (OnePlus,
+                // заход 02.10: 91 замер из 98 «упирается в cpu»). Кто H.264 не умеет — получит
+                // VP8, он остаётся в списке следующим.
+                // H.264 Baseline profile (widest hardware support)
+                {
+                    kind: 'video',
+                    mimeType: 'video/h264',
+                    clockRate: 90000,
+                    parameters: {
+                        'packetization-mode': 1, // Required for WebRTC
+                        'profile-level-id': '42e01f', // Baseline 3.1
+                        'level-asymmetry-allowed': 1, // Allows different levels
+                        'x-google-start-bitrate': 1000,
+                    },
+                },
+
+                // H.264 Main profile (better compression than Baseline)
+                {
+                    kind: 'video',
+                    mimeType: 'video/h264',
+                    clockRate: 90000,
+                    parameters: {
+                        'packetization-mode': 1,
+                        'profile-level-id': '4d0032', // Main 4.0
+                        'level-asymmetry-allowed': 1,
+                        'x-google-start-bitrate': 1000,
+                    },
+                },
+
                 // VP8 video codec (widely supported, good for compatibility)
                 {
                     kind: 'video',
@@ -1773,32 +1805,6 @@ module.exports = {
                     clockRate: 90000,
                     parameters: {
                         'profile-id': 2, // Advanced profile
-                        'x-google-start-bitrate': 1000,
-                    },
-                },
-
-                // H.264 Baseline profile (widest hardware support)
-                {
-                    kind: 'video',
-                    mimeType: 'video/h264',
-                    clockRate: 90000,
-                    parameters: {
-                        'packetization-mode': 1, // Required for WebRTC
-                        'profile-level-id': '42e01f', // Baseline 3.1
-                        'level-asymmetry-allowed': 1, // Allows different levels
-                        'x-google-start-bitrate': 1000,
-                    },
-                },
-
-                // H.264 Main profile (better compression than Baseline)
-                {
-                    kind: 'video',
-                    mimeType: 'video/h264',
-                    clockRate: 90000,
-                    parameters: {
-                        'packetization-mode': 1,
-                        'profile-level-id': '4d0032', // Main 4.0
-                        'level-asymmetry-allowed': 1,
                         'x-google-start-bitrate': 1000,
                     },
                 },

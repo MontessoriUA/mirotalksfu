@@ -2303,7 +2303,7 @@ class RoomClient {
                     codecs: codec,
                 });
                 params.encodings = encodings;
-                params.codecs = codec;
+                params.codec = codec; // Montemeet: было `codecs` — mediasoup-client его не читает
                 params.codecOptions = {
                     videoGoogleStartBitrate: 1000,
                 };
@@ -2316,7 +2316,7 @@ class RoomClient {
                     codecs: codec,
                 });
                 params.encodings = encodings;
-                params.codecs = codec;
+                params.codec = codec; // Montemeet: было `codecs` — mediasoup-client его не читает
                 params.codecOptions = {
                     videoGoogleStartBitrate: 1000,
                 };
@@ -2977,7 +2977,24 @@ class RoomClient {
                 }
             }
         }
+        this.montemeetNoTemporalForH264(encodings, codec);
         return { encodings, codec };
+    }
+
+    /**
+     * Montemeet (02.10.2026, H.264 первым кодеком роутера): у H.264 — без временных слоёв.
+     * Аппаратные кодеры H.264 (Safari, Chrome на Android, телефоны приложения) временных
+     * слоёв не делают, и просьба о них там может сорвать камеру. Проверено не было, поэтому —
+     * как в приложении: простой simulcast, сервер переключает слои по ширине. Какой кодек
+     * уйдёт, решает заданный (`codec`) или первый общий кодек ОТПРАВКИ:
+     * `device.rtpCapabilities` в mediasoup-client 3.21 — это приём.
+     */
+    montemeetNoTemporalForH264(encodings, codec) {
+        if (!Array.isArray(encodings)) return;
+        const send = codec || this.device.sendRtpCapabilities?.codecs?.find((c) => c.kind === 'video');
+        if (send?.mimeType?.toLowerCase() !== 'video/h264') return;
+        for (const e of encodings) delete e.scalabilityMode;
+        console.log('Montemeet: H264 — слои без временных', { encodings });
     }
 
     // ####################################################
@@ -3070,6 +3087,7 @@ class RoomClient {
                 },
             ];
         }
+        this.montemeetNoTemporalForH264(encodings, codec);
         return { encodings, codec };
     }
 
