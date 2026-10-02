@@ -33,6 +33,18 @@ await page.goto(`${BASE}/join/${ROOM}?name=Zal&audio=1&video=1&notify=0`, { wait
 console.log(now(), 'педагог вошёл, жду', WAIT, 'с');
 await delay(WAIT * 1000);
 for (const action of ACTIONS) {
+    // rec-start / rec-stop — начало и конец записи урока (план приложения 3.5): веб шлёт
+    // recordingAction с enums.recording.start / stop, без окна подтверждения.
+    if (action === 'rec-start' || action === 'rec-stop') {
+        const res = await page.evaluate((a) => {
+            if (typeof rc === 'undefined' || !rc) return 'нет rc';
+            rc.recordingAction(a === 'rec-start' ? enums.recording.start : enums.recording.stop);
+            return 'ушло';
+        }, action);
+        console.log(now(), 'запись:', action, '—', res);
+        await delay(PAUSE * 1000);
+        continue;
+    }
     const res = await page.evaluate((a) => {
         if (typeof rc === 'undefined' || !rc) return 'нет rc';
         const id = typeof socket !== 'undefined' && socket?.id ? socket.id : rc.peer_id;
