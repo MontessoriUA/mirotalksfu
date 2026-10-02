@@ -88,5 +88,7 @@ const result = {
     notes2: p2.errors.slice(0, 6),
 };
 console.log(JSON.stringify(result, null, 2));
+// STAY=<с> — побыть в комнате ещё столько: чтобы приложение успело войти и взять картинку.
+if (process.env.STAY) await delay(Number(process.env.STAY) * 1000);
 await p1.browser.close();
 await p2.browser.close();
