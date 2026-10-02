@@ -4,6 +4,9 @@
 // приложение), затем шлёт команды «всем» — как кнопки панели участников веба
 // (Room.js: rc.peerAction('me', socket.id, '<действие>', true, true)): по одной через PAUSE с.
 //
+// share / share-stop — показ экрана педагогом и его конец (план приложения 4.5): источник
+// «весь экран» выбирается сам, без окна (флаги как в dev-speaker-test, сценарий screen-tile).
+//
 // Usage: WAIT=40 ACTIONS=mute,hide node dev-group.mjs [room] [base]
 import puppeteer from 'puppeteer-core';
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -21,6 +24,8 @@ const flags = [
     '--autoplay-policy=no-user-gesture-required',
     '--mute-audio',
     '--ignore-certificate-errors',
+    '--auto-select-desktop-capture-source=Entire screen',
+    '--auto-accept-this-tab-capture',
 ];
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => new Date().toISOString().slice(11, 19);
@@ -42,6 +47,21 @@ for (const action of ACTIONS) {
             return 'ушло';
         }, action);
         console.log(now(), 'запись:', action, '—', res);
+        await delay(PAUSE * 1000);
+        continue;
+    }
+    if (action === 'share' || action === 'share-stop') {
+        const res = await page.evaluate(async (a) => {
+            if (typeof rc === 'undefined' || !rc) return 'нет rc';
+            try {
+                if (a === 'share') await rc.produce(RoomClient.mediaType.screen);
+                else rc.closeProducer(RoomClient.mediaType.screen, 'dev-group');
+                return 'ушло';
+            } catch (e) {
+                return 'ошибка: ' + (e?.message || e);
+            }
+        }, action);
+        console.log(now(), 'показ экрана:', action, '—', res);
         await delay(PAUSE * 1000);
         continue;
     }
