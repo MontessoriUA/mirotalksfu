@@ -6,6 +6,7 @@
 //
 // share / share-stop — показ экрана педагогом и его конец (план приложения 4.5): источник
 // «весь экран» выбирается сам, без окна (флаги как в dev-speaker-test, сценарий screen-tile).
+// lobby-on / admit — включить зал ожидания и впустить всех ждущих (живой заход 04.10).
 // peek — что принимает этот веб-участник: видео на странице, их владельцы и размер кадра
 // (план приложения 4.6: виден ли показ экрана из приложения).
 //
@@ -58,6 +59,24 @@ for (const action of ACTIONS) {
             return 'ушло';
         }, action);
         console.log(now(), 'запись:', action, '—', res);
+        await delay(PAUSE * 1000);
+        continue;
+    }
+    // lobby-on — включить зал ожидания (как переключатель веба, roomAction 'lobbyOn');
+    // admit — впустить всех ждущих (кнопка «впустить всех», lobbyAcceptAll). Живой заход
+    // 04.10: впущенный из зала студент в приложении оставался без своей записи.
+    if (action === 'lobby-on' || action === 'admit') {
+        const res = await page.evaluate((a) => {
+            if (typeof rc === 'undefined' || !rc) return 'нет rc';
+            if (a === 'lobby-on') {
+                rc.roomAction('lobbyOn', true, false);
+                return 'ушло';
+            }
+            const ids = rc.lobbyGetPeerIds();
+            rc.lobbyAcceptAll();
+            return 'впускаю ' + ids.length;
+        }, action);
+        console.log(now(), 'зал ожидания:', action, '—', res);
         await delay(PAUSE * 1000);
         continue;
     }
