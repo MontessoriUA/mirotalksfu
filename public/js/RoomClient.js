@@ -3571,6 +3571,10 @@ class RoomClient {
                 track,
                 appData: {
                     mediaType: mediaType.audio,
+                    // Montemeet: это звук компьютера, а не голос — приложение играет его стерео,
+                    // как пришёл, и не сводит в моно по центру (сервер передаёт признак в
+                    // newProducers/getProducers; приложение, room.ts `pcsound`).
+                    pcsound: true,
                 },
             };
 

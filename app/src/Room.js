@@ -509,6 +509,7 @@ module.exports = class Room {
                     peer_name: peer_name,
                     peer_info: peer_info,
                     type: producer.appData.mediaType,
+                    ...(producer.appData?.pcsound ? { pcsound: true } : {}),
                 });
             });
         });
@@ -754,7 +755,7 @@ module.exports = class Room {
     // PRODUCE
     // ####################################################
 
-    async produce(socket_id, producerTransportId, rtpParameters, kind, type) {
+    async produce(socket_id, producerTransportId, rtpParameters, kind, type, extra = {}) {
         if (!socket_id || !producerTransportId || !rtpParameters || !kind || !type) {
             throw new Error('Missing required parameters for producing media');
         }
@@ -773,6 +774,8 @@ module.exports = class Room {
         let peerProducer;
         try {
             peerProducer = await peer.createProducer(producerTransportId, rtpParameters, kind, type);
+            // Montemeet: звук компьютера — признак в appData продюсера, оттуда в списки ниже.
+            if (extra?.pcsound) peerProducer.appData.pcsound = true;
         } catch (error) {
             log.error(`Error creating producer for peer ${peer.peer_name} with socket ID ${socket_id}`, {
                 producerTransportId,
@@ -806,6 +809,7 @@ module.exports = class Room {
                 peer_name: peer_name,
                 peer_info: peer_info,
                 type: type,
+                ...(peerProducer.appData?.pcsound ? { pcsound: true } : {}),
             },
         ]);
 

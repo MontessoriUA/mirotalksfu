@@ -121,7 +121,15 @@ function peerName(peer) {
 
 function socketIp(socket) {
     const fwd = socket.handshake?.headers?.['x-forwarded-for'];
-    return fwd ? String(fwd).split(',')[0].trim() : socket.handshake?.address;
+    // Последний адрес — его дописал наш nginx; первый клиент может подставить сам (09.10).
+    const last = fwd
+        ? String(fwd)
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .pop()
+        : '';
+    return last || socket.handshake?.address;
 }
 
 function bestScore(scores) {

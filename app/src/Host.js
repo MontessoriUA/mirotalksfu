@@ -16,7 +16,14 @@ module.exports = class Host {
     getIP(req) {
         // Security: only trust X-Forwarded-For when behind a trusted reverse proxy.
         const forwarded = trustProxy ? req.headers['x-forwarded-for'] || req.headers['X-Forwarded-For'] : null;
-        return (forwarded && forwarded.split(',')[0].trim()) || req.socket.remoteAddress || req.ip;
+        // Montemeet (09.10): последний адрес — его дописал наш nginx; первый подставит кто угодно
+        // и выдаст себя за разрешённый адрес (Server.js, ipKeyGenerator).
+        const last = (forwarded || '')
+            .split(',')
+            .map((x) => x.trim())
+            .filter(Boolean)
+            .pop();
+        return last || req.socket.remoteAddress || req.ip;
     }
 
     /**

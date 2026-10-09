@@ -1866,7 +1866,10 @@ module.exports = {
              */
             initialAvailableOutgoingBitrate: 2500000, // 2.5 Mbps initial bitrate
             minimumAvailableOutgoingBitrate: 1000000, // 1 Mbps minimum guaranteed
-            maxIncomingBitrate: 3000000, // 3 Mbps max per producer
+            // Montemeet (09.10, решение Ивана 04.10): 3 → 6 Мбит/с. Потолок — на весь
+            // транспорт отправки, а у приложения на нём камера (слои 0,15/0,5/2 Мбит/с) и показ
+            // экрана; при 3 Мбит/с верхний слой камеры гас и включался (заход 04.10).
+            maxIncomingBitrate: 6000000, // 6 Mbps max per send transport
 
             /**
              * Data Channel Settings (mediasoup 3.20.0+)

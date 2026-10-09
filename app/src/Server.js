@@ -118,11 +118,21 @@ const rateLimit = require('express-rate-limit');
 const maxAttempts = config?.security?.host?.maxAttempts || 5;
 const minBlockTime = config?.security?.host?.minBlockTime || 15; // minutes
 // Extract client IP (only trust X-Forwarded-For when behind a trusted reverse proxy)
+//
+// Montemeet (09.10, TRUST_PROXY включён): за единственным nginx берём ПОСЛЕДНИЙ адрес
+// X-Forwarded-For — его дописывает сам nginx ($proxy_add_x_forwarded_for). Первый подставляет
+// кто угодно, и лимиты по нему обходились бы подделанным заголовком.
+const lastForwarded = (h) =>
+    (h || '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .pop() || '';
 const ipKeyGenerator = (req) => {
     const forwarded = Boolean(config?.server?.trustProxy)
         ? req.headers['x-forwarded-for'] || req.headers['X-Forwarded-For']
         : null;
-    return (forwarded || '').split(',')[0].trim() || req.socket?.remoteAddress || req.ip;
+    return lastForwarded(forwarded) || req.socket?.remoteAddress || req.ip;
 };
 // Pluralize "N minute(s)" consistently across limiter messages
 const minutesLabel = (n) => `${n} minute${n === 1 ? '' : 's'}`;
@@ -2181,7 +2191,12 @@ function startServer() {
                     allowedOrigins: embedAllowedOrigins.length ? embedAllowedOrigins : 'any',
                     csp: embedCsp ? embedCsp.csp : 'not set (embedding allowed from any origin)',
                 },
-                jwtCfg: jwtCfg,
+                // Montemeet (09.10): ключ в журнал не печатаем — сводка запуска уходит в journalctl
+                // (разбор шести 04.10, В5). Только задан ли он свой и срок.
+                jwtCfg: {
+                    JWT_KEY: jwtCfg.JWT_KEY === 'mirotalksfu_jwt_secret' ? 'по умолчанию (небезопасно)' : 'задан',
+                    JWT_EXP: jwtCfg.JWT_EXP,
+                },
                 host: hostCfg?.protected || hostCfg?.user_auth ? hostCfg : { presenters: hostCfg.presenters },
                 ip_lookup: config.integrations?.IPLookup?.enabled ? config.integrations.IPLookup : false,
                 oidc: OIDC?.enabled ? OIDC : false,
@@ -2692,6 +2707,7 @@ function startServer() {
             const mmPassedBefore = !!(peer_uuid && mmPass && (mmPass.get(peer_uuid) || 0) > Date.now());
             if (mmPassedBefore) {
                 log.debug('[Join] - Montemeet: возврат уже принятого участника, лобби пропускаем', { peer_name });
+                mmPass.set(peer_uuid, Infinity); // снова в комнате — пропуск до ухода
             }
 
             if ((room.isLobbyEnabled() || room.isGlobalLobbyEnabled()) && !isPresenter && !mmPassedBefore) {
@@ -2936,7 +2952,9 @@ function startServer() {
                     producerTransportId,
                     rtpParameters,
                     kind,
-                    appData.mediaType
+                    appData.mediaType,
+                    // Montemeet: звук компьютера (показ экрана со звуком) — признак для приложения.
+                    { pcsound: kind === 'audio' && appData?.pcsound === true }
                 );
 
                 log.debug('Produce', {
@@ -4987,6 +5005,7 @@ function startServer() {
             }
 
             room.removePeer(socket.id);
+            montemeetLeftRoom(socket.room_id, peer_uuid, room); // пропуск мимо зала — 10 минут с ухода
 
             room.broadCast(socket.id, 'removeMe', removeMeData(room, peer_name, isPresenter));
 
@@ -5065,6 +5084,7 @@ function startServer() {
             }
 
             room.removePeer(socket.id);
+            montemeetLeftRoom(socket.room_id, peer_uuid, room); // пропуск мимо зала — 10 минут с ухода
 
             room.broadCast(socket.id, 'removeMe', removeMeData(room, peer_name, isPresenter));
 
@@ -5271,8 +5291,14 @@ function startServer() {
 
     // Montemeet: кого педагог уже пустил в комнату — чтобы переподключение после
     // обрыва не требовало повторного подтверждения. Живёт в памяти, чистится сама.
+    //
+    // ПРОПУСК — НА ВЕСЬ УРОК, 10 МИНУТ СЧИТАЮТСЯ ОТ УХОДА (09.10; решение Ивана 04.10:
+    // «квоту зала ожидания считать от ухода»). Было: 10 минут от допуска, без продления — после
+    // 10-й минуты урока любой обрыв возвращал студента в зал (разбор шести 04.10, А6). Теперь,
+    // пока впущенный в комнате, пропуск бессрочный; ушёл (обрыв, выход) — у него
+    // MONTEMEET_LOBBY_PASS_MS на возврат мимо зала; вернулся — снова бессрочный.
     const MONTEMEET_LOBBY_PASS_MS = 10 * 60 * 1000;
-    const montemeetLobbyPass = new Map(); // roomId -> Map(peer_uuid -> expiresAt)
+    const montemeetLobbyPass = new Map(); // roomId -> Map(peer_uuid -> expiresAt; Infinity — в комнате)
 
     function montemeetRememberAdmitted(roomId, uuid) {
         if (!roomId || !uuid) return;
@@ -5280,7 +5306,16 @@ function startServer() {
         const room = montemeetLobbyPass.get(roomId);
         const now = Date.now();
         for (const [key, expires] of room) if (expires < now) room.delete(key);
-        room.set(uuid, now + MONTEMEET_LOBBY_PASS_MS);
+        room.set(uuid, Infinity);
+    }
+
+    // Ушёл из комнаты — с этой минуты у пропуска MONTEMEET_LOBBY_PASS_MS. Если тот же человек
+    // ещё в комнате другим сокетом (перезаход раньше, чем снят прежний), пропуск не трогаем.
+    function montemeetLeftRoom(roomId, uuid, room) {
+        const pass = montemeetLobbyPass.get(roomId);
+        if (!uuid || !pass || !pass.has(uuid)) return;
+        const stillHere = !!room?.peers && [...room.peers.values()].some((p) => p?.peer_uuid === uuid);
+        if (!stillHere) pass.set(uuid, Date.now() + MONTEMEET_LOBBY_PASS_MS);
     }
 
     // Montemeet: перезаход приложения после обрыва сети.
@@ -5671,7 +5706,7 @@ function startServer() {
         // Security: only trust X-Forwarded-For when behind a trusted reverse proxy.
         const forwarded = trustProxy ? req.headers['x-forwarded-for'] || req.headers['X-Forwarded-For'] : null;
         if (forwarded) {
-            return forwarded.split(',')[0].trim();
+            return lastForwarded(forwarded) || req.socket.remoteAddress || req.ip; // см. ipKeyGenerator
         }
         return req.socket.remoteAddress || req.ip;
     }
@@ -5682,7 +5717,7 @@ function startServer() {
             ? socket.handshake.headers['x-forwarded-for'] || socket.handshake.headers['X-Forwarded-For']
             : null;
         if (forwarded) {
-            return forwarded.split(',')[0].trim();
+            return lastForwarded(forwarded) || socket.handshake.address; // см. ipKeyGenerator
         }
         return socket.handshake.address;
     }
