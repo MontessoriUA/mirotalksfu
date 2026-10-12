@@ -47,6 +47,8 @@ const DIAG_PER_MINUTE = 60;
 const ICE_FAILED_MS = 20000;
 
 const MEDIA = { audioType: 'mic', videoType: 'cam', screenType: 'screen', audioTab: 'pcsound' };
+// звук компьютера веб шлёт типом `audioType`, как микрофон, — различаем по `appData.pcsound` (12.10)
+const mediaOf = (p) => (p.appData?.pcsound ? 'pcsound' : MEDIA[p.appData?.mediaType] || p.kind);
 
 // Когда клиент начал соединять транспорт (connectTransport): transportId -> { at, sid }.
 // Отсчёт сбоя идёт от этой минуты, а не от создания: принимающий транспорт
@@ -344,7 +346,7 @@ function hookLevels(room, rs) {
 function ownerOf(room, producerId) {
     for (const peer of room.peers.values()) {
         const p = peer.producers?.get(producerId);
-        if (p) return { name: peerName(peer), media: MEDIA[p.appData?.mediaType] || p.kind };
+        if (p) return { name: peerName(peer), media: mediaOf(p) };
     }
     return { name: '?', media: null };
 }
@@ -419,7 +421,7 @@ function pollProducers(roomId, peer, ps, name) {
     for (const [pid, p] of peer.producers.entries()) {
         if (p.closed) continue;
         alive.add(pid);
-        const media = MEDIA[p.appData?.mediaType] || p.kind;
+        const media = mediaOf(p);
         const score = bestScore(p.score);
         let st = ps.producers.get(pid);
         if (!st) {

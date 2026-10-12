@@ -2944,7 +2944,13 @@ function startServer() {
                 status: true,
             };
 
-            peer.updatePeerInfo(data);
+            // Montemeet: звук компьютера веб шлёт тем же типом `audioType`, что и микрофон. Это не
+            // микрофон: `peer_audio` он не включает (иначе вошедшие позже видят микрофон педагога
+            // включённым, и после показа тоже — закрытие `audioTab` признак не снимает).
+            // Находка десктопной сессии 12.10, С-1; решение Ивана — исправить.
+            const pcsound = kind === 'audio' && appData?.pcsound === true;
+
+            if (!pcsound) peer.updatePeerInfo(data);
 
             try {
                 const producer_id = await room.produce(
@@ -2954,7 +2960,7 @@ function startServer() {
                     kind,
                     appData.mediaType,
                     // Montemeet: звук компьютера (показ экрана со звуком) — признак для приложения.
-                    { pcsound: kind === 'audio' && appData?.pcsound === true }
+                    { pcsound }
                 );
 
                 log.debug('Produce', {
@@ -2966,7 +2972,9 @@ function startServer() {
                 });
 
                 // add & monitor producer audio level and dominant speaker
-                if (kind === 'audio') {
+                // Montemeet: звук компьютера — не голос: громкость музыки не должна идти в
+                // `audioVolume` от имени педагога, и его плитка не «говорит» под музыку (С-1).
+                if (kind === 'audio' && !pcsound) {
                     room.addProducerToAudioLevelObserver({ producerId: producer_id });
                     room.addProducerToActiveSpeakerObserver({ producerId: producer_id });
                 }
