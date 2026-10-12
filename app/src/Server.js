@@ -2979,6 +2979,8 @@ function startServer() {
                     room.addProducerToActiveSpeakerObserver({ producerId: producer_id });
                 }
 
+                if (appData.mediaType === 'screenType') montemeetScreenCap(room, peer, producerTransportId, producer_id);
+
                 callback({ producer_id });
             } catch (err) {
                 log.warn('Producer transport error', {
@@ -5303,6 +5305,32 @@ function startServer() {
     // ПРОПУСК — НА ВЕСЬ УРОК, 10 МИНУТ СЧИТАЮТСЯ ОТ УХОДА (09.10; решение Ивана 04.10:
     // «квоту зала ожидания считать от ухода»). Было: 10 минут от допуска, без продления — после
     // 10-й минуты урока любой обрыв возвращал студента в зал (разбор шести 04.10, А6). Теперь,
+    // Montemeet (12.10): потолок входящего потока транспорта — `maxIncomingBitrate` (3 Мбит/с),
+    // а на время показа экрана — `maxIncomingBitrateScreen` (6 Мбит/с): камера и экран разом.
+    // До 12.10 6 Мбит/с стояли всем постоянно, и заход 12.10 показал цену: телефон на слабой
+    // точке доступа разгонял оценку канала до 4,3 Мбит/с, упирался, терял пакеты и сбрасывал
+    // её до 0,2 Мбит/с — картинка «мылом». При 3 Мбит/с (04–09.10) оценка стояла на 3000.
+    // Камера телефона — H264 одним слоем до 2 Мбит/с, 3 ей хватает.
+    function montemeetScreenCap(room, peer, transportId, producerId) {
+        const { maxIncomingBitrate, maxIncomingBitrateScreen } = room.webRtcTransport || {};
+        const transport = peer.getTransport(transportId);
+        const producer = peer.getProducer(producerId);
+        if (!transport || !producer || !maxIncomingBitrateScreen) return;
+        const set = (bps) =>
+            transport
+                .setMaxIncomingBitrate(bps)
+                .then(() => log.info('Montemeet: потолок транспорта отправки', { peer: peer.peer_name, bps }))
+                .catch((err) => log.warn('Montemeet: потолок транспорта не сменился', { error: err.message }));
+        set(maxIncomingBitrateScreen);
+        producer.observer.once('close', () => {
+            if (transport.closed) return;
+            const other = [...peer.producers.values()].some(
+                (p) => p.id !== producerId && !p.closed && p.appData?.mediaType === 'screenType'
+            );
+            if (!other && maxIncomingBitrate) set(maxIncomingBitrate);
+        });
+    }
+
     // пока впущенный в комнате, пропуск бессрочный; ушёл (обрыв, выход) — у него
     // MONTEMEET_LOBBY_PASS_MS на возврат мимо зала; вернулся — снова бессрочный.
     const MONTEMEET_LOBBY_PASS_MS = 10 * 60 * 1000;
