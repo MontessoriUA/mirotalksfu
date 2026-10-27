@@ -564,10 +564,19 @@ const MontemeetRoles = (() => {
                 setTimeout(updatePcSoundBtn, 300);
                 return;
             }
+            // System audio also carries what THIS tab plays — the other participants. Sent back as
+            // computer sound, it returned everyone's own sound ~0.2 s later; with a phone on speaker
+            // the loop rang («позвякивание эха», live run 2026-10-27, live-44: Samsung's own output
+            // came back to it only while sharing). restrictOwnAudio cuts this tab's audio out of the
+            // capture; where it is unknown, system audio is not offered at all — only a tab's audio.
+            const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+            const ownAudioCut = !!navigator.mediaDevices.getSupportedConstraints?.().restrictOwnAudio;
+            if (ownAudioCut) audio.restrictOwnAudio = true;
             const stream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
-                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-                systemAudio: 'include', // Windows Chrome: pre-tick the system-audio box
+                audio,
+                systemAudio: ownAudioCut ? 'include' : 'exclude', // include: Windows Chrome pre-ticks the box
+                selfBrowserSurface: 'exclude', // the lesson tab itself is not offered
             });
             if (!stream.getAudioTracks().length) {
                 stream.getTracks().forEach((t) => t.stop());

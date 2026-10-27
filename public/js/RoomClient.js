@@ -2894,9 +2894,16 @@ class RoomClient {
             frameRate: { ideal: customFrameRate || 30 },
         };
 
+        // Montemeet (2026-10-27, live-44): system audio also carries this tab's own playback — the
+        // other participants — and sharing it returned their own sound to them (see
+        // MontemeetRoles.togglePcSound). Cut this tab's audio where the browser can; elsewhere
+        // offer only a tab's audio.
+        const ownAudioCut = !!navigator.mediaDevices.getSupportedConstraints?.().restrictOwnAudio;
         return {
-            audio: true,
+            audio: ownAudioCut ? { restrictOwnAudio: true } : true,
             video: videoConstraints,
+            systemAudio: ownAudioCut ? 'include' : 'exclude',
+            selfBrowserSurface: 'exclude',
         };
     }
 
