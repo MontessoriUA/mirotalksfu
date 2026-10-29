@@ -3540,6 +3540,10 @@ class RoomClient {
         if (type === mediaType.audioTab) {
             const auTab = this.getId(producer_id);
             this.removeAudioProducer(auTab, event);
+            if (this.montemeetPcLevelStop) {
+                this.montemeetPcLevelStop();
+                this.montemeetPcLevelStop = null;
+            }
         }
 
         switch (type) {
@@ -3567,13 +3571,57 @@ class RoomClient {
         this.sound('left');
     }
 
+    // Montemeet (2026-10-29, live-46): computer sound is levelled where it is SENT. Web music reached
+    // the phones 6–7 LU louder than the voices (−16 against −22 LUFS), peaks at 0 dBFS, and every
+    // phone's receive limiter squashed it — Ivan heard the music "eaten". MontemeetPcLevel.js brings
+    // it to the voices' loudness once, here. Any failure sends the raw track, as before.
+    async montemeetPcLevel(raw) {
+        let ctx = null;
+        try {
+            if (typeof AudioWorkletNode === 'undefined') return null;
+            ctx = new AudioContext({ latencyHint: 'interactive' });
+            // resume() without a user gesture may never settle — wait a second at most
+            if (ctx.state !== 'running') await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 1000))]);
+            if (ctx.state !== 'running') throw new Error('AudioContext ' + ctx.state);
+            await ctx.audioWorklet.addModule('../js/MontemeetPcLevel.js');
+            const src = ctx.createMediaStreamSource(new MediaStream([raw]));
+            const node = new AudioWorkletNode(ctx, 'MontemeetPcLevel', {
+                numberOfInputs: 1,
+                numberOfOutputs: 1,
+                outputChannelCount: [2],
+                channelCount: 2,
+                channelCountMode: 'explicit',
+            });
+            const dst = ctx.createMediaStreamDestination();
+            src.connect(node);
+            node.connect(dst);
+            node.port.onmessage = (e) => console.log('[Montemeet] computer sound level', e.data);
+            const stop = (keepRaw) => {
+                try {
+                    src.disconnect();
+                    node.disconnect();
+                } catch (e) {}
+                ctx.close().catch(() => {});
+                if (!keepRaw) raw.stop();
+            };
+            return { track: dst.stream.getAudioTracks()[0], stop };
+        } catch (err) {
+            console.warn('[Montemeet] computer sound sent unlevelled:', err);
+            if (ctx) ctx.close().catch(() => {});
+            return null;
+        }
+    }
+
     async produceScreenAudio(stream) {
+        let level = null;
         try {
             if (this.producerLabel.has(mediaType.audioTab)) {
                 return console.warn('Producer already exists for this type ' + mediaType.audioTab);
             }
 
-            const track = stream.getAudioTracks()[0];
+            const raw = stream.getAudioTracks()[0];
+            level = await this.montemeetPcLevel(raw);
+            const track = level ? level.track : raw;
             const params = {
                 track,
                 appData: {
@@ -3591,6 +3639,7 @@ class RoomClient {
 
             this.producers.set(producerSa.id, producerSa);
             this.producerLabel.set(mediaType.audioTab, producerSa.id);
+            if (level) this.montemeetPcLevelStop = level.stop; // closeProducer tears it down
 
             console.log('[produceScreenAudio] - PRODUCER LABEL', this.producerLabel);
 
@@ -3599,6 +3648,14 @@ class RoomClient {
             producerSa.on('trackended', () => {
                 this.closeProducer(mediaType.audioTab, 'trackended');
             });
+            if (level) {
+                // the levelled track never ends by itself: «stop sharing» ends the captured one
+                raw.addEventListener('ended', () => {
+                    if (this.producerLabel.get(mediaType.audioTab) === producerSa.id) {
+                        this.closeProducer(mediaType.audioTab, 'trackended');
+                    }
+                });
+            }
 
             producerSa.on('transportclose', () => {
                 this.closeProducer(mediaType.audioTab, 'transportclose');
@@ -3609,6 +3666,7 @@ class RoomClient {
             });
         } catch (err) {
             console.error('Produce Screen Audio error:', err);
+            if (level && this.montemeetPcLevelStop !== level.stop) level.stop(true); // never produced
         }
     }
 
