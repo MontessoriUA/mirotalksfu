@@ -3624,6 +3624,11 @@ class RoomClient {
             const track = level ? level.track : raw;
             const params = {
                 track,
+                // Montemeet (2026-10-30, live-51): computer sound had no codec options of its own and went
+                // at Chrome's Opus default, ~32 kbit/s — within one piece the band narrowed 16 → 12 → 8 kHz.
+                // Mono on purpose, as before: a phone's echo reference is the mono (L+R)/2 of what it
+                // plays, and a true stereo side would come out of its two speakers with nothing to cancel it.
+                codecOptions: { opusStereo: false, opusDtx: false, opusFec: true, opusMaxAverageBitrate: 128000 },
                 appData: {
                     mediaType: mediaType.audio,
                     // Montemeet: это звук компьютера, а не голос — приложение играет его стерео,
