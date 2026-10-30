@@ -2899,8 +2899,15 @@ class RoomClient {
         // MontemeetRoles.togglePcSound). Cut this tab's audio where the browser can; elsewhere
         // offer only a tab's audio.
         const ownAudioCut = !!navigator.mediaDevices.getSupportedConstraints?.().restrictOwnAudio;
+        // Montemeet (2026-10-30, live-51): without these Chrome captured the shared sound like a voice —
+        // echo canceller, noise suppressor and AGC on, mono (iMac probe: loopbackWithoutChrome,
+        // channelCount 1). The share then began with ~3 s of noise in the stream itself, at every
+        // phone — most likely a fresh suppressor passing the background until it learned it. The
+        // «Звук компьютера» button has captured it raw since 27.10 (MontemeetRoles.togglePcSound) —
+        // the same here.
+        const raw = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
         return {
-            audio: ownAudioCut ? { restrictOwnAudio: true } : true,
+            audio: ownAudioCut ? { restrictOwnAudio: true, ...raw } : raw,
             video: videoConstraints,
             systemAudio: ownAudioCut ? 'include' : 'exclude',
             selfBrowserSurface: 'exclude',
