@@ -327,8 +327,11 @@ function roomState(roomId) {
     return rs;
 }
 
-// громкость по продюсерам: наблюдатель комнаты шлёт её раз в 100 мс для тех,
-// кто громче -70 дБ, — копим «сколько секунд был слышен» и пик
+// громкость по продюсерам: наблюдатель комнаты шлёт её для тех, кто громче -70 дБ, — копим «сколько
+// секунд был слышен» и пик. Такт — 250 мс: Room.js просит 100, но mediasoup поднимает всё, что меньше
+// 250, до 250 (worker/src/RTC/AudioLevelObserver.cpp). До 14.11 такты делились на 10, и «heard» было
+// занижено в 2,5 раза (аудит 30.10, Н41).
+const LEVEL_TICK_S = 0.25;
 function hookLevels(room, rs) {
     const obs = room.audioLevelObserver;
     if (!obs || rs.levelObs === obs) return;
@@ -577,21 +580,30 @@ function summarizeAudio(roomId, room, rs) {
     const peers = {};
     for (const peer of room.peers.values()) {
         const name = peerName(peer);
-        const mic = [...peer.producers.values()].find((p) => !p.closed && p.appData?.mediaType === 'audioType');
+        // звук компьютера идёт тем же типом audioType, что и микрофон (см. mediaOf): без этой проверки сводка
+        // брала первый попавшийся и писала звук компьютера как микрофон педагога (аудит 30.10, Н41)
+        const audio = [...peer.producers.values()].filter((p) => !p.closed && p.appData?.mediaType === 'audioType');
+        const mic = audio.find((p) => !p.appData?.pcsound);
+        const pc = audio.find((p) => p.appData?.pcsound);
         const entry = { mic: mic ? (mic.paused ? 'paused' : 'on') : 'none' };
-        if (mic) {
-            const lv = levels.get(mic.id);
-            entry.heard = lv ? Math.round(lv.ticks) / 10 : 0; // секунды громче -70 дБ
-            if (lv) entry.peak = lv.max;
+        const track = (p, into) => {
+            const lv = levels.get(p.id);
+            into.heard = lv ? Math.round(lv.ticks * LEVEL_TICK_S * 10) / 10 : 0; // секунды громче -70 дБ
+            if (lv) into.peak = lv.max;
             jobs.push(
-                mic
+                p
                     .getStats()
                     .then((stats) => {
                         const rtp = (stats || []).find((s) => s.type === 'inbound-rtp');
-                        if (rtp && typeof rtp.bitrate === 'number') entry.kbps = Math.round(rtp.bitrate / 1000);
+                        if (rtp && typeof rtp.bitrate === 'number') into.kbps = Math.round(rtp.bitrate / 1000);
                     })
                     .catch(() => {})
             );
+        };
+        if (mic) track(mic, entry);
+        if (pc) {
+            entry.pc = { state: pc.paused ? 'paused' : 'on' };
+            track(pc, entry.pc);
         }
         const audioIn = [...peer.consumers.values()].filter((c) => !c.closed && c.kind === 'audio');
         if (audioIn.length) {
