@@ -79,30 +79,49 @@ describe('MontemeetRecvGuard', () => {
         assert.strictEqual(s.audio.paused, false, 'audio is never paused');
     });
 
-    it('recovers after 5 s clean, with a key frame; a failed try doubles the wait', async () => {
+    it('link frees up — video is back within 3 s, one stream at a time, with a key frame', async () => {
+        const s = setup();
+        s.bwe(1000000, 4000000);
+        s.audio.emit('score', { score: 6 });
+        for (let i = 0; i < 6; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, true);
+        assert.strictEqual(s.camTeacher.paused, true);
+        // the arch is behind: BWE recovered, audio clean
+        s.bwe(5000000, 4000000);
+        s.audio.emit('score', { score: 10 });
+        await s.g.tick(); await s.g.tick();
+        assert.strictEqual(s.camTeacher.paused, true, 'not before 3 s');
+        await s.g.tick();
+        assert.strictEqual(s.camTeacher.paused, false, 'last paused comes back first');
+        assert.strictEqual(s.camTeacher.keyframes, 1);
+        assert.strictEqual(s.camStudent.paused, true, 'one at a time');
+        for (let i = 0; i < 7; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, false, 'the next one after the probation');
+    });
+
+    it('link still tight — only a rare blind try (8 s), a failed one doubles the wait (max 20 s)', async () => {
         const s = setup();
         s.bwe(1000000, 4000000);
         s.audio.emit('score', { score: 6 });
         for (let i = 0; i < 3; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, true);
-        s.audio.emit('score', { score: 10 });
-        for (let i = 0; i < 4; i++) await s.g.tick();
-        assert.strictEqual(s.camStudent.paused, true, 'not before 5 s');
+        s.audio.emit('score', { score: 10 }); // clean, but the link still looks tight
+        for (let i = 0; i < 7; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, true, 'no try before 8 s');
         await s.g.tick();
-        assert.strictEqual(s.camStudent.paused, false, 'back after 5 s clean');
-        assert.strictEqual(s.camStudent.keyframes, 1);
-        // damage during probation — paused again, next wait 10 s
+        assert.strictEqual(s.camStudent.paused, false, 'blind try at 8 s');
         s.audio.emit('score', { score: 6 });
         await s.g.tick();
-        assert.strictEqual(s.camStudent.paused, true);
-        assert.strictEqual(s.g.wait, 10);
+        assert.strictEqual(s.camStudent.paused, true, 'try failed');
+        assert.strictEqual(s.g.wait, 16);
         s.audio.emit('score', { score: 10 });
-        for (let i = 0; i < 9; i++) await s.g.tick();
-        assert.strictEqual(s.camStudent.paused, true, 'not before 10 s');
+        for (let i = 0; i < 15; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, true);
         await s.g.tick();
-        assert.strictEqual(s.camStudent.paused, false);
-        for (let i = 0; i < 6; i++) await s.g.tick();
-        assert.strictEqual(s.g.wait, 5, 'a clean try resets the wait');
+        assert.strictEqual(s.camStudent.paused, false, 'next try at 16 s');
+        s.audio.emit('score', { score: 6 });
+        await s.g.tick();
+        assert.strictEqual(s.g.wait, 20, 'capped at 20 s');
     });
 
     it('a try is judged by audio and other video, not by the just-resumed stream itself', async () => {
@@ -111,13 +130,14 @@ describe('MontemeetRecvGuard', () => {
         s.audio.emit('score', { score: 6 });
         for (let i = 0; i < 3; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, true);
+        s.bwe(5000000, 4000000);
         s.audio.emit('score', { score: 10 });
-        for (let i = 0; i < 5; i++) await s.g.tick();
+        for (let i = 0; i < 3; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, false);
         s.camStudent.emit('score', { score: 3 }); // a resumed stream scores low at first
         for (let i = 0; i < 6; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, false, 'the try passes: audio is clean');
-        assert.strictEqual(s.g.wait, 5);
+        assert.strictEqual(s.g.wait, 8);
     });
 
     it('the guard is never stored on the Peer object — peers are serialised to JSON on every join', () => {

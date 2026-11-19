@@ -18,8 +18,9 @@
  *   pause   — tight AND hurting for 3 s in a row: pause one video consumer, in this order — single-layer cameras of
  *             ordinary participants, the presenter's single-layer camera, single-layer screen share; then the same
  *             for layered (simulcast) video, which the router already thins first. Audio is never touched;
- *   resume  — after 5 s without damage try the last paused one back; if damage returns within 6 s, pause it again
- *             and wait twice as long next time (10, 20, 30 s at most); a clean try resets the wait to 5 s.
+ *   resume  — as soon as the link is no longer tight and the receiver is clean for 3 s, bring the last paused one
+ *             back (one stream at a time, each on a 4 s probation); while the link still looks tight — only a rare
+ *             blind try after 8 s clean, doubling to 20 s after a failed one; a clean try resets the wait.
  * The client gets "montemeetVideoGuard" {consumer_id, paused, reason} — to show "paused: weak connection"
  * instead of a frozen frame.
  */
@@ -29,9 +30,10 @@ const TIGHT = 0.85;
 const AUDIO_HURT = 8;
 const VIDEO_HURT = 5;
 const PAUSE_AFTER = 3;
-const RESUME_FIRST = 5;
-const RESUME_MAX = 30;
-const PROBATION = 6;
+const FREE_RESUME = 3; // link no longer tight and clean for 3 s — bring video back, one stream at a time
+const RESUME_FIRST = 8; // a blind try while the link still looks tight — after 8 s clean …
+const RESUME_MAX = 20; // … doubling to 20 s after a failed try
+const PROBATION = 4;
 
 class MontemeetRecvGuard {
     /**
@@ -132,24 +134,33 @@ class MontemeetRecvGuard {
                     this.wait = RESUME_FIRST;
                 }
             }
+            const tight = this.tight();
             this.bad = bad ? this.bad + 1 : 0;
             this.good = hurt ? 0 : this.good + 1;
+            this.free = !hurt && !tight ? (this.free || 0) + 1 : 0;
             if (this.bad >= PAUSE_AFTER) {
                 this.bad = 0;
                 const victim = this.pickVictim();
                 if (victim) await this.pause(victim.consumer.id, 'канал тесен, приём портится');
                 return;
             }
-            if (this.paused.length && !this.probation && this.good >= this.wait) {
-                this.good = 0;
-                const id = this.paused.pop();
-                const it = this.items.get(id);
-                if (!it) return;
-                await it.consumer.resume();
-                await it.consumer.requestKeyFrame().catch(() => {});
-                this.stats.resumes++;
-                this.probation = { id, left: PROBATION };
-                this.note(it, false, 'пробую вернуть');
+            /* Back: as soon as the link is no longer tight and clean (BWE recovered — the arch is behind) — fast,
+               one stream at a time; while it still looks tight — only a rare blind try (bench 20.11: every try of a
+               2.4 Mbit/s stream into a ~1 Mbit/s link spiked concealed audio to 11–26 %). */
+            if (this.paused.length && !this.probation) {
+                const why = this.free >= FREE_RESUME ? 'канал освободился' : this.good >= this.wait ? 'пробую вернуть' : null;
+                if (why) {
+                    this.good = 0;
+                    this.free = 0;
+                    const id = this.paused.pop();
+                    const it = this.items.get(id);
+                    if (!it) return;
+                    await it.consumer.resume();
+                    await it.consumer.requestKeyFrame().catch(() => {});
+                    this.stats.resumes++;
+                    this.probation = { id, left: PROBATION };
+                    this.note(it, false, why);
+                }
             }
         } catch (e) {
             this.log.warn('Montemeet: защита приёма — сбой такта', { peer: this.peerName, error: e.message });
