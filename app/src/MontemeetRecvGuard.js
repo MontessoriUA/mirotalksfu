@@ -18,7 +18,8 @@
  *   pause   — tight AND hurting for 3 s in a row: pause one video consumer, in this order — single-layer cameras of
  *             ordinary participants, the presenter's single-layer camera, single-layer screen share; then the same
  *             for layered (simulcast) video, which the router already thins first. Audio is never touched;
- *   resume  — as soon as the link is no longer tight and the receiver is clean for 3 s, bring the last paused one
+ *   resume  — as soon as the estimate fits what flows plus the stream to return (its bitrate before the pause,
+ *             +10 %) and the receiver is clean for 3 s, bring the last paused one
  *             back (one stream at a time, each on a 4 s probation); while the link still looks tight — only a rare
  *             blind try after 8 s clean, doubling to 20 s after a failed one; a clean try resets the wait.
  * The client gets "montemeetVideoGuard" {consumer_id, paused, reason} — to show "paused: weak connection"
@@ -27,6 +28,7 @@
 
 const TICK_MS = 1000;
 const TIGHT = 0.85;
+const TIGHT_FREE = 1.1; // to bring a stream back the estimate must exceed flowing + that stream by 10 %
 const AUDIO_HURT = 8;
 const VIDEO_HURT = 5;
 const PAUSE_AFTER = 3;
@@ -137,7 +139,8 @@ class MontemeetRecvGuard {
             const tight = this.tight();
             this.bad = bad ? this.bad + 1 : 0;
             this.good = hurt ? 0 : this.good + 1;
-            this.free = !hurt && !tight ? (this.free || 0) + 1 : 0;
+            this.free = !hurt && this.fits() ? (this.free || 0) + 1 : 0;
+            this.trace(tight, hurt);
             if (this.bad >= PAUSE_AFTER) {
                 this.bad = 0;
                 const victim = this.pickVictim();
@@ -167,6 +170,23 @@ class MontemeetRecvGuard {
         }
     }
 
+    /** The link fits what flows now plus the next stream to bring back (its bitrate before the pause). */
+    fits() {
+        if (!this.bwe || Date.now() - this.bweAt > 5000) return false;
+        const next = this.items.get(this.paused[this.paused.length - 1]);
+        const extra = next?.bitrate || 0;
+        return this.bwe.availableBitrate >= TIGHT_FREE * ((this.bwe.desiredBitrate || 0) + extra);
+    }
+
+    /** Test rooms: every 5 s while anything is tight or paused — the numbers the rule decides on. */
+    trace(tight, hurt) {
+        this.traceTick = (this.traceTick || 0) + 1;
+        if (this.traceTick % 5 || (!tight && !hurt && !this.paused.length)) return;
+        const bwe = this.bwe ? `${Math.round(this.bwe.availableBitrate / 1000)}/${Math.round(this.bwe.desiredBitrate / 1000)}` : '—';
+        const scores = [...this.items.values()].map((x) => `${x.kind[0]}${x.consumer.paused ? 'п' : x.score}`).join(' ');
+        this.log.info('Montemeet: защита приёма — канал', { peer: this.peerName, 'доступно/нужно': bwe, оценки: scores, тесно: tight, потери: hurt });
+    }
+
     pickVictim() {
         let best = null;
         for (const it of this.items.values()) {
@@ -179,6 +199,14 @@ class MontemeetRecvGuard {
     async pause(id, reason) {
         const it = this.items.get(id);
         if (!it || it.consumer.paused) return;
+        // Its bitrate before the pause: the link must fit it again before it comes back (bench 20.11 — with it
+        // paused, "desired" no longer counted it, the link looked free at once, and video swung back and forth
+        // every ~10 s, hurting audio more than no guard at all).
+        try {
+            const st = await it.consumer.getStats();
+            const out = (st || []).find((r) => r.type === 'outbound-rtp');
+            if (out && out.bitrate) it.bitrate = out.bitrate;
+        } catch (_) {}
         await it.consumer.pause();
         this.paused = this.paused.filter((x) => x !== id);
         this.paused.push(id);

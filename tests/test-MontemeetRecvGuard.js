@@ -21,6 +21,7 @@ function fakeConsumer(id, kind, type) {
     c.pause = async () => { c.paused = true; };
     c.resume = async () => { c.paused = false; };
     c.requestKeyFrame = async () => { c.keyframes++; };
+    c.getStats = async () => [{ type: 'outbound-rtp', bitrate: kind === 'video' ? 2000000 : 64000 }];
     return c;
 }
 
@@ -86,8 +87,8 @@ describe('MontemeetRecvGuard', () => {
         for (let i = 0; i < 6; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, true);
         assert.strictEqual(s.camTeacher.paused, true);
-        // the arch is behind: BWE recovered, audio clean
-        s.bwe(5000000, 4000000);
+        // the arch is behind: BWE recovered, audio clean (fits 1 Mbit/s flowing + 2 Mbit/s to return, +10 %)
+        s.bwe(5000000, 1000000);
         s.audio.emit('score', { score: 10 });
         await s.g.tick(); await s.g.tick();
         assert.strictEqual(s.camTeacher.paused, true, 'not before 3 s');
@@ -97,6 +98,22 @@ describe('MontemeetRecvGuard', () => {
         assert.strictEqual(s.camStudent.paused, true, 'one at a time');
         for (let i = 0; i < 7; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, false, 'the next one after the probation');
+    });
+
+    it('paused stream does not count in "desired" — the link must fit it again, no swinging back (bench 20.11)', async () => {
+        const s = setup();
+        s.bwe(1000000, 4000000);
+        s.audio.emit('score', { score: 6 });
+        for (let i = 0; i < 3; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, true);
+        // paused: desired dropped to what still flows — 1.2 Mbit/s available "looks" enough, but not with 2 Mbit/s back
+        s.bwe(1200000, 900000);
+        s.audio.emit('score', { score: 10 });
+        for (let i = 0; i < 5; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, true, 'does not fit 0.9 + 2.0 Mbit/s');
+        s.bwe(3500000, 900000);
+        for (let i = 0; i < 3; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, false, 'fits — back');
     });
 
     it('link still tight — only a rare blind try (8 s), a failed one doubles the wait (max 20 s)', async () => {
@@ -130,7 +147,7 @@ describe('MontemeetRecvGuard', () => {
         s.audio.emit('score', { score: 6 });
         for (let i = 0; i < 3; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, true);
-        s.bwe(5000000, 4000000);
+        s.bwe(5000000, 1000000);
         s.audio.emit('score', { score: 10 });
         for (let i = 0; i < 3; i++) await s.g.tick();
         assert.strictEqual(s.camStudent.paused, false);
