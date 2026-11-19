@@ -1,0 +1,195 @@
+'use strict';
+
+/*
+ * Montemeet (2026-11-19): receive guard — audio first on a weak downlink.
+ *
+ * Field (16.11, 19.11; Samsung on 2.4 GHz) and the weak-network bench (tools/stend_seti.mjs, emulator downlink
+ * throttled): a phone camera arrives as ONE layer at up to 2–2.4 Mbit/s, and a screen share as one size; the
+ * router cannot thin them (simulcast cameras it already drops to the lowest layer by itself). When the receiver's
+ * link is narrower than that, the queue grows, audio packets are lost or late along with video, the signalling
+ * socket times out ("ping timeout"), the client rejoins, and the 10–15 s delays and "the music breaks up" follow.
+ *
+ * Rule (Ivan 19.11: pause only "when it really cannot be received normally"; recover fast — a dip may be local,
+ * like walking under an arch):
+ *   tight   — the receiver's estimated downlink (BWE trace "out" of its consumer transport) is below 85 % of what
+ *             its consumers want;
+ *   hurting — the receiver already reports damage: an audio consumer score ≤ 8 or a video consumer score ≤ 5
+ *             (mediasoup scores the stream from the receiver's own RTCP loss, 10 = clean);
+ *   pause   — tight AND hurting for 3 s in a row: pause one video consumer, in this order — single-layer cameras of
+ *             ordinary participants, the presenter's single-layer camera, single-layer screen share; then the same
+ *             for layered (simulcast) video, which the router already thins first. Audio is never touched;
+ *   resume  — after 5 s without damage try the last paused one back; if damage returns within 6 s, pause it again
+ *             and wait twice as long next time (10, 20, 30 s at most); a clean try resets the wait to 5 s.
+ * The client gets "montemeetVideoGuard" {consumer_id, paused, reason} — to show "paused: weak connection"
+ * instead of a frozen frame.
+ */
+
+const TICK_MS = 1000;
+const TIGHT = 0.85;
+const AUDIO_HURT = 8;
+const VIDEO_HURT = 5;
+const PAUSE_AFTER = 3;
+const RESUME_FIRST = 5;
+const RESUME_MAX = 30;
+const PROBATION = 6;
+
+class MontemeetRecvGuard {
+    /**
+     * @param {object} o
+     * @param {string} o.peerName    receiver, for the log
+     * @param {object} o.transport   its mediasoup consumer WebRtcTransport
+     * @param {Function} o.send      (action, data) → to this receiver's socket
+     * @param {object} o.log         Logger
+     */
+    constructor({ peerName, transport, send, log }) {
+        this.peerName = peerName;
+        this.transport = transport;
+        this.send = send;
+        this.log = log;
+        this.items = new Map(); // consumer id → { consumer, rank, from, kind, simple, score }
+        this.paused = []; // guard-paused consumer ids, last paused at the end
+        this.bwe = null;
+        this.bweAt = 0;
+        this.bad = 0;
+        this.good = 0;
+        this.wait = RESUME_FIRST;
+        this.probation = null; // { id, left }
+        this.stats = { pauses: 0, resumes: 0 };
+        transport.enableTraceEvent(['bwe']).catch(() => {});
+        transport.on('trace', (t) => {
+            if (t.type === 'bwe' && t.direction === 'out' && t.info) {
+                this.bwe = t.info;
+                this.bweAt = Date.now();
+            }
+        });
+        this.timer = setInterval(() => this.tick(), TICK_MS);
+        transport.observer.once('close', () => this.stop());
+    }
+
+    stop() {
+        clearInterval(this.timer);
+        if (this.stats.pauses) {
+            this.log.info('Montemeet: защита приёма — итог', { peer: this.peerName, ...this.stats });
+        }
+    }
+
+    /**
+     * @param {object} consumer   mediasoup Consumer
+     * @param {object} meta       { mediaType: 'audioType'|'videoType'|'screenType', presenter: boolean, from: string }
+     */
+    add(consumer, meta = {}) {
+        const simple = consumer.type === 'simple';
+        // Lower rank = paused earlier. Audio never.
+        let rank = null;
+        if (consumer.kind === 'video') {
+            const base = meta.mediaType === 'screenType' ? 2 : meta.presenter ? 1 : 0;
+            rank = (simple ? 0 : 10) + base;
+        }
+        const item = { consumer, rank, from: meta.from || '', kind: consumer.kind, simple, score: 10 };
+        this.items.set(consumer.id, item);
+        consumer.on('score', (s) => {
+            if (s && typeof s.score === 'number') item.score = s.score;
+        });
+        consumer.observer.once('close', () => {
+            this.items.delete(consumer.id);
+            this.paused = this.paused.filter((id) => id !== consumer.id);
+            if (this.probation?.id === consumer.id) this.probation = null;
+        });
+    }
+
+    tight() {
+        if (!this.bwe || Date.now() - this.bweAt > 5000) return false;
+        const want = this.bwe.desiredBitrate || 0;
+        return want > 0 && this.bwe.availableBitrate < TIGHT * want;
+    }
+
+    hurting() {
+        for (const it of this.items.values()) {
+            if (it.consumer.paused || it.consumer.producerPaused) continue;
+            if (it.kind === 'audio' && it.score <= AUDIO_HURT) return true;
+            if (it.kind === 'video' && it.score <= VIDEO_HURT) return true;
+        }
+        return false;
+    }
+
+    async tick() {
+        try {
+            const hurt = this.hurting();
+            const bad = hurt && this.tight();
+            if (this.probation) {
+                if (hurt) {
+                    const id = this.probation.id;
+                    this.probation = null;
+                    this.wait = Math.min(RESUME_MAX, this.wait * 2);
+                    await this.pause(id, 'проба не прошла');
+                    this.bad = 0;
+                    return;
+                }
+                if (--this.probation.left <= 0) {
+                    this.probation = null;
+                    this.wait = RESUME_FIRST;
+                }
+            }
+            this.bad = bad ? this.bad + 1 : 0;
+            this.good = hurt ? 0 : this.good + 1;
+            if (this.bad >= PAUSE_AFTER) {
+                this.bad = 0;
+                const victim = this.pickVictim();
+                if (victim) await this.pause(victim.consumer.id, 'канал тесен, приём портится');
+                return;
+            }
+            if (this.paused.length && !this.probation && this.good >= this.wait) {
+                this.good = 0;
+                const id = this.paused.pop();
+                const it = this.items.get(id);
+                if (!it) return;
+                await it.consumer.resume();
+                await it.consumer.requestKeyFrame().catch(() => {});
+                this.stats.resumes++;
+                this.probation = { id, left: PROBATION };
+                this.note(it, false, 'пробую вернуть');
+            }
+        } catch (e) {
+            this.log.warn('Montemeet: защита приёма — сбой такта', { peer: this.peerName, error: e.message });
+        }
+    }
+
+    pickVictim() {
+        let best = null;
+        for (const it of this.items.values()) {
+            if (it.rank === null || it.consumer.paused || it.consumer.producerPaused) continue;
+            if (!best || it.rank < best.rank) best = it;
+        }
+        return best;
+    }
+
+    async pause(id, reason) {
+        const it = this.items.get(id);
+        if (!it || it.consumer.paused) return;
+        await it.consumer.pause();
+        this.paused = this.paused.filter((x) => x !== id);
+        this.paused.push(id);
+        this.stats.pauses++;
+        this.note(it, true, reason);
+    }
+
+    note(it, paused, reason) {
+        const bwe = this.bwe
+            ? { доступно: Math.round(this.bwe.availableBitrate / 1000), нужно: Math.round(this.bwe.desiredBitrate / 1000) }
+            : {};
+        const scores = [...this.items.values()].map((x) => `${x.kind[0]}${x.score}`).join(' ');
+        this.log.info(`Montemeet: защита приёма — ${paused ? 'пауза' : 'возврат'}`, {
+            peer: this.peerName,
+            from: it.from,
+            kind: it.kind,
+            layers: it.simple ? 1 : 'слои',
+            reason,
+            кбит: bwe,
+            оценки: scores,
+            ждать: this.wait,
+        });
+        this.send('montemeetVideoGuard', { consumer_id: it.consumer.id, paused, reason });
+    }
+}
+
+module.exports = MontemeetRecvGuard;

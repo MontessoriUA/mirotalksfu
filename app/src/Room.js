@@ -3,6 +3,9 @@
 const { v4: uuidv4 } = require('uuid');
 const config = require('./config');
 const montemeetTurn = require('./MontemeetTurn');
+const MontemeetRecvGuard = require('./MontemeetRecvGuard');
+// Montemeet (19.11): receive guard (audio first on a weak downlink) — test rooms only until a live run.
+const MONTEMEET_GUARD_ROOMS = new Set(['montemeet-smoke', 'montemeet-test']);
 const RtmpStreaming = require('./RtmpStreaming');
 const Logger = require('./Logger');
 const log = new Logger('Room');
@@ -892,6 +895,29 @@ module.exports = class Room {
 
         const { consumer, params, reused } = peerConsumer;
         const { id, kind } = consumer;
+
+        if (!reused && MONTEMEET_GUARD_ROOMS.has(this.id)) {
+            try {
+                if (!peer.montemeetRecvGuard || peer.montemeetRecvGuard.transport !== consumerTransport) {
+                    peer.montemeetRecvGuard?.stop();
+                    peer.montemeetRecvGuard = new MontemeetRecvGuard({
+                        peerName: peer_name,
+                        transport: consumerTransport,
+                        send: (action, data) => this.send(socket_id, action, data),
+                        log,
+                    });
+                }
+                const owner = [...this.peers.values()].find((p) => p.producers && p.producers.has(producerId));
+                const producer = owner ? owner.getProducer(producerId) : null;
+                peer.montemeetRecvGuard.add(consumer, {
+                    mediaType: producer?.appData?.mediaType,
+                    presenter: !!owner?.peer_presenter,
+                    from: owner?.peer_name,
+                });
+            } catch (error) {
+                log.warn('Montemeet: защита приёма не поднялась', { peer_name, error: error.message });
+            }
+        }
 
         if (!reused) {
             consumer.once('producerclose', () => {
