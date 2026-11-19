@@ -103,9 +103,11 @@ class MontemeetRecvGuard {
         return want > 0 && this.bwe.availableBitrate < TIGHT * want;
     }
 
-    hurting() {
+    /** `except` — the consumer on probation: a just-resumed stream always scores low at first (bench 19.11 —
+        every try "failed" on its own score within a second), so a try is judged by audio and the other video. */
+    hurting(except = null) {
         for (const it of this.items.values()) {
-            if (it.consumer.paused || it.consumer.producerPaused) continue;
+            if (it.consumer.paused || it.consumer.producerPaused || it.consumer.id === except) continue;
             if (it.kind === 'audio' && it.score <= AUDIO_HURT) return true;
             if (it.kind === 'video' && it.score <= VIDEO_HURT) return true;
         }
@@ -114,7 +116,7 @@ class MontemeetRecvGuard {
 
     async tick() {
         try {
-            const hurt = this.hurting();
+            const hurt = this.hurting(this.probation?.id);
             const bad = hurt && this.tight();
             if (this.probation) {
                 if (hurt) {

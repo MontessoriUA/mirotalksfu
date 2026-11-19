@@ -105,6 +105,28 @@ describe('MontemeetRecvGuard', () => {
         assert.strictEqual(s.g.wait, 5, 'a clean try resets the wait');
     });
 
+    it('a try is judged by audio and other video, not by the just-resumed stream itself', async () => {
+        const s = setup();
+        s.bwe(1000000, 4000000);
+        s.audio.emit('score', { score: 6 });
+        for (let i = 0; i < 3; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, true);
+        s.audio.emit('score', { score: 10 });
+        for (let i = 0; i < 5; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, false);
+        s.camStudent.emit('score', { score: 3 }); // a resumed stream scores low at first
+        for (let i = 0; i < 6; i++) await s.g.tick();
+        assert.strictEqual(s.camStudent.paused, false, 'the try passes: audio is clean');
+        assert.strictEqual(s.g.wait, 5);
+    });
+
+    it('the guard is never stored on the Peer object — peers are serialised to JSON on every join', () => {
+        // bench 19.11: `peer.montemeetRecvGuard = …` broke every join into the room ("circular structure")
+        const src = require('fs').readFileSync(require('path').join(__dirname, '../app/src/Room.js'), 'utf8');
+        assert.ok(!/peer\.montemeet\w*\s*=/.test(src), 'Room.js must not attach the guard to a peer');
+        assert.ok(/new WeakMap\(\)/.test(src));
+    });
+
     it('a closed consumer leaves the guard', async () => {
         const s = setup();
         s.camStudent.observer.emit('close');
