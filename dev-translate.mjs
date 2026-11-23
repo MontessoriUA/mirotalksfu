@@ -29,15 +29,23 @@
 //   TRANSLATE_PHRASES       папка с набором фраз (если не рядом с форком)
 //
 // Запуск (Node 24; на маке первым в PATH стоит Node 20):
-//   node --env-file=.env dev-translate.mjs qwen
-//   node --env-file=.env dev-translate.mjs qwen --glossary
-//   node --env-file=.env dev-translate.mjs openai --kind name
-//   node --env-file=.env dev-translate.mjs qwen --only mono-ru
-//   node --env-file=.env dev-translate.mjs qwen --limit 5 --same-lang
+//   node dev-translate.mjs qwen
+//   node dev-translate.mjs qwen --glossary
+//   node dev-translate.mjs openai --kind name
+//   node dev-translate.mjs qwen --only mono-ru
+//   node dev-translate.mjs qwen --limit 5 --same-lang
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocket } from 'ws';
+
+// Ключи берём из .env стенда, как и сервер. Так их не надо передавать флагом
+// или в командной строке — в историю оболочки они не попадают.
+try {
+    process.loadEnvFile(path.join(import.meta.dirname, '.env'));
+} catch {
+    /* .env может не быть — тогда ключи ждём из окружения */
+}
 
 // ---------- разбор аргументов ----------
 
@@ -213,8 +221,9 @@ if (!provider) {
 const key = process.env[provider.keyEnv];
 if (!key) {
     console.error(`Нет ключа: переменная ${provider.keyEnv} не задана.`);
-    console.error('Ключ в репозиторий не кладём. Положите его в локальный .env стенда и запускайте так:');
-    console.error('  node --env-file=.env dev-translate.mjs ' + providerName);
+    console.error('Ключ в репозиторий не кладём — допишите строку в .env стенда:');
+    console.error(`  ${provider.keyEnv}=...`);
+    console.error('и запускайте: node dev-translate.mjs ' + providerName);
     if (providerName === 'qwen') {
         console.error('\nГде взять (TRANSLATE.md §3.1): Model Studio, регион Singapore,');
         console.error('ключ sk-ws… показывается один раз; не забыть включить «Free Quota Only».');
