@@ -354,15 +354,18 @@ async function runPhrase(item, { target, glossary, tailCapMs = 30000 }) {
     // Выжили ли термины: по словарю ru→zh из phrases.json. Проверка грубая
     // (ищем ожидаемый иероглиф в переводе), но объективная и не на глаз.
     res.terms = { expected: 0, found: 0, missing: [] };
-    if (target === 'zh') {
-        for (const term of item.terms || []) {
-            const want = spec.glossary[term] || spec.glossary[term.toLowerCase()];
-            if (!want) continue;
-            res.terms.expected++;
-            if (res.text.includes(want)) res.terms.found++;
-            else res.terms.missing.push(`${term}→${want}`);
-        }
+    const dict = target === 'zh' ? spec.glossary : spec.glossary_zh || {};
+    for (const term of item.terms || []) {
+        const want = dict[term] || dict[term.toLowerCase()];
+        if (!want) continue;
+        res.terms.expected++;
+        const hit = target === 'zh' ? res.text.includes(want) : res.text.toLowerCase().includes(want.toLowerCase());
+        if (hit) res.terms.found++;
+        else res.terms.missing.push(`${term}→${want}`);
     }
+    // Иероглифы в русском переводе — отдельная беда: модель оставляет термин
+    // непереведённым. Ловим прямо, по диапазону китайских знаков.
+    res.untranslated = target === 'ru' ? (res.text.match(/[\u4e00-\u9fff]+/g) || []) : [];
     // Отставание: когда перевод доиграл относительно конца источника.
     res.drift = res.lastAudio === null ? null : res.lastAudio / 1000 - res.srcSec;
     // Обрыв посередине (§3.4, жалоба на Qwen: «output simply stopped partway
@@ -381,6 +384,10 @@ const runTag = `${providerName}${useGlossary ? '-glossary' : ''}-${new Date().to
 let items = spec.items.filter((i) => (onlyId ? i.id === onlyId : true)).filter((i) => (onlyKind ? i.kind === onlyKind : true));
 if (limit) items = items.slice(0, limit);
 
+// Словарь у Qwen односторонний («источник → перевод»), поэтому для каждого
+// направления свой. Без обратного термины в речи студента остаются иероглифами
+// прямо в русском переводе: «Этот и弦, я не могу его зажать».
+const glossaryFor = (target) => (!useGlossary ? null : target === 'zh' ? spec.glossary : spec.glossary_zh || null);
 const glossary = useGlossary ? spec.glossary : null;
 if (useGlossary && providerName === 'openai') {
     console.log('— у OpenAI глоссария нет вовсе (§3.2), ключ --glossary для него не действует\n');
@@ -393,7 +400,7 @@ console.log(`Результаты: dev-translate-results/${runTag}/\n`);
 
 const results = [];
 for (const item of items) {
-    const r = await runPhrase(item, { target: item.target, glossary });
+    const r = await runPhrase(item, { target: item.target, glossary: glossaryFor(item.target) });
     results.push(r);
     const mark = r.error ? '—' : '+';
     const ms = (v) => (v === null || v === undefined ? '   —' : String(Math.round(v)).padStart(5));
@@ -408,6 +415,7 @@ for (const item of items) {
     if (r.heard) console.log(`    услышал:  ${r.heard}`);
     if (r.text) console.log(`    перевёл:  ${r.text}`);
     if (!r.error && r.terms?.missing.length) console.log(`    потерял:  ${r.terms.missing.join(', ')}`);
+    if (r.untranslated?.length) console.log(`    НЕ ПЕРЕВЕЛ: ${r.untranslated.join(' ')} — иероглифы остались в русском тексте`);
     await delay(500); // не частить подключениями: у Qwen лимит 10 в минуту (§3.1)
 }
 
@@ -458,6 +466,8 @@ console.log(
         (drifts.length ? `, худшее ${Math.max(...drifts).toFixed(1)} с` : '')
 );
 console.log(`термины на месте: ${terms.e ? `${terms.f} из ${terms.e}` : '—'}`);
+const dirty = ok.filter((r) => r.untranslated?.length);
+if (dirty.length) console.log(`иероглифы остались в русском переводе: ${dirty.length} фраз (${dirty.map((r) => r.id).join(', ')})`);
 const cuts = ok.filter((r) => r.cut);
 console.log(
     `подозрение на обрыв перевода: ${cuts.length ? `${cuts.length} (${cuts.map((r) => r.id).join(', ')})` : 'нет'}`
