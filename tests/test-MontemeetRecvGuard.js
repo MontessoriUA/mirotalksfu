@@ -181,7 +181,7 @@ describe('MontemeetRecvGuard', () => {
         assert.strictEqual(cam.paused, false);
         assert.strictEqual(sent.length, 0);
         assert.strictEqual(lines.length, 3);
-        assert.deepStrictEqual(lines[0].d, { peer: 'приёмник', доступно: 400, нужно: 5000, 'идёт звук/видео': '64/2000', оценки: 'a5 v10' });
+        assert.deepStrictEqual(lines[0].d, { peer: 'приёмник', доступно: 400, нужно: 5000, 'идёт звук/видео': '64/2000', оценки: 'a5 v10', 'камерам можно': 'Ира:276' });
     });
 
     it('Room.js keeps the guard observe-only until the sender cap exists (bench 23.11)', () => {

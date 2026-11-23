@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const config = require('./config');
 const montemeetTurn = require('./MontemeetTurn');
 const MontemeetRecvGuard = require('./MontemeetRecvGuard');
+const MontemeetSenderCap = require('./MontemeetSenderCap');
 // Montemeet (19.11): receive guard (audio first on a weak downlink) — test rooms only until a live run.
 const MONTEMEET_GUARD_ROOMS = new Set(['montemeet-smoke', 'montemeet-test']);
 // 23.11: pauses off — only the link trace (bench: pauses hide the picture for the whole dip and blind tries hurt
@@ -12,6 +13,7 @@ const MONTEMEET_GUARD_ACT = false;
 // Guards live OUTSIDE the Peer object: the server serialises peers (JSON) on every join, and a guard holds the
 // transport — "Converting circular structure to JSON", every join into the room failed (bench 19.11).
 const montemeetGuards = new WeakMap(); // Peer → MontemeetRecvGuard
+const montemeetCaps = new WeakMap(); // Room → MontemeetSenderCap (23.11: a phone camera's cap from its receivers)
 const RtmpStreaming = require('./RtmpStreaming');
 const Logger = require('./Logger');
 const log = new Logger('Room');
@@ -905,6 +907,20 @@ module.exports = class Room {
         if (!reused && MONTEMEET_GUARD_ROOMS.has(this.id)) {
             try {
                 let guard = montemeetGuards.get(peer);
+                let caps = montemeetCaps.get(this);
+                if (!caps) {
+                    caps = new MontemeetSenderCap({
+                        send: (sid, action, data) => this.send(sid, action, data),
+                        ownerOf: (pid) => {
+                            for (const [sid, p] of this.peers) {
+                                if (p.producers && p.producers.has(pid)) return { socketId: sid, name: p.peer_name };
+                            }
+                            return null;
+                        },
+                        log,
+                    });
+                    montemeetCaps.set(this, caps);
+                }
                 if (!guard || guard.transport !== consumerTransport) {
                     guard?.stop();
                     guard = new MontemeetRecvGuard({
@@ -913,6 +929,7 @@ module.exports = class Room {
                         send: (action, data) => this.send(socket_id, action, data),
                         log,
                         act: MONTEMEET_GUARD_ACT,
+                        onBudget: (pid, kbps) => caps.update(pid, socket_id, kbps, peer_name),
                     });
                     montemeetGuards.set(peer, guard);
                 }

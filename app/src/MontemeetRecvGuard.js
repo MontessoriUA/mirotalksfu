@@ -42,6 +42,7 @@ const RESUME_FIRST = 8; // a blind try while the link still looks tight — afte
 const RESUME_MAX = 20; // … doubling to 20 s after a failed try
 const PROBATION = 4;
 const OBSERVE_EVERY = 2; // observe-only: trace every 2 s
+const CAP_SHARE = 0.85; // a camera's budget: 85 % of the receiver's estimate minus everything else flowing to it
 
 class MontemeetRecvGuard {
     /**
@@ -51,9 +52,12 @@ class MontemeetRecvGuard {
      * @param {Function} o.send      (action, data) → to this receiver's socket
      * @param {object} o.log         Logger
      * @param {boolean} [o.act]     false — observe only (no pauses), trace every 2 s
+     * @param {Function} [o.onBudget] (producerId, kbps | null) — how much video this receiver's link has room for,
+     *                                per single-layer camera it receives (MontemeetSenderCap)
      */
-    constructor({ peerName, transport, send, log, act = true }) {
+    constructor({ peerName, transport, send, log, act = true, onBudget = null }) {
         this.act = act;
+        this.onBudget = onBudget;
         this.peerName = peerName;
         this.transport = transport;
         this.send = send;
@@ -97,13 +101,15 @@ class MontemeetRecvGuard {
             const base = meta.mediaType === 'screenType' ? 2 : meta.presenter ? 1 : 0;
             rank = (simple ? 0 : 10) + base;
         }
-        const item = { consumer, rank, from: meta.from || '', kind: consumer.kind, simple, score: 10 };
+        const camera = consumer.kind === 'video' && simple && meta.mediaType === 'videoType';
+        const item = { consumer, rank, from: meta.from || '', kind: consumer.kind, simple, camera, score: 10, kb: 0 };
         this.items.set(consumer.id, item);
         consumer.on('score', (s) => {
             if (s && typeof s.score === 'number') item.score = s.score;
         });
         consumer.observer.once('close', () => {
             this.items.delete(consumer.id);
+            if (camera && this.onBudget) this.onBudget(consumer.producerId, null);
             this.paused = this.paused.filter((id) => id !== consumer.id);
             if (this.probation?.id === consumer.id) this.probation = null;
         });
@@ -192,17 +198,27 @@ class MontemeetRecvGuard {
                 const st = await it.consumer.getStats().catch(() => []);
                 const out = (st || []).find((r) => r.type === 'outbound-rtp');
                 const kb = out && out.bitrate ? Math.round(out.bitrate / 1000) : 0;
+                it.kb = kb;
                 if (it.kind === 'audio') audio += kb;
                 else video += kb;
                 scores.push(`${it.kind[0]}${it.consumer.paused ? 'п' : it.score}`);
             }
             const fresh = this.bwe && Date.now() - this.bweAt <= 5000;
+            const avail = fresh ? Math.round(this.bwe.availableBitrate / 1000) : null;
+            const budgets = [];
+            for (const it of this.items.values()) {
+                if (!it.camera || it.consumer.paused || it.consumer.producerPaused) continue;
+                const kbps = avail === null ? null : Math.max(0, Math.round(CAP_SHARE * avail - (audio + video - it.kb)));
+                if (kbps !== null) budgets.push(`${it.from}:${kbps}`);
+                if (this.onBudget) this.onBudget(it.consumer.producerId, kbps);
+            }
             this.log.info('Montemeet: защита приёма — след', {
                 peer: this.peerName,
-                доступно: fresh ? Math.round(this.bwe.availableBitrate / 1000) : null,
+                доступно: avail,
                 нужно: fresh ? Math.round((this.bwe.desiredBitrate || 0) / 1000) : null,
                 'идёт звук/видео': `${audio}/${video}`,
                 оценки: scores.join(' '),
+                ...(budgets.length ? { 'камерам можно': budgets.join(' ') } : {}),
             });
         } catch (e) {
             this.log.warn('Montemeet: защита приёма — сбой следа', { peer: this.peerName, error: e.message });
