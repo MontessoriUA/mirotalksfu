@@ -64,6 +64,8 @@ const limit = Number(value('limit', 0)) || 0;
 const sameLang = flag('same-lang');
 // --live: брать живую начитку вместо синтеза (app-spec/translate-phrases/split-live.mjs)
 const live = flag('live');
+// --retake: взять перечитанный вариант фразы (audio/16k-live-retake)
+const retake = flag('retake');
 
 // ---------- где лежит набор фраз ----------
 
@@ -236,7 +238,7 @@ if (!key) {
 // ---------- один прогон одной фразы ----------
 
 async function runPhrase(item, { target, glossary, tailCapMs = 30000 }) {
-    const suffix = live ? '-live' : '';
+    const suffix = retake ? '-live-retake' : live ? '-live' : '';
     const wavFile = path.join(phrasesDir, 'audio', `${provider.rate / 1000}k${suffix}`, `${item.id}.wav`);
     if (!fs.existsSync(wavFile)) {
         return {
@@ -387,7 +389,7 @@ async function runPhrase(item, { target, glossary, tailCapMs = 30000 }) {
 
 // ---------- прогон набора ----------
 
-const runTag = `${providerName}${useGlossary ? '-glossary' : ''}${live ? '-live' : ''}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`;
+const runTag = `${providerName}${useGlossary ? '-glossary' : ''}${retake ? '-retake' : live ? '-live' : ''}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`;
 
 let items = spec.items.filter((i) => (onlyId ? i.id === onlyId : true)).filter((i) => (onlyKind ? i.kind === onlyKind : true));
 if (limit) items = items.slice(0, limit);
@@ -402,7 +404,7 @@ if (useGlossary && providerName === 'openai') {
 }
 
 console.log(`Поставщик: ${provider.title} (${provider.model()})`);
-console.log(`Фраз: ${items.length} | вход PCM ${provider.rate} Гц чанками ${provider.chunkMs} мс | звук: ${live ? 'живая начитка' : 'синтез'}`);
+console.log(`Фраз: ${items.length} | вход PCM ${provider.rate} Гц чанками ${provider.chunkMs} мс | звук: ${retake ? 'живая начитка, перечитанный вариант' : live ? 'живая начитка' : 'синтез'}`);
 console.log(`Глоссарий: ${glossary && providerName !== 'openai' ? `${Object.keys(glossary).length} терминов` : 'нет'}`);
 console.log(`Результаты: dev-translate-results/${runTag}/\n`);
 
