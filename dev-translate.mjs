@@ -466,7 +466,22 @@ console.log(`звука отправлено: ${srcSec.toFixed(0)} с`);
 if (tok.input || tok.output) {
     const cost = (tok.input / 1e6) * 7.5 + (tok.output / 1e6) * 30;
     console.log(`расход по usage: вход ${tok.input} + выход ${tok.output} токенов = $${cost.toFixed(4)}`);
-    if (srcSec > 0) console.log(`на урок 45 мин при 18 мин речи это ≈ $${((cost / (srcSec / 60)) * 18).toFixed(2)}`);
+    // Прямой пересчёт завышает: зонд открывает сессию на КАЖДУЮ фразу, поэтому
+    // на каждую ложатся постоянные текстовые токены настройки сессии и хвост
+    // тишины, который VAD дотарифицировал до закрытия фразы. На уроке сессия
+    // одна на весь урок, и это платится один раз. Честная оценка — по одним
+    // звуковым токенам: 7 на секунду входа и 12,5 на секунду выхода (§3.1).
+    const inA = ok.reduce((s, r) => s + (r.usage?.input_tokens_details?.audio_tokens || 0), 0);
+    const outA = ok.reduce((s, r) => s + (r.usage?.output_tokens_details?.audio_tokens || 0), 0);
+    const outT = ok.reduce((s, r) => s + (r.usage?.output_tokens_details?.text_tokens || 0), 0);
+    if (srcSec > 0) {
+        console.log(`  тот же расход в лоб на урок (18 мин речи): $${((cost / (srcSec / 60)) * 18).toFixed(2)} — ЗАВЫШЕНО`);
+        if (inA && outA) {
+            const perSec = ((inA / 1e6) * 7.5 + (outA / 1e6) * 30 + (outT / 1e6) * 20) / srcSec;
+            console.log(`  звука затарифицировано ${(inA / 7).toFixed(0)} с на ${srcSec.toFixed(0)} с речи — разницу добрала тишина до закрытия фразы`);
+            console.log(`  по звуковым токенам на урок (одна сессия на урок): ≈ $${(perSec * 18 * 60).toFixed(2)}`);
+        }
+    }
 } else if (tok.total) {
     console.log(`расход по usage: ${tok.total} токенов, разбивки на вход и выход нет`);
     console.log('  — посмотрите usage в results.json: цена входа и выхода различается вчетверо');
