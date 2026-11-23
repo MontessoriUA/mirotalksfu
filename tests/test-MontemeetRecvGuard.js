@@ -164,6 +164,32 @@ describe('MontemeetRecvGuard', () => {
         assert.ok(/new WeakMap\(\)/.test(src));
     });
 
+    it('observe only (23.11): tight + damage — nothing paused, nothing sent, the link traced every 2 s', async () => {
+        const transport = fakeTransport();
+        const sent = [];
+        const lines = [];
+        const log = { info: (m, d) => lines.push({ m, d }), warn() {} };
+        const g = new MontemeetRecvGuard({ peerName: 'приёмник', transport, send: (a, d) => sent.push({ a, d }), log, act: false });
+        clearInterval(g.timer);
+        const audio = fakeConsumer('a1', 'audio', 'simple');
+        const cam = fakeConsumer('v1', 'video', 'simple');
+        g.add(audio, { mediaType: 'audioType', from: 'Ира' });
+        g.add(cam, { mediaType: 'videoType', from: 'Ира' });
+        transport.emit('trace', { type: 'bwe', direction: 'out', info: { availableBitrate: 400000, desiredBitrate: 5000000 } });
+        audio.emit('score', { score: 5 });
+        for (let i = 0; i < 6; i++) await g.tick();
+        assert.strictEqual(cam.paused, false);
+        assert.strictEqual(sent.length, 0);
+        assert.strictEqual(lines.length, 3);
+        assert.deepStrictEqual(lines[0].d, { peer: 'приёмник', доступно: 400, нужно: 5000, 'идёт звук/видео': '64/2000', оценки: 'a5 v10' });
+    });
+
+    it('Room.js keeps the guard observe-only until the sender cap exists (bench 23.11)', () => {
+        const src = require('fs').readFileSync(require('path').join(__dirname, '../app/src/Room.js'), 'utf8');
+        assert.ok(/const MONTEMEET_GUARD_ACT = false;/.test(src));
+        assert.ok(/act: MONTEMEET_GUARD_ACT/.test(src));
+    });
+
     it('a closed consumer leaves the guard', async () => {
         const s = setup();
         s.camStudent.observer.emit('close');

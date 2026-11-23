@@ -6,6 +6,9 @@ const montemeetTurn = require('./MontemeetTurn');
 const MontemeetRecvGuard = require('./MontemeetRecvGuard');
 // Montemeet (19.11): receive guard (audio first on a weak downlink) — test rooms only until a live run.
 const MONTEMEET_GUARD_ROOMS = new Set(['montemeet-smoke', 'montemeet-test']);
+// 23.11: pauses off — only the link trace (bench: pauses hide the picture for the whole dip and blind tries hurt
+// audio more than they save); docs/СЛАБАЯ-СЕТЬ-19.11.md in montemeet-app.
+const MONTEMEET_GUARD_ACT = false;
 // Guards live OUTSIDE the Peer object: the server serialises peers (JSON) on every join, and a guard holds the
 // transport — "Converting circular structure to JSON", every join into the room failed (bench 19.11).
 const montemeetGuards = new WeakMap(); // Peer → MontemeetRecvGuard
@@ -909,6 +912,7 @@ module.exports = class Room {
                         transport: consumerTransport,
                         send: (action, data) => this.send(socket_id, action, data),
                         log,
+                        act: MONTEMEET_GUARD_ACT,
                     });
                     montemeetGuards.set(peer, guard);
                 }

@@ -24,6 +24,11 @@
  *             blind try after 8 s clean, doubling to 20 s after a failed one; a clean try resets the wait.
  * The client gets "montemeetVideoGuard" {consumer_id, paused, reason} — to show "paused: weak connection"
  * instead of a frozen frame.
+ *
+ * 23.11: `act: false` — observe only: no pauses, a link trace every 2 s (estimate, what actually flows to the
+ * receiver, scores). Bench 23.11 (one-to-one, receiver at 500 kbit/s): with pauses the picture is gone for the whole
+ * dip and every blind try spikes concealed audio to 12–17 % — on average worse than no guard at all. Next: a cap
+ * from the receiver's link to the single-layer sender's own resolution ladder (docs/СЛАБАЯ-СЕТЬ-19.11.md).
  */
 
 const TICK_MS = 1000;
@@ -36,6 +41,7 @@ const FREE_RESUME = 3; // link no longer tight and clean for 3 s — bring video
 const RESUME_FIRST = 8; // a blind try while the link still looks tight — after 8 s clean …
 const RESUME_MAX = 20; // … doubling to 20 s after a failed try
 const PROBATION = 4;
+const OBSERVE_EVERY = 2; // observe-only: trace every 2 s
 
 class MontemeetRecvGuard {
     /**
@@ -44,8 +50,10 @@ class MontemeetRecvGuard {
      * @param {object} o.transport   its mediasoup consumer WebRtcTransport
      * @param {Function} o.send      (action, data) → to this receiver's socket
      * @param {object} o.log         Logger
+     * @param {boolean} [o.act]     false — observe only (no pauses), trace every 2 s
      */
-    constructor({ peerName, transport, send, log }) {
+    constructor({ peerName, transport, send, log, act = true }) {
+        this.act = act;
         this.peerName = peerName;
         this.transport = transport;
         this.send = send;
@@ -119,6 +127,7 @@ class MontemeetRecvGuard {
     }
 
     async tick() {
+        if (!this.act) return this.observe();
         try {
             const hurt = this.hurting(this.probation?.id);
             const bad = hurt && this.tight();
@@ -167,6 +176,36 @@ class MontemeetRecvGuard {
             }
         } catch (e) {
             this.log.warn('Montemeet: защита приёма — сбой такта', { peer: this.peerName, error: e.message });
+        }
+    }
+
+    /** Observe only: what the receiver's link estimate says next to what actually flows to it (23.11 — is the
+        estimate usable as a cap for the sender?). */
+    async observe() {
+        this.traceTick = (this.traceTick || 0) + 1;
+        if (this.traceTick % OBSERVE_EVERY) return;
+        try {
+            let audio = 0;
+            let video = 0;
+            const scores = [];
+            for (const it of this.items.values()) {
+                const st = await it.consumer.getStats().catch(() => []);
+                const out = (st || []).find((r) => r.type === 'outbound-rtp');
+                const kb = out && out.bitrate ? Math.round(out.bitrate / 1000) : 0;
+                if (it.kind === 'audio') audio += kb;
+                else video += kb;
+                scores.push(`${it.kind[0]}${it.consumer.paused ? 'п' : it.score}`);
+            }
+            const fresh = this.bwe && Date.now() - this.bweAt <= 5000;
+            this.log.info('Montemeet: защита приёма — след', {
+                peer: this.peerName,
+                доступно: fresh ? Math.round(this.bwe.availableBitrate / 1000) : null,
+                нужно: fresh ? Math.round((this.bwe.desiredBitrate || 0) / 1000) : null,
+                'идёт звук/видео': `${audio}/${video}`,
+                оценки: scores.join(' '),
+            });
+        } catch (e) {
+            this.log.warn('Montemeet: защита приёма — сбой следа', { peer: this.peerName, error: e.message });
         }
     }
 
