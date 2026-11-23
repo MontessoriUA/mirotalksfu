@@ -34,3 +34,6 @@ public/images/montemeet-splash.*
 # сертификат стенда — в репозиторий не кладём
 montemeet-*peer*.png
 spec-*.png
+
+# Montemeet: результаты зонда перевода (dev-translate.mjs) — звук и json, в git не нужны
+dev-translate-results/
