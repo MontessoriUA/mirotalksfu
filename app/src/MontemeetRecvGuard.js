@@ -43,7 +43,7 @@ const RESUME_MAX = 20; // … doubling to 20 s after a failed try
 const PROBATION = 4;
 const OBSERVE_EVERY = 2; // observe-only: trace every 2 s
 const CAP_SHARE = 0.85; // a camera's budget: 85 % of the receiver's estimate minus everything else flowing to it
-const CONGESTED = 0.9; // the estimate fell below 90 % of what flows to the receiver — it chokes
+const CONGESTED = 0.75; // the estimate fell below 75 % of what flows — it chokes (bench 23.11: while the link is narrow the estimate only mirrors the flow ±10 %, 90 % ratcheted the camera down to 60 kbit/s)
 const WIDE_KBPS = 2000; // the link has room for a phone camera's 720p (2 Mbit/s) — wide open
 
 class MontemeetRecvGuard {
