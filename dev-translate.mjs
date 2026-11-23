@@ -62,6 +62,8 @@ const onlyId = value('only');
 const onlyKind = value('kind');
 const limit = Number(value('limit', 0)) || 0;
 const sameLang = flag('same-lang');
+// --live: брать живую начитку вместо синтеза (app-spec/translate-phrases/split-live.mjs)
+const live = flag('live');
 
 // ---------- где лежит набор фраз ----------
 
@@ -234,9 +236,15 @@ if (!key) {
 // ---------- один прогон одной фразы ----------
 
 async function runPhrase(item, { target, glossary, tailCapMs = 30000 }) {
-    const wavFile = path.join(phrasesDir, 'audio', `${provider.rate / 1000}k`, `${item.id}.wav`);
+    const suffix = live ? '-live' : '';
+    const wavFile = path.join(phrasesDir, 'audio', `${provider.rate / 1000}k${suffix}`, `${item.id}.wav`);
     if (!fs.existsSync(wavFile)) {
-        return { id: item.id, error: `нет звука ${path.basename(wavFile)} — соберите make-audio.mjs` };
+        return {
+            id: item.id,
+            error: live
+                ? `нет живой записи ${path.basename(wavFile)} — нарежьте split-live.mjs`
+                : `нет звука ${path.basename(wavFile)} — соберите make-audio.mjs`,
+        };
     }
     const { rate, pcm } = readPcm(wavFile);
     if (rate !== provider.rate) {
@@ -379,7 +387,7 @@ async function runPhrase(item, { target, glossary, tailCapMs = 30000 }) {
 
 // ---------- прогон набора ----------
 
-const runTag = `${providerName}${useGlossary ? '-glossary' : ''}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`;
+const runTag = `${providerName}${useGlossary ? '-glossary' : ''}${live ? '-live' : ''}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}`;
 
 let items = spec.items.filter((i) => (onlyId ? i.id === onlyId : true)).filter((i) => (onlyKind ? i.kind === onlyKind : true));
 if (limit) items = items.slice(0, limit);
@@ -394,7 +402,7 @@ if (useGlossary && providerName === 'openai') {
 }
 
 console.log(`Поставщик: ${provider.title} (${provider.model()})`);
-console.log(`Фраз: ${items.length} | вход PCM ${provider.rate} Гц чанками ${provider.chunkMs} мс`);
+console.log(`Фраз: ${items.length} | вход PCM ${provider.rate} Гц чанками ${provider.chunkMs} мс | звук: ${live ? 'живая начитка' : 'синтез'}`);
 console.log(`Глоссарий: ${glossary && providerName !== 'openai' ? `${Object.keys(glossary).length} терминов` : 'нет'}`);
 console.log(`Результаты: dev-translate-results/${runTag}/\n`);
 
@@ -405,9 +413,9 @@ for (const item of items) {
     const mark = r.error ? '—' : '+';
     const ms = (v) => (v === null || v === undefined ? '   —' : String(Math.round(v)).padStart(5));
     console.log(
-        `${mark} ${item.id.padEnd(15)} ист ${r.srcSec.toFixed(1).padStart(4)}с` +
+        `${mark} ${item.id.padEnd(15)} ист ${(r.srcSec ?? 0).toFixed(1).padStart(4)}с` +
             ` | текст ${ms(r.firstText)}мс | голос ${ms(r.firstAudio)}мс` +
-            ` | отстал ${r.drift === null ? '  —' : (r.drift > 0 ? '+' : '') + r.drift.toFixed(1)}с` +
+            ` | отстал ${r.drift == null ? '  —' : (r.drift > 0 ? '+' : '') + r.drift.toFixed(1)}с` +
             ` | термины ${r.terms?.expected ? `${r.terms.found}/${r.terms.expected}` : ' — '}` +
             (r.cut ? ` | ОБРЫВ? перевода ${r.outSec.toFixed(1)}с на ${r.srcSec.toFixed(1)}с речи` : '') +
             (r.error ? ` | ОШИБКА: ${r.error}` : '')
