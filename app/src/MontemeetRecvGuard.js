@@ -43,6 +43,8 @@ const RESUME_MAX = 20; // … doubling to 20 s after a failed try
 const PROBATION = 4;
 const OBSERVE_EVERY = 2; // observe-only: trace every 2 s
 const CAP_SHARE = 0.85; // a camera's budget: 85 % of the receiver's estimate minus everything else flowing to it
+const CONGESTED = 0.9; // the estimate fell below 90 % of what flows to the receiver — it chokes
+const WIDE_KBPS = 2000; // the link has room for a phone camera's 720p (2 Mbit/s) — wide open
 
 class MontemeetRecvGuard {
     /**
@@ -52,8 +54,10 @@ class MontemeetRecvGuard {
      * @param {Function} o.send      (action, data) → to this receiver's socket
      * @param {object} o.log         Logger
      * @param {boolean} [o.act]     false — observe only (no pauses), trace every 2 s
-     * @param {Function} [o.onBudget] (producerId, kbps | null) — how much video this receiver's link has room for,
-     *                                per single-layer camera it receives (MontemeetSenderCap)
+     * @param {Function} [o.onBudget] (producerId, report) — per single-layer camera this receiver takes:
+     *                                { kbps } — it chokes, the camera fits in kbps; 'wide' — room for 720p;
+     *                                'ok' — no choking, headroom unknown (the estimate ≈ what flows); null — no
+     *                                estimate / camera gone (MontemeetSenderCap)
      */
     constructor({ peerName, transport, send, log, act = true, onBudget = null }) {
         this.act = act;
@@ -206,11 +210,21 @@ class MontemeetRecvGuard {
             const fresh = this.bwe && Date.now() - this.bweAt <= 5000;
             const avail = fresh ? Math.round(this.bwe.availableBitrate / 1000) : null;
             const budgets = [];
+            const flowing = audio + video;
             for (const it of this.items.values()) {
                 if (!it.camera || it.consumer.paused || it.consumer.producerPaused) continue;
-                const kbps = avail === null ? null : Math.max(0, Math.round(CAP_SHARE * avail - (audio + video - it.kb)));
-                if (kbps !== null) budgets.push(`${it.from}:${kbps}`);
-                if (this.onBudget) this.onBudget(it.consumer.producerId, kbps);
+                /* Three states (bench 23.11): the estimate tells the truth about choking (it falls below what flows) and
+                   about a wide link (after an arch it jumps to 2–6 Mbit/s within seconds); while the link is narrow but
+                   not choking it only mirrors what flows — headroom unknown, the sender probes by itself. */
+                let report = null;
+                if (avail !== null) {
+                    const kbps = Math.max(0, Math.round(CAP_SHARE * avail - (flowing - it.kb)));
+                    if (avail < CONGESTED * flowing) report = { kbps };
+                    else if (kbps >= WIDE_KBPS) report = 'wide';
+                    else report = 'ok';
+                    budgets.push(`${it.from}:${typeof report === 'object' ? report.kbps : report}`);
+                }
+                if (this.onBudget) this.onBudget(it.consumer.producerId, report);
             }
             this.log.info('Montemeet: защита приёма — след', {
                 peer: this.peerName,

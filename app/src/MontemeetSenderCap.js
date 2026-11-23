@@ -14,11 +14,16 @@
  * a freed link within 3 s; an overloading stream drives it to the 30 kbit/s floor within 20 s — the sender then goes
  * to the lowest rung, the stream fits, and the estimate grows back (~8 %/s).
  *
- * To the camera's owner: "montemeetVideoCap" { producer_id, kbps: number | null, from } — null: no cap.
+ * 23.11, the second bench (no-burst shaper, netem): the estimate does not lie upward — while the link is narrow it
+ * mirrors what flows, and a freed link shows within 4 s. So three states, not one number: a receiver CHOKES (its
+ * estimate fell below what flows to it) — the camera must fit in its budget; it is WIDE (room for a phone's 720p,
+ * 2 Mbit/s) — the camera is free; otherwise OK — no choking, headroom unknown: the sender probes by itself.
+ *
+ * To the camera's owner: "montemeetVideoCap" { producer_id, kbps: number | null, wide: boolean, from }:
+ *   kbps — the weakest choking receiver's budget; null + wide — free; null + !wide — probe by yourself.
  */
 
 const STALE_MS = 6000; // a receiver's budget older than this does not count (it left, or its estimate went silent)
-const NONE_KBPS = 3000; // budget this large — no cap at all (a phone camera tops at 2–2.4 Mbit/s)
 const CHANGE = 0.15; // resend when the cap moves by more than 15 %
 const KEEPALIVE_MS = 5000; // and every 5 s while a cap holds
 
@@ -39,52 +44,56 @@ class MontemeetSenderCap {
         this.sent = new Map(); // producerId → { kbps, at }
     }
 
-    /** A receiver's budget for one camera; `kbps` null — the receiver no longer takes it. */
-    update(producerId, receiverKey, kbps, receiverName = '') {
+    /** A receiver's report for one camera: { kbps } (chokes) | 'wide' | 'ok' | null (no estimate / gone). */
+    update(producerId, receiverKey, report, receiverName = '') {
         let m = this.budgets.get(producerId);
-        if (kbps === null || kbps === undefined) {
+        if (report === null || report === undefined) {
             if (m) m.delete(receiverKey);
         } else {
             if (!m) this.budgets.set(producerId, (m = new Map()));
-            m.set(receiverKey, { kbps: Math.max(0, Math.round(kbps)), name: receiverName, at: this.now() });
+            const r = typeof report === 'object' ? { state: 'choke', kbps: Math.max(0, Math.round(report.kbps)) } : { state: report, kbps: null };
+            m.set(receiverKey, { ...r, name: receiverName, at: this.now() });
         }
         this.decide(producerId);
     }
 
-    /** The current cap for a camera: the weakest fresh receiver, or null. */
+    /** The camera's state: the weakest choking receiver; else wide if every fresh receiver is wide (or none). */
     cap(producerId) {
         const m = this.budgets.get(producerId);
-        if (!m) return { kbps: null, from: '' };
-        let best = null;
+        let worst = null;
+        let wide = true;
         const now = this.now();
-        for (const [key, b] of m) {
-            if (now - b.at > STALE_MS) {
-                m.delete(key);
-                continue;
+        if (m) {
+            for (const [key, b] of m) {
+                if (now - b.at > STALE_MS) {
+                    m.delete(key);
+                    continue;
+                }
+                if (b.state === 'choke' && (!worst || b.kbps < worst.kbps)) worst = b;
+                if (b.state !== 'wide') wide = false;
             }
-            if (!best || b.kbps < best.kbps) best = b;
         }
-        if (!best || best.kbps >= NONE_KBPS) return { kbps: null, from: '' };
-        return { kbps: best.kbps, from: best.name };
+        if (worst) return { kbps: worst.kbps, wide: false, from: worst.name };
+        return { kbps: null, wide, from: '' };
     }
 
     decide(producerId) {
-        const { kbps, from } = this.cap(producerId);
+        const { kbps, wide, from } = this.cap(producerId);
         const last = this.sent.get(producerId);
         const now = this.now();
-        let send = false;
-        if (!last) send = kbps !== null;
-        else if ((last.kbps === null) !== (kbps === null)) send = true;
-        else if (kbps !== null) {
-            send = Math.abs(kbps - last.kbps) > CHANGE * Math.max(last.kbps, 1) || now - last.at >= KEEPALIVE_MS;
-        }
+        const kind = kbps !== null ? 'choke' : wide ? 'wide' : 'ok';
+        let send;
+        if (!last) send = kind !== 'wide'; // a fresh camera is free anyway
+        else if (last.kind !== kind) send = true;
+        else if (kind === 'choke') send = Math.abs(kbps - last.kbps) > CHANGE * Math.max(last.kbps, 1) || now - last.at >= KEEPALIVE_MS;
+        else send = false;
         if (!send) return;
         const owner = this.ownerOf(producerId);
         if (!owner) return;
-        this.sent.set(producerId, { kbps, at: now });
-        this.sendTo(owner.socketId, 'montemeetVideoCap', { producer_id: producerId, kbps, from });
-        if (!last || (last.kbps === null) !== (kbps === null) || Math.abs((kbps || 0) - (last.kbps || 0)) > CHANGE * Math.max(last.kbps || 0, 1)) {
-            this.log.info('Montemeet: потолок камеры от получателей', { owner: owner.name, кбит: kbps, from });
+        this.sent.set(producerId, { kind, kbps, at: now });
+        this.sendTo(owner.socketId, 'montemeetVideoCap', { producer_id: producerId, kbps, wide, from });
+        if (!last || last.kind !== kind || (kind === 'choke' && Math.abs(kbps - last.kbps) > CHANGE * Math.max(last.kbps, 1))) {
+            this.log.info('Montemeet: потолок камеры от получателей', { owner: owner.name, кбит: kbps, простор: wide, from });
         }
     }
 
