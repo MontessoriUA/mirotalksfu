@@ -401,6 +401,7 @@ const MontemeetTranslate = (() => {
         // кнопка не появляется вовсе (стенд 24.11).
         socket.on('mmTranslateReady', (d = {}) => {
             if (d.presenter) iAmPresenter = true;
+            if (Array.isArray(d.langs) && d.langs.length) keepLangs(d.langs);
             revealUi();
         });
 
@@ -1145,6 +1146,22 @@ const MontemeetTranslate = (() => {
                 mountUi._reset = setTimeout(() => (line = ''), 5000);
             }
         });
+    }
+
+    // Сервер сказал, какие языки примет, — лишние из списков убираем. Показывать
+    // то, чего сервер не возьмёт, нельзя: он молча отвергает такой выбор, язык
+    // остаётся прежним, и человек видит перевод не на тот язык (Иван, 24.11).
+    function keepLangs(allowed) {
+        const ok = new Set(allowed);
+        if (!ui) return;
+        for (const sel of [ui.panel.querySelector('#mmTrLangTeacher'), ui.panel.querySelector('#mmTrLangStudent')]) {
+            if (!sel) continue;
+            const was = sel.value;
+            for (const opt of [...sel.options]) {
+                if (!ok.has(opt.value)) opt.remove();
+            }
+            if (ok.has(was)) sel.value = was;
+        }
     }
 
     // Сервер ответил — значит перевод в этой комнате разрешён, кнопку видно.

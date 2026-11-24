@@ -360,7 +360,13 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
     // кончались: обработчики к нему приходили, а кнопка не появлялась (стенд
     // 24.11, после починки самой регистрации).
     try {
-        socket.emit('mmTranslateReady', { presenter: !!isPresenter?.() });
+        socket.emit('mmTranslateReady', {
+            presenter: !!isPresenter?.(),
+            // какие языки сервер примет: панель показывала все, а сервер молча
+            // отвергал лишние, и перевод оставался на прежнем языке — выглядело
+            // как «немецкий даёт английский» (Иван, 24.11)
+            langs: [...langs()],
+        });
     } catch (e) {
         /* сокет уже ушёл — ничего страшного */
     }
