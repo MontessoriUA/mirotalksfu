@@ -97,6 +97,28 @@ const MontemeetDiag = (() => {
     // приложение, и захват в этот момент система вправе остановить
     document.addEventListener('visibilitychange', () => report('visibility', { hidden: document.hidden }));
 
+    // Какие микрофоны телефон вообще показывает. Нужно для приёма, которым у
+    // Zoom вернули кнопки громкости на «Медиа»: они перед стартом звука на
+    // мгновение открывают микрофон КОНКРЕТНОГО устройства по deviceId (у них —
+    // «Headset earpiece») и сразу закрывают. Без списка меток не понять, есть
+    // ли у нас кандидат на такое устройство, когда гарнитуры нет (Иван, 24.11).
+    // Идентификаторы не берём — только вид и подпись, они о человеке ничего не
+    // говорят.
+    setTimeout(async () => {
+        try {
+            const list = await navigator.mediaDevices.enumerateDevices();
+            const mics = list.filter((d) => d.kind === 'audioinput').map((d) => d.label || '(без подписи)');
+            if (!mics.length) return;
+            report('audio-route', {
+                when: 'mics',
+                count: mics.length,
+                list: mics.join(' | ').slice(0, 80),
+            });
+        } catch (e) {
+            /* не мешаем уроку */
+        }
+    }, 12000);
+
     // повторный замер, когда урок уже идёт: сравнение с atStart показывает,
     // переключилась ли аудиосистема после захвата микрофона
     setTimeout(() => {
