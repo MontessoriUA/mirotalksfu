@@ -640,6 +640,11 @@ async function initEnumerateDevices() {
     // человек на входе получал два окна одно за другим (Иван, 2026-08-09).
     // Если совместный запрос не проходит (нет камеры, занято приложение) —
     // возвращаемся к раздельному, как в стоке.
+    // Montemeet: переинициализация аудиосессии до первого захвата — попытка
+    // вернуть кнопкам громкости управление звуком собеседника (?mmvol=2).
+    // Порядок важен: после нашего захвата приём уже не работает.
+    if (typeof MontemeetVolumeKeys !== 'undefined') await MontemeetVolumeKeys.beforeCapture();
+
     if (!(await initEnumerateDevicesTogether())) {
         await initEnumerateVideoDevices();
         await initEnumerateAudioDevices();
