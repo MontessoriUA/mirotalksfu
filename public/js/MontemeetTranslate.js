@@ -38,10 +38,15 @@ const MontemeetTranslate = (() => {
     let micStream = null;
 
     let playCtx = null;
+    let playDest = null; // куда отдаём перевод: петля RTCPeerConnection или динамик напрямую
+    let playGain = null;
+    let loopEl = null; // <audio>, в котором перевод приходит «удалённой» дорожкой
+    let loopPc = null;
     let playAt = 0;
     let duckUntil = 0;
     let duckTimer = null;
     let muteSendUntil = 0; // до какого момента не отправляем свой звук переводчику
+    let voiceGain = 0.5; // громкость перевода: тише оригинала, заодно вдвое меньше эха
 
     let on = false;
     let myLang = '';
@@ -61,7 +66,7 @@ const MontemeetTranslate = (() => {
         const els = document.querySelectorAll('audio, video');
         let touched = 0;
         for (const el of els) {
-            if (el.muted) continue;
+            if (el.muted || el.dataset.mmTranslate === '1') continue;
             if (el.dataset.mmFullVolume === undefined) el.dataset.mmFullVolume = String(el.volume ?? 1);
             const full = Number(el.dataset.mmFullVolume) || 1;
             el.volume = active ? full * DUCK : full;
@@ -85,9 +90,76 @@ const MontemeetTranslate = (() => {
 
     // ---------- воспроизведение перевода ----------
 
+    // Петля из двух RTCPeerConnection внутри страницы: перевод уходит в pc1 и
+    // возвращается на pc2 «удалённой» дорожкой, которая играется через <audio>.
+    //
+    // Зачем так. Эхоподавитель браузера берёт опорой то, что играет тракт связи,
+    // а вывод обычного AudioContext туда исторически не попадает — поэтому наш
+    // перевод звучал из динамика, возвращался в микрофон и уходил собеседнику
+    // эхом (заход 24.11). Через петлю он идёт тем же путём, что голос
+    // собеседника, и эхоподавитель видит его как свою опору. Совет мобильной
+    // сессии: медиатракт урока при этом не трогается, цена — Opus туда-обратно
+    // и +20…60 мс к задержке.
+    //
+    // Если петля почему-то не поднялась, играем напрямую, как раньше.
+    async function buildLoop() {
+        const dest = playCtx.createMediaStreamDestination();
+        const el = document.createElement('audio');
+        el.autoplay = true;
+        el.dataset.mmTranslate = '1'; // себя не приглушаем
+        document.body.appendChild(el);
+
+        const pc1 = new RTCPeerConnection();
+        const pc2 = new RTCPeerConnection();
+        pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate).catch(() => {});
+        pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate).catch(() => {});
+        pc2.ontrack = (e) => {
+            el.srcObject = e.streams[0];
+            el.play().catch(() => {});
+        };
+        for (const t of dest.stream.getAudioTracks()) pc1.addTrack(t, dest.stream);
+
+        const offer = await pc1.createOffer();
+        await pc1.setLocalDescription(offer);
+        await pc2.setRemoteDescription(offer);
+        const answer = await pc2.createAnswer();
+        await pc2.setLocalDescription(answer);
+        await pc1.setRemoteDescription(answer);
+
+        loopEl = el;
+        loopPc = { pc1, pc2 };
+        return dest;
+    }
+
+    async function ensureOutput() {
+        if (playDest) return;
+        if (!playCtx) playCtx = new AudioContext({ sampleRate: OUT_RATE });
+        if (playCtx.state !== 'running') playCtx.resume().catch(() => {});
+
+        // громкость перевода: тише оригинала — это прямо уменьшает и эхо
+        playGain = playCtx.createGain();
+        playGain.gain.value = voiceGain;
+
+        try {
+            const dest = await buildLoop();
+            playGain.connect(dest);
+            playDest = dest;
+            log('перевод идёт через петлю — эхоподавитель видит его своей опорой');
+        } catch (err) {
+            playGain.connect(playCtx.destination);
+            playDest = playCtx.destination;
+            log('петля не поднялась, играю напрямую:', err.message);
+        }
+    }
+
     function playPcm16(b64) {
         try {
-            if (!playCtx) playCtx = new AudioContext({ sampleRate: OUT_RATE });
+            if (!playCtx || !playDest) {
+                // первый кусок приходит до того, как вывод готов: поднимаем и
+                // проигрываем следом, иначе потеряем начало фразы
+                ensureOutput().then(() => playPcm16(b64));
+                return;
+            }
             if (playCtx.state !== 'running') playCtx.resume().catch(() => {});
 
             const raw = atob(b64);
@@ -105,7 +177,7 @@ const MontemeetTranslate = (() => {
 
             const src = playCtx.createBufferSource();
             src.buffer = buf;
-            src.connect(playCtx.destination);
+            src.connect(playGain);
             // куски приходят подряд, поэтому ставим их в очередь встык
             // Запас перед началом: куски идут по сети неровно, и без него
             // перевод заикается на каждом разрыве (заход 24.11).
@@ -257,6 +329,17 @@ const MontemeetTranslate = (() => {
         markVoice(false);
         muteSendUntil = 0;
         playAt = 0;
+        try {
+            loopPc?.pc1.close();
+            loopPc?.pc2.close();
+            loopEl?.remove();
+        } catch {
+            /* уже закрыто */
+        }
+        loopPc = null;
+        loopEl = null;
+        playDest = null;
+        playGain = null;
         log('выключен');
     }
 
@@ -283,6 +366,7 @@ const MontemeetTranslate = (() => {
     ];
     const SAVED_LANG = 'mmTranslateLang';
     const SAVED_SUBS = 'mmTranslateSubs';
+    const SAVED_GAIN = 'mmTranslateGain';
 
     const CSS = `
 #mmTr, #mmTrSubs { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -323,6 +407,7 @@ const MontemeetTranslate = (() => {
     padding: 7px 9px; font: inherit; max-width: 160px;
 }
 #mmTrPanel select:disabled { opacity: .55; }
+#mmTrPanel input[type="range"] { width: 120px; accent-color: #2f6df6; }
 .mmTrSwitch { position: relative; width: 46px; height: 27px; flex: none; }
 .mmTrSwitch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
 .mmTrSwitch i {
@@ -386,6 +471,8 @@ const MontemeetTranslate = (() => {
             `<select id="mmTrLang">${LANGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></div>` +
             '<div class="mmTrRow"><label for="mmTrSubsOn">Субтитры</label>' +
             '<span class="mmTrSwitch"><input type="checkbox" id="mmTrSubsOn" checked><i></i></span></div>' +
+            '<div class="mmTrRow"><label for="mmTrVol">Громкость перевода</label>' +
+            '<input type="range" id="mmTrVol" min="20" max="100" step="5" value="50"></div>' +
             '<div id="mmTrNote">перевод услышит тот, у кого выбран другой язык</div>' +
             '<div id="mmTrHeard"></div>';
 
@@ -399,6 +486,7 @@ const MontemeetTranslate = (() => {
         const onSw = panel.querySelector('#mmTrOn');
         const langSel = panel.querySelector('#mmTrLang');
         const subsSw = panel.querySelector('#mmTrSubsOn');
+        const volEl = panel.querySelector('#mmTrVol');
         const note = panel.querySelector('#mmTrNote');
         const heardEl = panel.querySelector('#mmTrHeard');
 
@@ -406,6 +494,11 @@ const MontemeetTranslate = (() => {
             const saved = localStorage.getItem(SAVED_LANG);
             if (saved && LANGS.some(([v]) => v === saved)) langSel.value = saved;
             subsSw.checked = localStorage.getItem(SAVED_SUBS) !== '0';
+            const g = Number(localStorage.getItem(SAVED_GAIN));
+            if (g >= 20 && g <= 100) {
+                volEl.value = String(g);
+                voiceGain = g / 100;
+            }
         } catch {
             /* приватный режим — просто значения по умолчанию */
         }
@@ -445,6 +538,18 @@ const MontemeetTranslate = (() => {
                 /* не сохранилось — не беда */
             }
             note.textContent = 'жду собеседника с другим языком';
+        };
+
+        // Громкость перевода — самый дешёвый рычаг против эха: тише на 6 дБ
+        // значит и эха на 6 дБ меньше (совет мобильной сессии).
+        volEl.oninput = () => {
+            voiceGain = Number(volEl.value) / 100;
+            if (playGain) playGain.gain.value = voiceGain;
+            try {
+                localStorage.setItem(SAVED_GAIN, volEl.value);
+            } catch {
+                /* не сохранилось — не беда */
+            }
         };
 
         subsSw.onchange = () => {
