@@ -364,6 +364,11 @@ async function forAll() {
         // нажатия ещё никого не знает.
         const r = await t.c.emit('translateForAll', { on: true, me: 'ru', others: 'zh' }, true);
         const turnOn = await s.c.wait('translateTurnOn', 4000);
+        const voiceOk = await t.c.emit('translateVoiceMode', { voice: 'male' }, true);
+        const voiceBad = await t.c.emit('translateVoiceMode', { voice: 'шёпот' }, true);
+        const voiceDenied = await s.c
+            .emit('translateVoiceMode', { voice: 'female' }, true)
+            .catch(() => ({ error: 'нет ответа' }));
         const denied = await s.c
             .emit('translateForAll', { on: false }, true)
             .catch(() => ({ error: 'нет ответа' }));
@@ -374,6 +379,9 @@ async function forAll() {
             языкНазначенВерно: turnOn?.lang === 'zh',
             студентуВключатьЗаВсехНельзя: !!denied?.error,
             назначеноДвоим: r?.set === 2,
+            голосМеняется: voiceOk?.ok === true && voiceOk.voice === 'male',
+            выдуманныйГолосНеПринят: !!voiceBad?.error,
+            студентуГолосМенятьНельзя: !!voiceDenied?.error,
         });
         t.c.close();
         s.c.close();

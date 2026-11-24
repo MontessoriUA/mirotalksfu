@@ -102,8 +102,16 @@ const scriptForTarget = (target) => (target === 'zh' ? 'zh' : target === 'ru' ? 
 // комнате: соединение само по себе не тарифицируется, а тишину поставщик
 // отфильтровывает своим определением речи (TRANSLATE.md §3.1).
 
+// Голос перевода. Автоподбора по полу говорящего у поставщика нет, зато есть
+// клонирование: при frequency «always» он снимает голос с речи перед каждым
+// ответом и говорит похожим — значит и пол совпадает сам. Доплаты за это нет,
+// тарификация прежняя, по токенам. Пока клон не готов, звучит голос по
+// умолчанию. Ручные голоса оставлены на случай, если клон не понравится.
+const VOICES = { female: 'Tina', male: 'Andre' };
+
 class Session {
-    constructor({ roomId, fromId, fromName, target, log, onText, onVoice, onFail }) {
+    constructor({ roomId, fromId, fromName, target, voice, log, onText, onVoice, onFail }) {
+        this.voice = voice || 'clone';
         this.roomId = roomId;
         this.fromId = fromId;
         this.fromName = fromName;
@@ -145,7 +153,17 @@ class Session {
             const translation = { language: this.target };
             const g = glossaryFor(this.target, this.log);
             if (g) translation.corpus = { phrases: g };
-            ws.send(JSON.stringify({ type: 'session.update', session: { output_modalities: ['text', 'audio'], translation } }));
+
+            const session = { output_modalities: ['text', 'audio'], translation };
+            if (this.voice === 'clone') {
+                // голос снимается с речи говорящего перед каждым ответом
+                session.enable_voice_clone = true;
+                session.voice_clone_options = { frequency: 'always' };
+                session.voice = 'default'; // при клонировании обязан быть такой
+            } else if (VOICES[this.voice]) {
+                session.audio = { output: { voice: VOICES[this.voice] } };
+            }
+            ws.send(JSON.stringify({ type: 'session.update', session }));
         });
 
         ws.on('message', (buf) => {
@@ -269,7 +287,9 @@ class Session {
 const roomsState = new Map(); // roomId -> { peers: Map(socketId -> {lang, name}), sessions: Map(key -> Session), sec }
 
 function stateOf(roomId) {
-    if (!roomsState.has(roomId)) roomsState.set(roomId, { peers: new Map(), sessions: new Map(), sec: 0 });
+    if (!roomsState.has(roomId)) {
+        roomsState.set(roomId, { peers: new Map(), sessions: new Map(), sec: 0, voice: 'clone' });
+    }
     return roomsState.get(roomId);
 }
 
@@ -344,6 +364,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     fromId: socket.id,
                     fromName: peerName,
                     target,
+                    voice: st.voice,
                     log,
                     onText: (kind, text) => {
                         for (const [id, p] of st.peers) {
@@ -380,12 +401,29 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
     // Параметр нарочно НЕ langs: так называется функция разрешённых языков
     // выше, и одноимённый параметр её затенял — «langs is not a function»,
     // перевод не включался вовсе (заход 24.11).
-    socket.on('translateForAll', ({ on = true, me = '', others = '', langs: wanted = {} } = {}, cb) => {
+    // Ведущий выбирает голос перевода: клон говорящего, женский или мужской.
+    socket.on('translateVoiceMode', ({ voice } = {}, cb) => {
+        if (!isPresenter?.()) return cb?.({ error: 'только ведущий' });
+        const want = String(voice || '').trim();
+        if (!['clone', 'female', 'male'].includes(want)) return cb?.({ error: 'нет такого голоса' });
+        const st = stateOf(roomId);
+        if (st.voice === want) return cb?.({ ok: true, voice: want });
+        st.voice = want;
+        // сессии переоткроются с новым голосом: сменить его на ходу поставщик
+        // не обещает, настройку ждут до первого звука
+        for (const [, session] of st.sessions) session.stop();
+        st.sessions.clear();
+        log?.info('[Translate] ведущий сменил голос перевода', { room: roomId, voice: want });
+        cb?.({ ok: true, voice: want });
+    });
+
+    socket.on('translateForAll', ({ on = true, me = '', others = '', voice = '', langs: wanted = {} } = {}, cb) => {
         if (!isPresenter?.()) {
             log?.info('[Translate] не ведущий пытался включить перевод за всех', { room: roomId, peer: peerName });
             return cb?.({ error: 'только ведущий' });
         }
         const st = stateOf(roomId);
+        if (['clone', 'female', 'male'].includes(voice)) st.voice = voice;
         const known = wanted && typeof wanted === 'object' ? wanted : {};
 
         if (!on) {
