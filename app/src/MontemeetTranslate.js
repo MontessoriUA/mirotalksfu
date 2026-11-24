@@ -269,7 +269,22 @@ function register({ io, socket, roomId, peerName, log }) {
         if (!st.peers.has(socket.id)) return;
         if (st.sec > maxSec()) return;
 
-        for (const target of targetsFor(st, socket.id)) {
+        const targets = targetsFor(st, socket.id);
+
+        // Собеседник сменил язык — прежняя сессия больше не нужна. Раньше она
+        // висела до таймаута поставщика («Response stream timeout», заход
+        // 24.11) и зря занимала подключение.
+        for (const [k, session] of st.sessions) {
+            if (!k.startsWith(`${socket.id}->`)) continue;
+            const target = k.slice(k.indexOf('->') + 2);
+            if (!targets.includes(target)) {
+                session.stop();
+                st.sessions.delete(k);
+                log?.info('[Translate] язык собеседника сменился, сессия закрыта', { room: roomId, target });
+            }
+        }
+
+        for (const target of targets) {
             const sessionKey = `${socket.id}->${target}`;
             let session = st.sessions.get(sessionKey);
             if (!session) {
