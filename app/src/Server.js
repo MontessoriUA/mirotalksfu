@@ -2808,6 +2808,15 @@ function startServer() {
                 // ведущий (педагог) может включать перевод за всех и выбирать
                 // язык студента — у него на уроке заняты руки
                 isPresenter: () => !!roomList.get(socket.room_id)?.getPeer(socket.id)?.peer_presenter,
+                // кто сейчас в комнате — чтобы ведущий раздал язык всем, а не
+                // только тем, кого успел увидеть его браузер
+                peersInRoom: () => {
+                    const room = roomList.get(socket.room_id);
+                    if (!room) return [];
+                    return [...room.getPeers().entries()]
+                        .filter(([, p]) => !p.peer_lobby)
+                        .map(([id, p]) => ({ id, name: p.peer_name }));
+                },
             });
 
             const roomJson = room.toJson();

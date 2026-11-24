@@ -359,11 +359,10 @@ async function forAll() {
     try {
         const t = await join(ROOM, PRESENTER); // ведущий по реестру комнаты
         const s = await join(ROOM, 'Pupil');
-        const r = await t.c.emit(
-            'translateForAll',
-            { on: true, langs: { [t.c.sid]: 'ru', [s.c.sid]: 'zh' } },
-            true
-        );
+        // Шлём ровно то же, что браузер: свой язык и язык остальных. Кому что
+        // назначить, решает сервер по списку комнаты — клиент на момент
+        // нажатия ещё никого не знает.
+        const r = await t.c.emit('translateForAll', { on: true, me: 'ru', others: 'zh' }, true);
         const turnOn = await s.c.wait('translateTurnOn', 4000);
         const denied = await s.c
             .emit('translateForAll', { on: false }, true)
@@ -374,6 +373,7 @@ async function forAll() {
             студентуПришлаКоманда: !!turnOn,
             языкНазначенВерно: turnOn?.lang === 'zh',
             студентуВключатьЗаВсехНельзя: !!denied?.error,
+            назначеноДвоим: r?.set === 2,
         });
         t.c.close();
         s.c.close();

@@ -690,7 +690,10 @@ const MontemeetTranslate = (() => {
 
         try {
             const saved = localStorage.getItem(SAVED_LANG);
-            if (saved && LANGS.some(([v]) => v === saved)) langSel.value = saved;
+            // У педагога по умолчанию русский (решение Ивана 24.11): прежний
+            // выбор уважаем, но пустую память не оставляем на первом языке
+            // списка — им оказывался немецкий.
+            langSel.value = saved && LANGS.some(([v]) => v === saved) ? saved : 'ru';
             subsSw.checked = localStorage.getItem(SAVED_SUBS) !== '0';
             const st = localStorage.getItem(SAVED_STUDENT);
             if (st && LANGS.some(([v]) => v === st)) studentSel.value = st;
@@ -760,16 +763,17 @@ const MontemeetTranslate = (() => {
         };
 
         // Ведущий: язык студента и включение обоим сразу.
+        // Кому какой язык, решает сервер по списку комнаты: браузер на момент
+        // нажатия ещё никого не знает (заход 24.11).
         const applyForAll = (on) => {
-            const others = lastPeers.filter((p) => p.id && p.id !== myId());
-            const langsMap = {};
-            if (on) {
-                langsMap[myId()] = langSel.value;
-                for (const p of others) langsMap[p.id] = studentSel.value;
-            }
-            socket.emit('translateForAll', { on, langs: langsMap }, (r) => {
-                if (r && r.error) note.textContent = 'не вышло: ' + r.error;
-            });
+            socket.emit(
+                'translateForAll',
+                on ? { on: true, me: langSel.value, others: studentSel.value } : { on: false },
+                (r) => {
+                    if (r && r.error) note.textContent = 'не вышло: ' + r.error;
+                    else if (r && r.set !== undefined) note.textContent = `перевод идёт · участников: ${r.set}`;
+                }
+            );
         };
 
         studentSel.onchange = () => {

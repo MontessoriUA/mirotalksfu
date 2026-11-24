@@ -296,7 +296,7 @@ function broadcastState(io, roomId) {
     }
 }
 
-function register({ io, socket, roomId, peerName, log, isPresenter }) {
+function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom }) {
     if (!enabled() || !allowedRoom(roomId)) return;
 
     socket.on('translateJoin', ({ lang } = {}, cb) => {
@@ -380,7 +380,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter }) {
     // Параметр нарочно НЕ langs: так называется функция разрешённых языков
     // выше, и одноимённый параметр её затенял — «langs is not a function»,
     // перевод не включался вовсе (заход 24.11).
-    socket.on('translateForAll', ({ on = true, langs: wanted = {} } = {}, cb) => {
+    socket.on('translateForAll', ({ on = true, me = '', others = '', langs: wanted = {} } = {}, cb) => {
         if (!isPresenter?.()) {
             log?.info('[Translate] не ведущий пытался включить перевод за всех', { room: roomId, peer: peerName });
             return cb?.({ error: 'только ведущий' });
@@ -398,12 +398,25 @@ function register({ io, socket, roomId, peerName, log, isPresenter }) {
             return cb?.({ ok: true, on: false });
         }
 
-        let set = 0;
+        // Языки раздаём по списку комнаты, а не по тому, что прислал браузер:
+        // на момент нажатия он ещё никого не знает — состояние перевода
+        // приходит позже, и команда уходила одному себе (заход 24.11).
+        const room = peersInRoom?.() || [];
+        const plan = new Map();
+        for (const p of room) {
+            const lang = p.id === socket.id ? me : others;
+            if (lang && langs().has(lang)) plan.set(p.id, { lang, name: p.name });
+        }
+        // то, что браузер прислал поимённо, имеет приоритет
         for (const [id, lang] of Object.entries(known)) {
-            if (!langs().has(lang)) continue;
+            if (langs().has(lang)) plan.set(id, { lang, name: plan.get(id)?.name || '' });
+        }
+
+        let set = 0;
+        for (const [id, { lang, name }] of plan) {
             const was = st.peers.get(id);
-            st.peers.set(id, { lang, name: was?.name || '', presenter: !!was?.presenter });
-            io.to(id).emit('translateTurnOn', { lang });
+            st.peers.set(id, { lang, name: was?.name || name || '', presenter: !!was?.presenter });
+            if (id !== socket.id) io.to(id).emit('translateTurnOn', { lang });
             set++;
         }
         broadcastState(io, roomId);
