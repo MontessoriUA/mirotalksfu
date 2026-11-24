@@ -583,7 +583,7 @@ const MontemeetTranslate = (() => {
 #mmTrPanel {
     position: fixed; z-index: 2147483000;
     top: calc(env(safe-area-inset-top, 0px) + 72px); right: 12px;
-    width: min(300px, calc(100vw - 24px));
+    width: min(344px, calc(100vw - 24px));
     padding: 14px 16px 16px; border-radius: 16px;
     background: rgba(24,24,29,.94); color: #eceef2;
     box-shadow: 0 10px 34px rgba(0,0,0,.5); backdrop-filter: blur(10px);
@@ -624,6 +624,31 @@ const MontemeetTranslate = (() => {
     text-shadow: 0 1px 2px rgba(0,0,0,.6);
     pointer-events: none; opacity: 0; transition: opacity .18s;
 }
+/* Первый уровень панели — пара языков, как в переводчиках: слева тот, кого
+   переводят, справа тот, для кого. Голос свой у каждой стороны: педагог и
+   студент — разные люди, и общий голос путает (Иван, 24.11). Между ними —
+   знак перевода, он оживает, пока перевод идёт. */
+#mmTrPair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; margin: 4px 0 2px; }
+#mmTrPair .mmTrSide { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#mmTrPair .mmTrWho { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; opacity: .5; }
+#mmTrPair select { width: 100%; max-width: none; font-size: 13px; padding: 7px 6px; }
+#mmTrPair select[id^="mmTrVoice"] { font-size: 12.5px; }
+#mmTrPair select[disabled] { opacity: .75; }
+#mmTrSign { align-self: center; margin-top: 18px; width: 34px; height: 34px; flex: none; }
+#mmTrSign path { transform-origin: 50% 50%; }
+#mmTrSign .a, #mmTrSign .b { opacity: .5; transition: opacity .2s; }
+#mmTrPanel[data-live="1"] #mmTrSign .a { animation: mmTrFlow 1.8s ease-in-out infinite; }
+#mmTrPanel[data-live="1"] #mmTrSign .b { animation: mmTrFlow 1.8s ease-in-out infinite .9s; }
+@keyframes mmTrFlow {
+    0%, 100% { opacity: .35; transform: translateX(0); }
+    45% { opacity: 1; transform: translateX(2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    #mmTrPanel[data-live="1"] #mmTrSign .a, #mmTrPanel[data-live="1"] #mmTrSign .b { animation: none; opacity: .9; }
+}
+#mmTrPanel .mmTrSep { height: 1px; background: rgba(255,255,255,.1); margin: 14px 0 4px; }
+#mmTrPanel h4 { display: flex; align-items: center; justify-content: space-between; }
+#mmTrOff { font-size: 12.5px; line-height: 1.4; opacity: .7; margin: 10px 0 2px; }
 #mmTrSubs[data-show="1"] { opacity: 1; }
 #mmTrSubs .mmTrWho { display: block; font-size: 12px; opacity: .65; margin-bottom: 2px; }
 @media (min-width: 900px) {
@@ -659,31 +684,54 @@ const MontemeetTranslate = (() => {
         const panel = document.createElement('div');
         panel.id = 'mmTrPanel';
         panel.hidden = true;
+        const voiceOptions =
+            '<option value="clone">как говорящий</option>' +
+            '<option value="female">женский</option>' +
+            '<option value="male">мужской</option>';
+
+        // Знак перевода: две встречные стрелки в цветах знака Montemeet.
+        // Пока перевод идёт, они по очереди оживают — видно, что канал жив.
+        const sign =
+            '<svg id="mmTrSign" viewBox="0 0 36 36" aria-hidden="true">' +
+            '<defs>' +
+            '<linearGradient id="mmTrGa" x1="0" y1="0" x2="1" y2="1">' +
+            '<stop offset="0" stop-color="#88B92C"/><stop offset="1" stop-color="#008C99"/></linearGradient>' +
+            '<linearGradient id="mmTrGb" x1="1" y1="0" x2="0" y2="1">' +
+            '<stop offset="0" stop-color="#F7B234"/><stop offset="1" stop-color="#E5422E"/></linearGradient>' +
+            '</defs>' +
+            '<g fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path class="a" d="M7 13h17m-5-5 5 5-5 5" stroke="url(#mmTrGa)"/>' +
+            '<path class="b" d="M29 25H12m5 5-5-5 5-5" stroke="url(#mmTrGb)"/>' +
+            '</g></svg>';
+
         panel.innerHTML =
             '<h4>Перевод голосом</h4>' +
-            '<div class="mmTrRow" id="mmTrOnRow"><label for="mmTrOn">Включить</label>' +
+            // первый уровень: кого переводим и для кого, с голосом каждой стороны
+            '<div id="mmTrPair">' +
+            '<div class="mmTrSide">' +
+            '<span class="mmTrWho" id="mmTrWhoLeft">Педагог</span>' +
+            `<select id="mmTrLangTeacher" aria-label="Язык педагога">${langOptions('ru')}</select>` +
+            `<select id="mmTrVoiceTeacher" aria-label="Голос перевода речи педагога">${voiceOptions}</select>` +
+            '</div>' +
+            sign +
+            '<div class="mmTrSide">' +
+            '<span class="mmTrWho" id="mmTrWhoRight">Студент</span>' +
+            `<select id="mmTrLangStudent" aria-label="Язык студента">${langOptions('en')}</select>` +
+            `<select id="mmTrVoiceStudent" aria-label="Голос перевода речи студента">${voiceOptions}</select>` +
+            '</div>' +
+            '</div>' +
+            // у студента, пока педагог не включил перевод, — объяснение вместо настроек
+            '<div id="mmTrOff" hidden>Перевод не включён педагогом</div>' +
+            '<div class="mmTrSep"></div>' +
+            // второй уровень: сами настройки
+            '<div class="mmTrRow" id="mmTrOnRow"><label for="mmTrOn">Включить перевод</label>' +
             '<span class="mmTrSwitch"><input type="checkbox" id="mmTrOn"><i></i></span></div>' +
-            '<div class="mmTrRow"><label for="mmTrLang">Я говорю на</label>' +
-            `<select id="mmTrLang">${langOptions('ru')}</select></div>` +
             '<div class="mmTrRow"><label for="mmTrSubsOn">Субтитры</label>' +
             '<span class="mmTrSwitch"><input type="checkbox" id="mmTrSubsOn" checked><i></i></span></div>' +
             '<div class="mmTrRow"><label for="mmTrVol">Громкость перевода</label>' +
             '<input type="range" id="mmTrVol" min="20" max="100" step="5" value="50"></div>' +
             '<div id="mmTrNote">включается сразу обоим</div>' +
-            // раздел ведущего: у педагога на уроке заняты руки, а студент может
-            // и не найти кнопку — поэтому язык студента и общее включение здесь
-            '<div id="mmTrTeacher" hidden>' +
-            '<div class="mmTrSep"></div>' +
-            '<div class="mmTrRow"><label for="mmTrVoice">Голос перевода</label>' +
-            '<select id="mmTrVoice">' +
-            '<option value="clone">как у говорящего</option>' +
-            '<option value="female">женский</option>' +
-            '<option value="male">мужской</option>' +
-            '</select></div>' +
-            '<div class="mmTrRow"><label for="mmTrStudent">Студент говорит на</label>' +
-            `<select id="mmTrStudent">${langOptions('en')}</select></div>` +
-            '<div id="mmTrWho" style="font-size:12px;opacity:.6;margin-top:6px"></div>' +
-            '</div>';
+            '<div id="mmTrWho" style="font-size:12px;opacity:.6;margin-top:6px"></div>';
 
         const subs = document.createElement('div');
         subs.id = 'mmTrSubs';
@@ -697,29 +745,46 @@ const MontemeetTranslate = (() => {
         watchOverlays();
 
         const onSw = panel.querySelector('#mmTrOn');
-        const langSel = panel.querySelector('#mmTrLang');
+        const teachSel = panel.querySelector('#mmTrLangTeacher');
+        const studentSel = panel.querySelector('#mmTrLangStudent');
+        const voiceTeach = panel.querySelector('#mmTrVoiceTeacher');
+        const voiceStud = panel.querySelector('#mmTrVoiceStudent');
+        const offEl = panel.querySelector('#mmTrOff');
         const subsSw = panel.querySelector('#mmTrSubsOn');
         const volEl = panel.querySelector('#mmTrVol');
         const note = panel.querySelector('#mmTrNote');
-        const teacherBox = panel.querySelector('#mmTrTeacher');
-        const studentSel = panel.querySelector('#mmTrStudent');
-        const voiceSel = panel.querySelector('#mmTrVoice');
-
+        const onRow = panel.querySelector('#mmTrOnRow');
         const whoEl = panel.querySelector('#mmTrWho');
-        // роль могла прийти раньше, чем построилась панель
-        if (allowed && iAmPresenter) teacherBox.hidden = false;
+
+        // «Мой язык» — та сторона, на которой я стою. Педагог правит обе,
+        // студент только свою: педагог может ошибиться с языком (поставить
+        // китайский японцу), и поправить себя студент должен сам (Иван, 24.11).
+        const mySel = () => (iAmPresenter ? teachSel : studentSel);
+
+        function applyRole() {
+            teachSel.disabled = !iAmPresenter; // студенту язык педагога — только показ
+            voiceTeach.hidden = !iAmPresenter;
+            voiceStud.hidden = !iAmPresenter;
+            if (onRow) onRow.hidden = !iAmPresenter; // включает перевод только педагог
+            offEl.hidden = iAmPresenter || on;
+            note.hidden = !iAmPresenter && !on;
+        }
+        ui.applyRole = applyRole;
+        applyRole();
 
         try {
             const saved = localStorage.getItem(SAVED_LANG);
             // У педагога по умолчанию русский (решение Ивана 24.11): прежний
             // выбор уважаем, но пустую память не оставляем на первом языке
             // списка — им оказывался немецкий.
-            langSel.value = saved && LANGS.some(([v]) => v === saved) ? saved : 'ru';
+            const mine = saved && LANGS.some(([v]) => v === saved) ? saved : 'ru';
+            if (iAmPresenter) teachSel.value = mine;
+            else studentSel.value = mine;
             subsSw.checked = localStorage.getItem(SAVED_SUBS) !== '0';
             const v = localStorage.getItem(SAVED_VOICE);
-            if (v && ['clone', 'female', 'male'].includes(v)) voiceSel.value = v;
+            if (v && ['clone', 'female', 'male'].includes(v)) voiceTeach.value = voiceStud.value = v;
             const st = localStorage.getItem(SAVED_STUDENT);
-            if (st && LANGS.some(([v]) => v === st)) studentSel.value = st;
+            if (st && LANGS.some(([x]) => x === st) && iAmPresenter) studentSel.value = st;
             const g = Number(localStorage.getItem(SAVED_GAIN));
             if (g >= 20 && g <= 100) {
                 volEl.value = String(g);
@@ -744,12 +809,13 @@ const MontemeetTranslate = (() => {
                 applyForAll(false);
                 stop();
                 btn.dataset.on = '0';
+                panel.dataset.live = '0';
                 note.textContent = 'включается сразу обоим';
                 return;
             }
             onSw.disabled = true;
             note.textContent = 'включаю…';
-            const r = await start({ lang: langSel.value, stream: getStream?.() });
+            const r = await start({ lang: mySel().value, stream: getStream?.() });
             onSw.disabled = false;
             if (r.error) {
                 onSw.checked = false;
@@ -757,8 +823,9 @@ const MontemeetTranslate = (() => {
                 return;
             }
             btn.dataset.on = '1';
+            panel.dataset.live = '1';
             try {
-                localStorage.setItem(SAVED_LANG, langSel.value);
+                localStorage.setItem(SAVED_LANG, mySel().value);
                 localStorage.setItem(SAVED_STUDENT, studentSel.value);
             } catch {
                 /* не сохранилось — не беда */
@@ -785,7 +852,14 @@ const MontemeetTranslate = (() => {
         const applyForAll = (on) => {
             socket.emit(
                 'translateForAll',
-                on ? { on: true, me: langSel.value, others: studentSel.value, voice: voiceSel.value } : { on: false },
+                on
+                    ? {
+                          on: true,
+                          me: teachSel.value,
+                          others: studentSel.value,
+                          voice: { teacher: voiceTeach.value, student: voiceStud.value },
+                      }
+                    : { on: false },
                 (r) => {
                     if (r && r.error) note.textContent = 'не вышло: ' + r.error;
                     else if (r && r.set !== undefined) note.textContent = `перевод идёт · участников: ${r.set}`;
@@ -793,19 +867,23 @@ const MontemeetTranslate = (() => {
             );
         };
 
-        // Голос перевода: клон говорящего подбирает и пол сам.
-        voiceSel.onchange = () => {
+        // Голос каждой стороны отдельно: «голос говорящего» поставщик снимает
+        // с него самого перед каждым ответом, женский и мужской — готовые.
+        const voiceChanged = (side, sel) => () => {
             try {
-                localStorage.setItem(SAVED_VOICE, voiceSel.value);
+                localStorage.setItem(SAVED_VOICE, sel.value);
             } catch {
                 /* не сохранилось — не беда */
             }
-            socket.emit('translateVoiceMode', { voice: voiceSel.value }, (r) => {
+            socket.emit('translateVoiceMode', { side, voice: sel.value }, (r) => {
                 if (r && r.error) note.textContent = 'не вышло: ' + r.error;
             });
         };
+        voiceTeach.onchange = voiceChanged('teacher', voiceTeach);
+        voiceStud.onchange = voiceChanged('student', voiceStud);
 
         studentSel.onchange = () => {
+            if (!iAmPresenter) return langChanged(); // студенту это его собственный язык
             try {
                 localStorage.setItem(SAVED_STUDENT, studentSel.value);
             } catch {
@@ -815,9 +893,10 @@ const MontemeetTranslate = (() => {
         };
 
         // Язык меняется на ходу, без выключения перевода (Иван, 24.11).
-        langSel.onchange = () => {
+        const langChanged = () => {
+            const sel = mySel();
             try {
-                localStorage.setItem(SAVED_LANG, langSel.value);
+                localStorage.setItem(SAVED_LANG, sel.value);
             } catch {
                 /* не сохранилось — не беда */
             }
@@ -826,13 +905,16 @@ const MontemeetTranslate = (() => {
                 applyForAll(true); // педагог: пересобираем обоим
                 return;
             }
-            socket.emit('translateJoin', { lang: langSel.value }, (r) => {
+            socket.emit('translateJoin', { lang: sel.value }, (r) => {
                 if (r && r.ok) {
-                    myLang = langSel.value;
+                    myLang = sel.value;
                     note.textContent = 'перевод идёт';
-                    showToast(noticeFor(langSel.value));
+                    showToast(noticeFor(sel.value));
                 }
             });
+        };
+        teachSel.onchange = () => {
+            if (iAmPresenter) langChanged();
         };
 
         subsSw.onchange = () => {
@@ -861,20 +943,30 @@ const MontemeetTranslate = (() => {
         onText.push((d) => {
             if (d.kind === 'state') {
                 if (Array.isArray(d.peers)) lastPeers = d.peers;
-                if (d.presenter) teacherBox.hidden = false;
+                if (d.presenter) iAmPresenter = true;
+                // Язык педагога студент видит, но не меняет: иначе непонятно,
+                // на какой язык его переводят.
+                if (!iAmPresenter && Array.isArray(d.peers)) {
+                    const teacher = d.peers.find((p) => p.presenter && p.lang);
+                    if (teacher) teachSel.value = teacher.lang;
+                }
+                if (d.voices) {
+                    if (d.voices.teacher) voiceTeach.value = d.voices.teacher;
+                    if (d.voices.student) voiceStud.value = d.voices.student;
+                }
                 if (whoEl && Array.isArray(d.peers)) {
                     whoEl.textContent = d.peers.map((p) => `${p.name || '—'}: ${nameOfLang(p.lang)}`).join(' · ');
                 }
                 if (d.on === false) {
                     onSw.checked = false;
                     btn.dataset.on = '0';
-                    langSel.disabled = false;
+                    panel.dataset.live = '0';
                     note.textContent = d.reason === 'limit' ? 'израсходован предел на урок' : 'перевод выключен';
                 } else if (d.byTeacher) {
                     onSw.checked = !!d.on;
                     btn.dataset.on = d.on ? '1' : '0';
-                    langSel.disabled = !!d.on;
-                    if (d.lang) langSel.value = d.lang;
+                    panel.dataset.live = d.on ? '1' : '0';
+                    if (d.lang) mySel().value = d.lang;
                     note.textContent = d.on ? 'перевод включил ведущий' : 'перевод выключил ведущий';
                 } else if (Array.isArray(d.peers)) {
                     const other = d.peers.filter((p) => p.lang && p.lang !== myLang).length;
@@ -882,6 +974,7 @@ const MontemeetTranslate = (() => {
                         ? `перевод идёт · собеседников: ${other}`
                         : 'жду собеседника с другим языком';
                 }
+                applyRole();
                 return;
             }
             // «что услышали» в панели не показываем (решение Ивана 24.11):
@@ -910,10 +1003,7 @@ const MontemeetTranslate = (() => {
         allowed = true;
         if (!ui) return;
         ui.btn.hidden = false;
-        const box = ui.panel.querySelector('#mmTrTeacher');
-        if (box && iAmPresenter) box.hidden = false;
-        const row = ui.panel.querySelector('#mmTrOnRow');
-        if (row && !iAmPresenter) row.hidden = true; // включать может только педагог
+        ui.applyRole?.(); // роль могла прийти позже, чем построилась панель
     }
 
     // Всплывашка: держится 4 секунды и ничего не перекрывает (решение Ивана).

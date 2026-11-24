@@ -2449,7 +2449,7 @@ function startServer() {
                 if (!room) return [];
                 return [...room.getPeers().entries()]
                     .filter(([, p]) => !p.peer_lobby)
-                    .map(([id, p]) => ({ id, name: p.peer_name }));
+                    .map(([id, p]) => ({ id, name: p.peer_name, presenter: !!p.peer_presenter }));
             },
         });
     }

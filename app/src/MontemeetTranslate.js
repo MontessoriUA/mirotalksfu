@@ -288,7 +288,16 @@ const roomsState = new Map(); // roomId -> { peers: Map(socketId -> {lang, name}
 
 function stateOf(roomId) {
     if (!roomsState.has(roomId)) {
-        roomsState.set(roomId, { peers: new Map(), sessions: new Map(), sec: 0, voice: 'clone' });
+        // Голос держим отдельно для речи педагога и для речи студента: это разные
+    // люди, и одинаковый голос на обе стороны путает — слушателю не понятно,
+    // кого ему сейчас переводят (Иван, 24.11). 'clone' — голос самого
+    // говорящего, его поставщик снимает перед каждым ответом.
+    roomsState.set(roomId, {
+        peers: new Map(),
+        sessions: new Map(),
+        sec: 0,
+        voices: { teacher: 'clone', student: 'clone' },
+    });
     }
     return roomsState.get(roomId);
 }
@@ -304,12 +313,21 @@ function targetsFor(st, fromId) {
 
 function broadcastState(io, roomId) {
     const st = stateOf(roomId);
-    const peers = [...st.peers.entries()].map(([id, p]) => ({ id, name: p.name, lang: p.lang }));
+    // Признак ведущего в списке нужен студенту: по нему его панель показывает
+    // язык педагога — выбрать его студент не может, но видеть должен, иначе
+    // непонятно, на какой язык его переводят (Иван, 24.11).
+    const peers = [...st.peers.entries()].map(([id, p]) => ({
+        id,
+        name: p.name,
+        lang: p.lang,
+        presenter: !!p.presenter,
+    }));
     for (const id of st.peers.keys()) {
         io.to(id).emit('translateState', {
             on: true,
             lang: st.peers.get(id).lang,
             peers,
+            voices: { ...st.voices },
             spentSec: Math.round(st.sec),
             presenter: !!st.peers.get(id).presenter,
         });
@@ -375,7 +393,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     fromId: socket.id,
                     fromName: peerName,
                     target,
-                    voice: st.voice,
+                    voice: isPresenter?.() ? st.voices.teacher : st.voices.student,
                     log,
                     onText: (kind, text) => {
                         for (const [id, p] of st.peers) {
@@ -413,19 +431,29 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
     // выше, и одноимённый параметр её затенял — «langs is not a function»,
     // перевод не включался вовсе (заход 24.11).
     // Ведущий выбирает голос перевода: клон говорящего, женский или мужской.
-    socket.on('translateVoiceMode', ({ voice } = {}, cb) => {
+    socket.on('translateVoiceMode', ({ side = 'teacher', voice } = {}, cb) => {
         if (!isPresenter?.()) return cb?.({ error: 'только ведущий' });
+        const which = side === 'student' ? 'student' : 'teacher';
         const want = String(voice || '').trim();
         if (!['clone', 'female', 'male'].includes(want)) return cb?.({ error: 'нет такого голоса' });
         const st = stateOf(roomId);
-        if (st.voice === want) return cb?.({ ok: true, voice: want });
-        st.voice = want;
-        // сессии переоткроются с новым голосом: сменить его на ходу поставщик
-        // не обещает, настройку ждут до первого звука
-        for (const [, session] of st.sessions) session.stop();
-        st.sessions.clear();
-        log?.info('[Translate] ведущий сменил голос перевода', { room: roomId, voice: want });
-        cb?.({ ok: true, voice: want });
+        if (st.voices[which] === want) return cb?.({ ok: true, side: which, voice: want });
+        st.voices[which] = want;
+        // Сессии переоткроются с новым голосом: сменить его на ходу поставщик
+        // не обещает, настройку ждут до первого звука. Закрываем только те,
+        // чья сторона изменилась, — чужой разговор рвать незачем.
+        const presenterIds = new Set(
+            (peersInRoom?.() || []).filter((p) => p.presenter).map((p) => p.id)
+        );
+        for (const [key, session] of st.sessions) {
+            const fromId = key.slice(0, key.indexOf('->'));
+            const sideOfSession = presenterIds.has(fromId) ? 'teacher' : 'student';
+            if (sideOfSession !== which) continue;
+            session.stop();
+            st.sessions.delete(key);
+        }
+        log?.info('[Translate] ведущий сменил голос перевода', { room: roomId, side: which, voice: want });
+        cb?.({ ok: true, side: which, voice: want });
     });
 
     socket.on('translateForAll', ({ on = true, me = '', others = '', voice = '', langs: wanted = {} } = {}, cb) => {
@@ -434,7 +462,13 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
             return cb?.({ error: 'только ведущий' });
         }
         const st = stateOf(roomId);
-        if (['clone', 'female', 'male'].includes(voice)) st.voice = voice;
+        if (voice && typeof voice === 'object') {
+            for (const which of ['teacher', 'student']) {
+                if (['clone', 'female', 'male'].includes(voice[which])) st.voices[which] = voice[which];
+            }
+        } else if (['clone', 'female', 'male'].includes(voice)) {
+            st.voices.teacher = st.voices.student = voice; // прежний вид запроса
+        }
         const known = wanted && typeof wanted === 'object' ? wanted : {};
 
         if (!on) {
