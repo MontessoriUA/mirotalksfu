@@ -161,26 +161,24 @@ class Session {
                 case 'conversation.item.input_audio_transcription.completed': {
                     const text = m.transcript || m.delta || '';
                     if (!text) break;
-                    // Решаем по первым же словам, пока перевод ещё не пошёл.
                     const said = scriptOf(text);
-                    if (said && said === scriptForTarget(this.target) && !this.skipPhrase) {
-                        this.skipPhrase = true;
-                        this.log?.info('[Translate] говорят на языке слушателя — не дублируем', {
+                    if (said && said !== this.heardScript) {
+                        this.heardScript = said;
+                        this.log?.info('[Translate] язык говорящего', {
                             room: this.roomId,
                             target: this.target,
+                            сказано: said,
+                            дублировать: said === scriptForTarget(this.target) ? 'нет' : 'переводим',
                         });
                     }
                     if (m.type.endsWith('completed')) this.onText?.('heard', text);
                     break;
                 }
                 case 'response.audio_transcript.delta':
-                    if (m.delta && !this.skipPhrase) this.onText?.('translated', m.delta);
+                    if (m.delta && !this.sameAsTarget()) this.onText?.('translated', m.delta);
                     break;
                 case 'response.audio.delta':
-                    if (m.delta && !this.skipPhrase) this.onVoice?.(m.delta);
-                    break;
-                case 'response.done':
-                    this.skipPhrase = false; // фраза кончилась — решаем заново
+                    if (m.delta && !this.sameAsTarget()) this.onVoice?.(m.delta);
                     break;
                 case 'error':
                     this.log?.warn('[Translate] ошибка сессии', {
@@ -212,6 +210,12 @@ class Session {
                 /* уже закрыт */
             }
         });
+    }
+
+    // Говорят ли уже на языке слушателя. Пока ничего не услышали — переводим:
+    // лучше лишняя фраза, чем проглоченная.
+    sameAsTarget() {
+        return this.heardScript !== null && this.heardScript === scriptForTarget(this.target);
     }
 
     push(b64) {
