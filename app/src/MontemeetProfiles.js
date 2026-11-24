@@ -107,6 +107,13 @@ const POLICY_TO_MODERATOR = {
 // (поле presenterVoice: 'f' | 'm'). Нужен как умолчание: клон звучит
 // естественнее, но снятие образца стоит до десяти секунд задержки на фразу
 // (Иван, 24.11). Нет записи — пусть решает конференция.
+// Языки перевода из админки: строка кодов через запятую. Пусто — конференция
+// решает сама (все, в которых модель умеет говорить).
+function translateLangs() {
+    const { translateLangs: list = '' } = load() || {};
+    return String(list || '').trim();
+}
+
 function presenterVoice(roomId) {
     const { presenterVoice: byRoom = {} } = load() || {};
     const v = Object.prototype.hasOwnProperty.call(byRoom, roomId) ? byRoom[roomId] : null;
@@ -279,6 +286,7 @@ function emailFromGrant(cookieHeader, roomId) {
 module.exports = {
     forRoom,
     presenterVoice,
+    translateLangs,
     isManagedRoom,
     applyToRoom,
     refreshRoom,

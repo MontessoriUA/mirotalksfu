@@ -51,7 +51,10 @@ const rooms = () => new Set(list(process.env.TRANSLATE_ROOMS).map((s) => s.toLow
 // Языки, у которых поставщик умеет и голос, а не только текст (§3.1 TRANSLATE.md)
 const VOICE_LANGS =
     'zh,en,ru,ar,de,fr,es,pt,id,it,ko,th,vi,ja,tr,hi,ms,nl,ur,nb,sv,da,he,fi,pl,is,cs,fil,fa';
-const langs = () => new Set(list(process.env.TRANSLATE_LANGS || VOICE_LANGS));
+// Список языков задаёт админка (глобальные настройки кабинета); дальше —
+// переменная окружения, и только потом всё, в чём модель умеет говорить.
+// Раньше список жил лишь в .env, и правка требовала захода на сервер.
+const langs = () => new Set(list(montemeetProfiles.translateLangs() || process.env.TRANSLATE_LANGS || VOICE_LANGS));
 const maxSec = () => Number(process.env.TRANSLATE_MAX_SEC || 1800);
 
 const enabled = () => url().length > 0 && key().length > 0;
