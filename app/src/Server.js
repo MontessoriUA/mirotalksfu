@@ -102,6 +102,7 @@ const HtmlInjector = require('./HtmlInjector');
 const montemeetProfiles = require('./MontemeetProfiles');
 const montemeetJournal = require('./MontemeetJournal');
 const montemeetEvents = require('./MontemeetEvents');
+const montemeetTranslate = require('./MontemeetTranslate'); // Montemeet: синхронный перевод голосом
 const log = new Logger('Server');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
@@ -2793,6 +2794,12 @@ function startServer() {
                 });
             }
             montemeetRememberKey(socket, data, peer_uuid);
+
+            // Montemeet: синхронный перевод голосом — второй, тихий канал через
+            // сервер (TRANSLATE.md §6, вариант Б). Включается только в комнатах
+            // из TRANSLATE_ROOMS и только если задан поставщик; иначе ни одного
+            // обработчика не появляется и всё идёт как раньше.
+            montemeetTranslate.register({ io, socket, roomId: socket.room_id, peerName: peer_name, log });
 
             const roomJson = room.toJson();
 

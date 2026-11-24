@@ -1297,6 +1297,30 @@ class RoomClient {
         this.socket.on('breakoutRoomHelp', this.handleBreakoutRoomHelp);
         this.socket.on('followMe', this.handleFollowMeData);
         this.socket.on('chatReaction', this.handleChatReaction);
+
+        // Montemeet: синхронный перевод голосом (Montemeet/app-spec/TRANSLATE.md).
+        // Панель появляется только там, где сервер перевод разрешил: до первого
+        // translateState она молчит, а без настроенного поставщика сервер его не
+        // шлёт вовсе. Микрофон берём тот же, что идёт в урок, — отдельной ветвью
+        // от того же потока, так что тракт урока не меняется.
+        try {
+            if (window.MontemeetTranslate) {
+                window.MontemeetTranslate.init({
+                    socket: this.socket,
+                    remoteAudioEl: this.remoteAudioEl,
+                    log: (...a) => console.log('[Перевод]', ...a),
+                });
+                this.socket.once('translateState', () => {
+                    window.MontemeetTranslate.mountUi({ getStream: () => this.localAudioStream });
+                });
+                // панель нужна и до первого ответа сервера — иначе её нечем включить
+                this.socket.emit('translateJoin', { lang: '' }, (r) => {
+                    if (r && r.error) window.MontemeetTranslate.mountUi({ getStream: () => this.localAudioStream });
+                });
+            }
+        } catch (err) {
+            console.log('[Перевод] не поднялся:', err.message);
+        }
     }
 
     // ####################################################
