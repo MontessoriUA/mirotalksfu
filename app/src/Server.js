@@ -103,6 +103,7 @@ const montemeetProfiles = require('./MontemeetProfiles');
 const montemeetJournal = require('./MontemeetJournal');
 const montemeetEvents = require('./MontemeetEvents');
 const montemeetTranslate = require('./MontemeetTranslate'); // Montemeet: синхронный перевод голосом
+const montemeetRoomPeek = require('./MontemeetRoomPeek'); // Montemeet: сколько людей в комнате до входа
 const log = new Logger('Server');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
@@ -2423,6 +2424,10 @@ function startServer() {
     // ####################################################
 
     io.on('connection', (socket) => {
+        // Montemeet: вопрос «сколько людей в комнате» задают ещё с экрана
+        // выбора камеры, до входа, — поэтому обработчик ставим сразу.
+        montemeetRoomPeek.register({ socket, roomList, log });
+
         socket.on('clientError', (error) => {
             try {
                 log.error('Client error', error.message);

@@ -50,10 +50,11 @@
                 'max-width:min(420px,calc(100vw - 32px));padding:20px 22px;border-radius:16px;' +
                 'background:rgba(24,24,29,.95);color:#eceef2;border:1px solid rgba(255,255,255,.18);' +
                 'box-shadow:0 12px 40px rgba(0,0,0,.5);font:15px/1.5 system-ui,-apple-system,sans-serif;text-align:center';
+            const say = (t) => (typeof window.mmT === 'function' ? window.mmT(t) : t);
             box.innerHTML =
-                '<div>Данные для входа устарели. Перезагрузите страницу</div>' +
+                `<div>${say('Данные для входа устарели. Перезагрузите страницу')}</div>` +
                 '<button id="mmStuckBtn" style="margin-top:16px;background:#2f6df6;color:#fff;border:0;' +
-                'border-radius:10px;padding:10px 18px;font:inherit;cursor:pointer">Обновить страницу</button>';
+                `border-radius:10px;padding:10px 18px;font:inherit;cursor:pointer">${say('Обновить страницу')}</button>`;
             document.body.appendChild(box);
             box.querySelector('#mmStuckBtn').onclick = () => location.reload();
         }, RETRY_AFTER_MS);

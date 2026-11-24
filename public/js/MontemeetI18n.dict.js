@@ -14,6 +14,16 @@
 
 window.MontemeetDict = {
     MSG: {
+        // ---- сколько людей на встрече: экран выбора камеры (MontemeetRoomPeek.js) ----
+        'На встрече пока никого': { uk: 'На зустрічі ще нікого', en: 'Nobody here yet' },
+        'На встрече': { uk: 'На зустрічі', en: 'In the meeting' },
+        'ждут входа': { uk: 'чекають на вхід', en: 'waiting to join' },
+        // ---- возврат на страницу урока (MontemeetRevisit.js) ----
+        'Данные для входа устарели. Перезагрузите страницу': {
+            uk: 'Дані для входу застаріли. Перезавантажте сторінку',
+            en: 'Your join data has expired. Please reload the page',
+        },
+        'Обновить страницу': { uk: 'Оновити сторінку', en: 'Reload page' },
         // ---- main toolbar tooltips ----
         'Start the audio': { uk: 'Увімкнути мікрофон', ru: 'Включить микрофон' },
         'Stop the audio': { uk: 'Вимкнути мікрофон', ru: 'Выключить микрофон' },
