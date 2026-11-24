@@ -41,6 +41,11 @@
         videoType: { lastFix: 0, tries: 0, timer: null },
     };
     let lastDeviceChange = 0;
+    // Когда дорожка умирает в первые секунды после входа — это разговор двух
+    // захватов: страница держит поток для экрана выбора устройств, а комната
+    // берёт свой. В приложении такого нет, там захват один, — и первопричину
+    // мы ищем именно здесь (Иван, 24.11).
+    const openedAt = Date.now();
 
     const say = (data) => {
         try {
@@ -89,6 +94,7 @@
             fix: st.tries,
             hidden: !!document.hidden,
             afterDev: lastDeviceChange ? Math.round((now - lastDeviceChange) / 1000) : null,
+            sinceOpen: Math.round((now - openedAt) / 1000),
             device: String((track && track.label) || '').slice(0, 40),
         });
 
