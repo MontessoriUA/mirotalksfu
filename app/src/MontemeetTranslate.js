@@ -304,7 +304,11 @@ function stateOf(roomId) {
         peers: new Map(),
         sessions: new Map(),
         sec: 0,
-        voices: { teacher: 'clone', student: 'clone' },
+        // По умолчанию — готовый голос, не клон. Клон звучит естественнее, но
+        // на живом уроке давал задержки до десяти секунд, и нить разговора
+        // терялась (Иван, 24.11): поставщику нужно снять образец, прежде чем
+        // ответить. Клон остаётся выбором педагога, умолчание — быстрый голос.
+        voices: { teacher: 'female', student: 'female' },
     });
     }
     return roomsState.get(roomId);

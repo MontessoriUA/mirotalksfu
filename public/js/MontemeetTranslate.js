@@ -789,14 +789,18 @@ const MontemeetTranslate = (() => {
         // Цветные эмодзи вместо рисованных значков: нарисованные фигуры полов
         // читались плохо (Иван, 24.11). «Как говорящий» — говорящая голова.
         const ICON = { clone: '🗣️', female: '👩', male: '👨' };
-        const TITLE = { clone: 'Голос говорящего', female: 'Женский голос', male: 'Мужской голос' };
+        const TITLE = {
+            clone: 'Голос говорящего (звучит естественнее, но задерживает перевод)',
+            female: 'Женский голос',
+            male: 'Мужской голос',
+        };
         const voiceGroup = (side) =>
             `<div class="mmTrVoices" id="mmTrVoice${side}" role="group" aria-label="Голос перевода">` +
             ['clone', 'female', 'male']
                 .map(
                     (v) =>
                         `<button type="button" data-v="${v}" title="${TITLE[v]}" aria-label="${TITLE[v]}"` +
-                        ` aria-pressed="${v === 'clone' ? 'true' : 'false'}">${ICON[v]}</button>`
+                        ` aria-pressed="${v === 'female' ? 'true' : 'false'}">${ICON[v]}</button>`
                 )
                 .join('') +
             '</div>';
@@ -867,7 +871,7 @@ const MontemeetTranslate = (() => {
             teacher: panel.querySelector('#mmTrVoiceTeacher'),
             student: panel.querySelector('#mmTrVoiceStudent'),
         };
-        const getVoice = (side) => voiceBox[side].querySelector('[aria-pressed="true"]')?.dataset.v || 'clone';
+        const getVoice = (side) => voiceBox[side].querySelector('[aria-pressed="true"]')?.dataset.v || 'female';
         const setVoice = (side, v) => {
             for (const b of voiceBox[side].querySelectorAll('button')) {
                 b.setAttribute('aria-pressed', String(b.dataset.v === v));

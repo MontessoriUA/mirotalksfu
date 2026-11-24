@@ -3575,11 +3575,35 @@ function startServer() {
             }
 
             if (data.lobby_status === 'accept') {
-                for (const peer_id of pears_id) {
-                    const peer = room.getPeer(peer_id);
-                    // Montemeet: гость мог уйти, пока педагог нажимал «впустить», — раньше
-                    // здесь падал весь сервер (PROTOCOL.md §3.4).
-                    if (!peer?.peer_lobby) continue;
+                for (const asked of pears_id) {
+                    let peerId = asked;
+                    let peer = room.getPeer(peerId);
+
+                    // Montemeet: впускаем человека, а не ключ его сессии.
+                    // Телефон рвёт сессию, уходя в другое приложение, и
+                    // возвращается с новым ключом; у педагога в списке остаётся
+                    // прежний, нажатие улетает в пустоту, а студент ждёт
+                    // вечно (живой заход 24.11: «пустил из зала ожидания — у
+                    // неё крутится и не пускает»). Поэтому, не найдя ключ,
+                    // ищем того же человека среди ожидающих: по имени, а если
+                    // ждёт ровно один — просто его.
+                    if (!peer?.peer_lobby) {
+                        const waiting = [...room.getPeers().entries()].filter(([, p]) => p.peer_lobby);
+                        const named = data.peer_name
+                            ? waiting.filter(([, p]) => p.peer_name === data.peer_name)
+                            : [];
+                        const pick = named.length === 1 ? named[0] : waiting.length === 1 ? waiting[0] : null;
+                        // Montemeet: гость мог уйти, пока педагог нажимал «впустить», — раньше
+                        // здесь падал весь сервер (PROTOCOL.md §3.4).
+                        if (!pick) continue;
+                        [peerId, peer] = pick;
+                        log.debug('[Lobby] Montemeet: впускаем по человеку, ключ сессии устарел', {
+                            room: room.id,
+                            asked,
+                            now: peerId,
+                            peer: peer.peer_name,
+                        });
+                    }
 
                     // Montemeet: пропуск на случай обрыва связи — мобильный
                     // браузер рвёт сессию при уходе в другое приложение
@@ -3589,11 +3613,14 @@ function startServer() {
 
                     // Montemeet: впущенный студент только теперь становится
                     // полноправным участником — навешиваем ему перевод.
-                    const admitted = io.sockets.sockets.get(peer_id);
+                    const admitted = io.sockets.sockets.get(peerId);
                     if (admitted) {
                         admitted.room_id = admitted.room_id || room.id;
                         montemeetRegisterTranslate(admitted, peer.peer_name);
                     }
+                    // и сообщаем ему самому — ключ мог смениться, и ответ по
+                    // прежнему адресу до него не дошёл бы
+                    room.sendTo(peerId, 'roomLobby', { ...data, peer_id: peerId });
 
                     handleJoinWebHook(room.id, room.getSessionId(), peer.peer_info);
                 }
