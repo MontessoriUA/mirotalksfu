@@ -116,7 +116,11 @@
         }
 
         setTimeout(() => {
-            const alive = !el.paused && el.currentTime > 0;
+            // Судим по дорожкам, а не по currentTime: у элемента с живым
+            // потоком он не обязан расти и часто остаётся нулём — из-за этого
+            // первая же проба доложила «не вышло», хотя звук шёл (Иван, 24.11).
+            const tracks = el.srcObject && el.srcObject.getAudioTracks ? el.srcObject.getAudioTracks() : [];
+            const alive = !el.paused && tracks.some((t) => t.readyState === 'live' && !t.muted);
             const after = probe();
             say('audio-route', { when: 'reconnect', alive, before, after });
             if (!alive) {
@@ -130,13 +134,52 @@
                 hint('Переключить звук не вышло, вернул как было');
                 return;
             }
+            // Подсказка — только для проверки по флагу. В обычный урок её не
+            // даём: человеку на уроке это сообщение ни о чём (Иван, 24.11).
             hint('Звук переподключён. Нажмите кнопки громкости — что теперь меняется?');
         }, CHECK_MS);
 
         return wasTime;
     }
 
+    // Прогрев: тихий собственный поток, запущенный уже после того, как взят
+    // микрофон. Пока человек ждёт в зале ожидания, звука собеседника ещё нет, а
+    // режим аудиосессии выбирается в момент начала воспроизведения — значит его
+    // можно задать заранее и не терять время в начале урока (мысль Ивана,
+    // 24.11). Громкость почти нулевая: поток нужен не слышимым, а звучащим.
+    let warmEl = null;
+
+    function warmUp() {
+        if (warmEl) return;
+        try {
+            const C = window.AudioContext || window.webkitAudioContext;
+            if (!C) return;
+            const ctx = new C();
+            const dest = ctx.createMediaStreamDestination();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            gain.gain.value = 0.0001;
+            osc.frequency.value = 180;
+            osc.connect(gain).connect(dest);
+            osc.start();
+
+            warmEl = document.createElement('audio');
+            warmEl.autoplay = true;
+            warmEl.dataset.mmTranslate = '1'; // приглушение перевода его не трогает
+            warmEl.srcObject = dest.stream;
+            document.body.appendChild(warmEl);
+            const p = warmEl.play();
+            if (p && typeof p.catch === 'function') {
+                p.catch(() => say('audio-route', { when: 'warmup-blocked' }));
+            }
+            say('audio-route', { when: 'warmup', ...probe() });
+        } catch (e) {
+            say('audio-route', { when: 'warmup-failed', why: String(e && e.message).slice(0, 80) });
+        }
+    }
+
     function tick() {
+        warmUp(); // работает и в зале ожидания: собеседника там ещё нет
         const els = peerAudio();
         for (const el of els) reconnect(el);
     }
