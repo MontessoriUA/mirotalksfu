@@ -25,13 +25,13 @@
     // конфликты при ребейзе на апстрим.
     try {
         if (window.BRAND?.site) {
-            BRAND.site.icon = '../images/montemeet-mark.svg';
-            BRAND.site.appleTouchIcon = '../images/montemeet-mark-180.png';
+            BRAND.site.icon = '../images/montemeet-mark.svg?v=2';
+            BRAND.site.appleTouchIcon = '../images/montemeet-mark-180.png?v=2';
         }
         const icon = document.getElementById('icon');
-        if (icon) icon.href = '../images/montemeet-mark.svg';
+        if (icon) icon.href = '../images/montemeet-mark.svg?v=2';
         const apple = document.getElementById('appleTouchIcon');
-        if (apple) apple.href = '../images/montemeet-mark-180.png'; // квадратный знак, не превью ссылки
+        if (apple) apple.href = '../images/montemeet-mark-180.png?v=2'; // квадратный знак, не превью ссылки
     } catch (e) {
         console.warn('MontemeetBrand: значок вкладки не поставился', e);
     }
@@ -43,7 +43,7 @@
             position: 'center',
             // 24.11: знак-арки вместо прежнего (две фигурки) — айдентика
             // мобильной версии
-            imageUrl: '../images/montemeet-mark.svg',
+            imageUrl: '../images/montemeet-mark.svg?v=2',
             imageWidth: 104,
             imageHeight: 104,
             title: 'Montessori Meet',
