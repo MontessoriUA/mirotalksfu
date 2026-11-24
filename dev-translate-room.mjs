@@ -33,8 +33,13 @@ try {
     /* .env может не быть */
 }
 
+// По умолчанию поднимаем свой сервер. Против боевого — MM_TEST_BASE и
+// MM_TEST_ROOM (там сценарии off/room/lobby пропускаются: чужие настройки не
+// трогаем, проверяем только сквозной перевод).
 const PORT = 3016;
-const BASE = `https://localhost:${PORT}`;
+const EXTERNAL = String(process.env.MM_TEST_BASE || '').trim();
+const BASE = EXTERNAL || `https://localhost:${PORT}`;
+const ROOM = String(process.env.MM_TEST_ROOM || 'spec-lesson').trim();
 const TIMEOUT = 8000;
 const HERE = import.meta.dirname;
 const PHRASES = process.env.TRANSLATE_PHRASES || path.resolve(HERE, '..', 'Montemeet', 'app-spec', 'translate-phrases');
@@ -137,6 +142,7 @@ async function join(room, name) {
 // ---------- сервер ----------
 
 async function startServer(extra) {
+    if (EXTERNAL) return null; // работаем против уже запущенного сервера
     const env = {
         ...process.env,
         SERVER_LISTEN_PORT: String(PORT),
@@ -179,7 +185,7 @@ const live = {
     TRANSLATE_URL: process.env.TRANSLATE_QWEN_URL || 'wss://ap-southeast-1.maas.qwencloudapi.com/api-ws/v1/realtime',
     TRANSLATE_MODEL: process.env.TRANSLATE_QWEN_MODEL || 'qwen3.8-livetranslate-flash-realtime',
     TRANSLATE_KEY: process.env.TRANSLATE_QWEN_KEY || '',
-    TRANSLATE_ROOMS: 'spec-lesson',
+    TRANSLATE_ROOMS: ROOM,
     TRANSLATE_GLOSSARY: path.join(PHRASES, 'phrases.json'),
 };
 
@@ -220,7 +226,7 @@ function pcmChunks(id = 'piano-03') {
 async function off() {
     const server = await startServer({});
     try {
-        const { c } = await join('spec-lesson', 'TrOff');
+        const { c } = await join(ROOM, 'TrOff');
         const ans = await c.emit('translateJoin', { lang: 'ru' }, true).catch(() => 'нет ответа');
         await delay(500);
         check('off', {
@@ -237,7 +243,7 @@ async function off() {
 async function room() {
     const server = await startServer({ ...live, TRANSLATE_ROOMS: 'другая-комната' });
     try {
-        const { c } = await join('spec-lesson', 'TrRoom');
+        const { c } = await join(ROOM, 'TrRoom');
         const ans = await c.emit('translateJoin', { lang: 'ru' }, true).catch(() => 'нет ответа');
         check('room', { notAllowed: ans === 'нет ответа' });
         c.close();
@@ -254,8 +260,8 @@ async function pair() {
     }
     const server = await startServer(live);
     try {
-        const a = await join('spec-lesson', 'TrRu');
-        const b = await join('spec-lesson', 'TrZh');
+        const a = await join(ROOM, 'TrRu');
+        const b = await join(ROOM, 'TrZh');
         const ra = await a.c.emit('translateJoin', { lang: 'ru' }, true);
         const rb = await b.c.emit('translateJoin', { lang: 'zh' }, true);
 
@@ -298,8 +304,8 @@ async function pair() {
 async function sameLang() {
     const server = await startServer(live);
     try {
-        const a = await join('spec-lesson', 'TrOne');
-        const b = await join('spec-lesson', 'TrTwo');
+        const a = await join(ROOM, 'TrOne');
+        const b = await join(ROOM, 'TrTwo');
         await a.c.emit('translateJoin', { lang: 'ru' }, true);
         await b.c.emit('translateJoin', { lang: 'ru' }, true);
         const chunks = pcmChunks();
@@ -342,7 +348,9 @@ if (only && !all[only]) {
     process.exit(2);
 }
 
-for (const name of only ? [only] : Object.keys(all)) {
+const plan = only ? [only] : EXTERNAL ? ['pair'] : Object.keys(all);
+if (EXTERNAL) console.log(`против боевого: ${BASE}, комната ${ROOM} — только сценарий pair\n`);
+for (const name of plan) {
     try {
         await all[name]();
     } catch (err) {
