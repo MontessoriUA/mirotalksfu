@@ -167,6 +167,7 @@ const MontemeetTranslate = (() => {
         if (!socket) return;
 
         socket.on('translateState', (d = {}) => {
+            revealUi();
             if (d.on === false) {
                 log('перевод выключен сервером:', d.reason || '');
                 stop();
@@ -174,11 +175,22 @@ const MontemeetTranslate = (() => {
             for (const fn of onText) fn({ kind: 'state', ...d });
         });
         socket.on('translateText', (d = {}) => {
+            revealUi();
             for (const fn of onText) fn(d);
         });
         socket.on('translateVoice', (d = {}) => {
+            revealUi();
             if (d.audio) playPcm16(d.audio);
         });
+
+        // Проба: пустой язык сервер отвергает, но сам факт ответа говорит, что
+        // в этой комнате перевод разрешён. Где его нет, обработчика нет вовсе —
+        // ответа не будет, и кнопка останется скрытой.
+        try {
+            socket.emit('translateJoin', { lang: '' }, () => revealUi());
+        } catch {
+            /* соединения ещё нет — тогда разрешение придёт событием */
+        }
     }
 
     // stream — тот же микрофонный поток, что идёт в урок
@@ -252,18 +264,22 @@ const MontemeetTranslate = (() => {
 
     const CSS = `
 #mmTr, #mmTrSubs { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+#mmTrBtn[hidden] { display: none; }
 #mmTrBtn {
     position: fixed; z-index: 2147483000;
     top: calc(env(safe-area-inset-top, 0px) + 12px); right: 12px;
-    width: 52px; height: 52px; border: 0; border-radius: 50%;
-    background: rgba(28,28,34,.82); color: #f2f2f5; cursor: pointer;
-    box-shadow: 0 4px 18px rgba(0,0,0,.4); backdrop-filter: blur(8px);
+    width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
+    /* Светлый ореол: без него тёмная кнопка тонет в тёмной комнате (Иван, 24.11) */
+    border: 1px solid rgba(255,255,255,.38);
+    background: rgba(32,32,40,.86); color: #fff;
+    box-shadow: 0 0 0 3px rgba(255,255,255,.13), 0 6px 20px rgba(0,0,0,.45);
+    backdrop-filter: blur(8px);
     display: flex; align-items: center; justify-content: center;
     transition: background .18s, transform .12s;
 }
 #mmTrBtn:active { transform: scale(.94); }
-#mmTrBtn[data-on="1"] { background: #2f6df6; }
-#mmTrBtn[data-voice="1"] { box-shadow: 0 0 0 4px rgba(47,109,246,.35), 0 4px 18px rgba(0,0,0,.4); }
+#mmTrBtn[data-on="1"] { background: #2f6df6; border-color: rgba(255,255,255,.55); }
+#mmTrBtn[data-voice="1"] { box-shadow: 0 0 0 5px rgba(120,170,255,.45), 0 6px 20px rgba(0,0,0,.45); }
 #mmTrBtn .mmTrGlyph { position: relative; width: 28px; height: 28px; }
 #mmTrBtn .mmTrGlyph b { position: absolute; font-weight: 600; }
 #mmTrBtn .mmTrGlyph b:first-child { left: 0; top: -2px; font-size: 18px; }
@@ -313,8 +329,10 @@ const MontemeetTranslate = (() => {
 #mmTrSubs[data-show="1"] { opacity: 1; }
 #mmTrSubs .mmTrWho { display: block; font-size: 12px; opacity: .65; margin-bottom: 2px; }
 @media (min-width: 900px) {
-    #mmTrBtn { top: auto; bottom: 96px; right: 18px; }
-    #mmTrPanel { top: auto; bottom: 160px; right: 18px; }
+    /* Справа внизу стоит своё окно камеры — кнопка его перекрывала (заход 24.11).
+       Слева внизу свободно. */
+    #mmTrBtn { top: auto; bottom: 24px; right: auto; left: 18px; }
+    #mmTrPanel { top: auto; bottom: 88px; right: auto; left: 18px; }
     #mmTrSubs { bottom: calc(env(safe-area-inset-bottom, 0px) + 112px); }
 }
 `;
@@ -330,6 +348,7 @@ const MontemeetTranslate = (() => {
 
         const btn = document.createElement('button');
         btn.id = 'mmTrBtn';
+        btn.hidden = true; // покажем, когда сервер подтвердит, что перевод в комнате есть
         btn.title = 'Перевод';
         btn.setAttribute('aria-label', 'Перевод');
         btn.innerHTML = '<span class="mmTrGlyph"><b>文</b><b>A</b></span>';
@@ -353,6 +372,7 @@ const MontemeetTranslate = (() => {
 
         document.body.append(btn, panel, subs);
         ui = { btn, panel, subs };
+        if (allowed) btn.hidden = false;
 
         const onSw = panel.querySelector('#mmTrOn');
         const langSel = panel.querySelector('#mmTrLang');
@@ -456,6 +476,15 @@ const MontemeetTranslate = (() => {
         });
     }
 
+    // Сервер ответил — значит перевод в этой комнате разрешён, кнопку видно.
+    // В обычных комнатах она так и остаётся скрытой. Ответ может прийти и
+    // раньше, чем построен интерфейс, поэтому помним разрешение отдельно.
+    let allowed = false;
+    function revealUi() {
+        allowed = true;
+        if (ui) ui.btn.hidden = false;
+    }
+
     // кнопка слегка пульсирует, пока звучит перевод — видно, что он идёт
     function markVoice(active) {
         if (ui) ui.btn.dataset.voice = active ? '1' : '0';
@@ -466,10 +495,39 @@ const MontemeetTranslate = (() => {
         start,
         stop,
         mountUi,
+        ready: () => !!ui,
         isOn: () => on,
         lang: () => myLang,
         onMessage: (fn) => onText.push(fn),
     };
 })();
 
-if (typeof window !== 'undefined') window.MontemeetTranslate = MontemeetTranslate;
+if (typeof window !== 'undefined') {
+    window.MontemeetTranslate = MontemeetTranslate;
+
+    // Самостоятельный запуск. Клиент комнаты зовёт нас сам, но на заходе 24.11
+    // на Samsung Internet этого не случилось: страница держала в кэше прежний
+    // RoomClient.js, в котором вызова ещё нет. Этот файл новый и из кэша прийти
+    // не мог, поэтому поднимаемся сами, если нас не позвали.
+    // Клиент комнаты лежит в переменной `rc`, объявленной через let, — такая в
+    // window не попадает, брать её надо по имени.
+    const roomClient = () => {
+        try {
+            if (typeof rc !== 'undefined' && rc) return rc;
+        } catch {
+            /* ещё не объявлена */
+        }
+        return window.rc || null;
+    };
+    const selfBoot = (tries = 0) => {
+        if (MontemeetTranslate.ready()) return;
+        const rc = roomClient();
+        if (rc && rc.socket) {
+            MontemeetTranslate.init({ socket: rc.socket, remoteAudioEl: rc.remoteAudioEl });
+            MontemeetTranslate.mountUi({ getStream: () => rc.localAudioStream });
+            return;
+        }
+        if (tries < 60) setTimeout(() => selfBoot(tries + 1), 300);
+    };
+    setTimeout(() => selfBoot(), 1500);
+}
