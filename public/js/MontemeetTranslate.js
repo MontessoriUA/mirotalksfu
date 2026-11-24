@@ -25,6 +25,8 @@ const MontemeetTranslate = (() => {
     const OUT_RATE = 24000; // перевод приходит в этой частоте
     const DUCK = 0.25; // во сколько раз приглушаем оригинал, пока звучит перевод
     const DUCK_TAIL_MS = 400; // и держим приглушение ещё немного после
+    const JITTER_S = 0.22; // запас перед началом воспроизведения — против заикания
+    const SEND_TAIL_MS = 600; // сколько ещё не слать свой звук после перевода
 
     let socket = null;
     let remoteAudioEl = null;
@@ -39,6 +41,7 @@ const MontemeetTranslate = (() => {
     let playAt = 0;
     let duckUntil = 0;
     let duckTimer = null;
+    let muteSendUntil = 0; // до какого момента не отправляем свой звук переводчику
 
     let on = false;
     let myLang = '';
@@ -52,12 +55,19 @@ const MontemeetTranslate = (() => {
     // только в паузах, а это задача детектора речи.
 
     function setDuck(active) {
-        if (!remoteAudioEl) return;
-        for (const el of remoteAudioEl.querySelectorAll('audio')) {
+        // Ищем по всему документу, а не в одном контейнере: звук собеседника
+        // может идти и через <video>, и элементы пересоздаются по ходу урока.
+        // Своё превью всегда muted — его не трогаем.
+        const els = document.querySelectorAll('audio, video');
+        let touched = 0;
+        for (const el of els) {
+            if (el.muted) continue;
             if (el.dataset.mmFullVolume === undefined) el.dataset.mmFullVolume = String(el.volume ?? 1);
             const full = Number(el.dataset.mmFullVolume) || 1;
             el.volume = active ? full * DUCK : full;
+            touched++;
         }
+        if (active && !touched) log('приглушать нечего: звучащих элементов не нашлось');
     }
 
     function duckNow() {
@@ -97,12 +107,17 @@ const MontemeetTranslate = (() => {
             src.buffer = buf;
             src.connect(playCtx.destination);
             // куски приходят подряд, поэтому ставим их в очередь встык
+            // Запас перед началом: куски идут по сети неровно, и без него
+            // перевод заикается на каждом разрыве (заход 24.11).
             const now = playCtx.currentTime;
-            if (playAt < now) playAt = now + 0.05;
+            if (playAt < now + 0.05) playAt = now + JITTER_S;
             src.start(playAt);
             playAt += buf.duration;
 
-            duckUntil = Date.now() + buf.duration * 1000 + DUCK_TAIL_MS;
+            // ворота отправки: пока играет перевод и немного после
+            const endsInMs = (playAt - now) * 1000;
+            muteSendUntil = Math.max(muteSendUntil, Date.now() + endsInMs + SEND_TAIL_MS);
+            duckUntil = Date.now() + endsInMs + DUCK_TAIL_MS;
             duckNow();
             markVoice(true);
             clearTimeout(playPcm16._off);
@@ -132,6 +147,11 @@ const MontemeetTranslate = (() => {
         });
         tap.port.onmessage = (e) => {
             if (!on || !socket) return;
+            // Пока звучит перевод, свой звук переводчику не шлём. Иначе он
+            // слышит из динамика собственный перевод, переводит его снова, и
+            // урок превращается в эхо с заиканием (заход 24.11). Наушники
+            // снимают вопрос совсем, но рассчитывать на них нельзя.
+            if (Date.now() < muteSendUntil) return;
             const pcm = e.data;
             let s = '';
             const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
@@ -235,6 +255,8 @@ const MontemeetTranslate = (() => {
         stopTap();
         setDuck(false);
         markVoice(false);
+        muteSendUntil = 0;
+        playAt = 0;
         log('выключен');
     }
 
