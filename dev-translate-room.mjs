@@ -11,6 +11,8 @@
 //   pair       — двое с разными языками: говорящему возвращается «что услышали»,
 //                слушателю — перевод текстом и голосом;
 //   same-lang  — у обоих один язык: сессия не открывается и деньги не тратятся;
+//   same-speech — говорящий перешёл на язык слушателя: перевод не дублирует
+//             его живую речь;
 //   lobby      — ожидающему в зале перевод не дают.
 //
 // Сценарий pair ходит к настоящему поставщику и тратит несколько секунд звука
@@ -301,6 +303,50 @@ async function pair() {
     }
 }
 
+// Говорящий перешёл на язык слушателя: переводить нечего, и дублировать его
+// живую речь нельзя (заход 24.11). У Qwen своего выключателя для этого нет —
+// глушим сами, по письменности транскрипта.
+async function sameSpeech() {
+    if (!live.TRANSLATE_KEY) {
+        check('same-speech', { ключЕсть: false });
+        return;
+    }
+    const server = await startServer(live);
+    try {
+        const a = await join(ROOM, 'TrEn');
+        const b = await join(ROOM, 'TrRu2');
+        // A объявил себя англоговорящим, но говорит по-русски — как Иван,
+        // когда переключился на язык собеседницы
+        await a.c.emit('translateJoin', { lang: 'en' }, true);
+        await b.c.emit('translateJoin', { lang: 'ru' }, true);
+
+        const chunks = pcmChunks('piano-03'); // русская фраза
+        for (const ch of chunks) {
+            a.c.emit('translateAudio', { audio: ch });
+            await delay(100);
+        }
+        const silence = Buffer.alloc(3200).toString('base64');
+        const keepAlive = setInterval(() => a.c.emit('translateAudio', { audio: silence }), 100);
+        await delay(12000);
+        clearInterval(keepAlive);
+
+        // Проверяем только одно: живую речь не дублируют. Транскрипт тут
+        // требовать нельзя — на чистой речи целевого языка поставщик молчит
+        // сам и не присылает вообще ничего (замер 24.11).
+        check('same-speech', {
+            слушателюНеДублируют:
+                !b.c.events.some((e) => e.name === 'translateVoice') &&
+                !b.c.events.some((e) => e.name === 'translateText' && e.data?.kind === 'translated'),
+        });
+        console.log('    события говорящего:', a.c.events.map((e) => e.name + (e.data?.kind ? '/' + e.data.kind : '')).join(', ') || 'нет');
+        console.log('    события слушателя: ', b.c.events.map((e) => e.name + (e.data?.kind ? '/' + e.data.kind : '')).join(', ') || 'нет');
+        a.c.close();
+        b.c.close();
+    } finally {
+        await stopServer(server);
+    }
+}
+
 async function sameLang() {
     const server = await startServer(live);
     try {
@@ -341,14 +387,14 @@ async function lobby() {
 
 // ---------- запуск ----------
 
-const all = { off, room, pair, 'same-lang': sameLang, lobby };
+const all = { off, room, pair, 'same-lang': sameLang, 'same-speech': sameSpeech, lobby };
 const only = process.argv[2];
 if (only && !all[only]) {
     console.error('Сценарии: ' + Object.keys(all).join(', '));
     process.exit(2);
 }
 
-const plan = only ? [only] : EXTERNAL ? ['pair'] : Object.keys(all);
+const plan = only ? [only] : EXTERNAL ? ['pair', 'same-speech'] : Object.keys(all);
 if (EXTERNAL) console.log(`против боевого: ${BASE}, комната ${ROOM} — только сценарий pair\n`);
 for (const name of plan) {
     try {

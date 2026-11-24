@@ -73,6 +73,26 @@ function glossaryFor(targetLang, log) {
     return glossaries[targetLang] || null;
 }
 
+// На каком языке сказано — по письменности. Этого хватает: кириллица,
+// иероглифы и латиница различаются надёжно, а английский с французским нам
+// различать не нужно — они оба латиница и оба «не русский, не китайский».
+//
+// Зачем. Если говорящий перешёл на язык слушателя, переводить нечего, но
+// поставщик всё равно может озвучить фразу заново, и она дублирует живую речь
+// (заход 24.11: Иван объявил себя англоговорящим, перешёл на русский — и
+// переводчик повторил его по-русски поверх). У Qwen для этого есть
+// same_language_skip_options, но версия 3.8 его не поддерживает; у OpenAI
+// такое поведение встроено.
+function scriptOf(text) {
+    const t = String(text || '');
+    if (/[\u4e00-\u9fff]/.test(t)) return 'zh';
+    if (/[\u0400-\u04ff]/.test(t)) return 'ru';
+    if (/[A-Za-z]/.test(t)) return 'latin';
+    return null;
+}
+
+const scriptForTarget = (target) => (target === 'zh' ? 'zh' : target === 'ru' ? 'ru' : 'latin');
+
 // ---------- сессия с поставщиком ----------
 //
 // Одна на пару «говорящий → целевой язык». Держится открытой, пока участник в
@@ -137,14 +157,30 @@ class Session {
                     this.ready = true;
                     for (const chunk of this.queued.splice(0, this.queued.length)) this.push(chunk);
                     break;
-                case 'conversation.item.input_audio_transcription.completed':
-                    if (m.transcript) this.onText?.('heard', m.transcript);
+                case 'conversation.item.input_audio_transcription.delta':
+                case 'conversation.item.input_audio_transcription.completed': {
+                    const text = m.transcript || m.delta || '';
+                    if (!text) break;
+                    // Решаем по первым же словам, пока перевод ещё не пошёл.
+                    const said = scriptOf(text);
+                    if (said && said === scriptForTarget(this.target) && !this.skipPhrase) {
+                        this.skipPhrase = true;
+                        this.log?.info('[Translate] говорят на языке слушателя — не дублируем', {
+                            room: this.roomId,
+                            target: this.target,
+                        });
+                    }
+                    if (m.type.endsWith('completed')) this.onText?.('heard', text);
                     break;
+                }
                 case 'response.audio_transcript.delta':
-                    if (m.delta) this.onText?.('translated', m.delta);
+                    if (m.delta && !this.skipPhrase) this.onText?.('translated', m.delta);
                     break;
                 case 'response.audio.delta':
-                    if (m.delta) this.onVoice?.(m.delta);
+                    if (m.delta && !this.skipPhrase) this.onVoice?.(m.delta);
+                    break;
+                case 'response.done':
+                    this.skipPhrase = false; // фраза кончилась — решаем заново
                     break;
                 case 'error':
                     this.log?.warn('[Translate] ошибка сессии', {
