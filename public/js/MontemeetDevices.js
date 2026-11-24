@@ -214,6 +214,9 @@ const MontemeetDevices = (() => {
                 autoGainControl: a.autoGainControl !== false,
                 noiseSuppression: a.noiseSuppression !== false,
             };
+            // какое именно эхоподавление: системное или программное. Поле
+            // нестандартное (Chrome), чужие браузеры его просто не заметят
+            if (a.echoCancellationType) audio.echoCancellationType = a.echoCancellationType;
             if (a.voiceIsolation !== undefined) audio.voiceIsolation = !!a.voiceIsolation;
             if (a.channelCount) audio.channelCount = a.channelCount;
             return { ...constraints, audio };
@@ -273,7 +276,7 @@ const MontemeetDevices = (() => {
         }
         el.textContent =
             `${mmec ? `mmec=${mmec}` : `mmvol=${mmvol}`}
-эхо: ${JSON.stringify(s.echoCancellation)}
+эхо: ${JSON.stringify(s.echoCancellation)}${s.echoCancellationType ? ' / ' + s.echoCancellationType : ''}
 шумодав: ${s.noiseSuppression}
 авто: ${s.autoGainControl}
 частота: ${s.sampleRate || '?'} (16000 — голосовой тракт, 48000 — медийный)`;

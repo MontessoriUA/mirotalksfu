@@ -105,6 +105,18 @@ const MontemeetProfile = (() => {
             if (mmec === 'off') return { ...a, echoCancellation: false };
             if (mmec === 'remote') return { ...a, echoCancellation: 'remote-only' };
             if (mmec === 'on') return { ...a, echoCancellation: true };
+            // Программное эхоподавление вместо системного. Разговорного режима
+            // аудиосессии требует именно СИСТЕМНОЕ — и именно он уводит кнопки
+            // громкости на «Вызов» (Иван, 24.11: при mmec=off кнопки крутят
+            // «Медиа», при mmec=remote снова «Вызов»). Программное считает сам
+            // браузер, системе ничего переключать не нужно, — есть надежда, что
+            // эхо останется подавленным, а кнопки вернутся к медиа.
+            if (mmec === 'browser') {
+                return { ...a, echoCancellation: true, echoCancellationType: 'browser' };
+            }
+            if (mmec === 'system') {
+                return { ...a, echoCancellation: true, echoCancellationType: 'system' };
+            }
             const android = /android/i.test(navigator.userAgent);
             if (!android || a.echoCancellationAndroid === undefined || a.echoCancellation === false) return a;
             return { ...a, echoCancellation: a.echoCancellationAndroid };
