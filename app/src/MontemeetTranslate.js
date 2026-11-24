@@ -405,6 +405,16 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
             const sessionKey = `${socket.id}->${target}`;
             let session = st.sessions.get(sessionKey);
             if (!session) {
+                // Пишем, с каким языком и голосом открываем сессию: при
+                // переключении языков педагог слышал английский вместо
+                // выбранного (Иван, 24.11), а поставщик языки принимает —
+                // проверено зондом. Значит смотреть надо на то, что просим мы.
+                log?.info('[Translate] открываю сессию', {
+                    room: roomId,
+                    from: peerName,
+                    'на язык': target,
+                    голос: isPresenter?.() ? st.voices.teacher : st.voices.student,
+                });
                 session = new Session({
                     roomId,
                     fromId: socket.id,
