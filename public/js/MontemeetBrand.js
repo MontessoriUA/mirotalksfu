@@ -23,9 +23,11 @@
         Swal.fire({
             background: typeof swalBackground !== 'undefined' ? swalBackground : undefined,
             position: 'center',
-            imageUrl: '../images/montemeet-logo.png',
-            imageWidth: 96,
-            imageHeight: 112,
+            // 24.11: знак-арки вместо прежнего (две фигурки) — айдентика
+            // мобильной версии
+            imageUrl: '../images/montemeet-mark.svg',
+            imageWidth: 104,
+            imageHeight: 104,
             title: 'Montessori Meet',
             html:
                 '<div style="text-align:center;line-height:1.7;">' +
