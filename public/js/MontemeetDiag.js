@@ -50,6 +50,34 @@ const MontemeetDiag = (() => {
     }
 
     // как устройство себя определило — и поправили ли мы стоковое определение
+    // Чем отвечает аудиосистема — единственная обратная связь, по которой со
+    // страницы видно, в каком режиме она сейчас работает. На Android разговорный
+    // режим (в него система уходит, как только взят микрофон) обычно даёт
+    // частоту 16 кГц и свою задержку вывода, медийный — 48 кГц. Прямого способа
+    // спросить «каким потоком идёт звук» в вебе нет, поэтому судим по этим
+    // косвенным признакам и сверяем их с тем, что видит человек (Иван, 24.11:
+    // кнопки громкости крутят «Вызов», а собеседник слушается «Медиа»).
+    function audioProbe() {
+        try {
+            const C = window.AudioContext || window.webkitAudioContext;
+            if (!C) return null;
+            const ctx = new C();
+            const out = {
+                rate: ctx.sampleRate,
+                base: Math.round((ctx.baseLatency || 0) * 1000),
+                out: Math.round((ctx.outputLatency || 0) * 1000),
+                state: ctx.state,
+            };
+            if (ctx.close) ctx.close().catch(() => {});
+            return out;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // замер на старте — до того, как страница взяла микрофон
+    const atStart = audioProbe();
+
     function deviceInfo() {
         // константы Room.js: к моменту первой отправки он давно выполнен
         const phone = typeof isMobileDevice !== 'undefined' && isMobileDevice;
@@ -61,12 +89,20 @@ const MontemeetDiag = (() => {
             touch: navigator.maxTouchPoints || 0,
             coarse: !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches),
             screenshare: !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function'),
+            audio0: atStart, // аудиосистема до захвата микрофона
         };
     }
 
     // вкладка скрыта или вернулась: на телефоне и планшете это уход в другое
     // приложение, и захват в этот момент система вправе остановить
     document.addEventListener('visibilitychange', () => report('visibility', { hidden: document.hidden }));
+
+    // повторный замер, когда урок уже идёт: сравнение с atStart показывает,
+    // переключилась ли аудиосистема после захвата микрофона
+    setTimeout(() => {
+        const now = audioProbe();
+        if (now) report('audio-route', { when: 'in-room', ...now, start: atStart });
+    }, 15000);
 
     // браузер не дал играть звук без касания: собеседник «молчит», хотя поток идёт.
     // Только для элементов с потоком собеседника: звуковые эффекты («дзынь» при
