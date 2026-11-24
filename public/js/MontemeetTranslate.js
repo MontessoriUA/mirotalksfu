@@ -26,10 +26,18 @@ const MontemeetTranslate = (() => {
     // Оригинал на время перевода уводим почти в фон: на −12 дБ он ещё спорил с
     // переводом и мешал слушать (Иван, 24.11). −22 дБ — слышно, что человек
     // говорит, но слова не разбираются и не отвлекают.
-    const DUCK = 0.08;
-    const DUCK_TAIL_MS = 400; // и держим приглушение ещё немного после
+    const DUCK = 0.05;
+    // Приглушение ведём плавно и с удержанием. Резкий скачок громкости слышен
+    // сам по себе, а между кусками перевода приходят паузы в полсекунды — на
+    // них приглушение отпускало и тут же возвращалось, и оригинал «дёргался»
+    // (Иван, 24.11). Удержание длиннее этих пауз, спад быстрый, возврат мягкий.
+    const DUCK_HOLD_MS = 900; // держим приглушение после конца куска
+    const DUCK_DOWN_MS = 120; // уводим вниз быстро — иначе перевод начинается в шуме
+    const DUCK_UP_MS = 600; // возвращаем мягко
+    const DUCK_TICK_MS = 40;
     const JITTER_S = 0.12; // запас перед началом воспроизведения — против заикания
     const SEND_TAIL_MS = 600; // сколько ещё не слать свой звук после перевода
+    const SEND_TAIL_LOOP_MS = 200; // с петлёй эхоподавитель помогает — хвост короче
     const MAX_QUEUE_S = 10; // отбрасываем остаток только при явном завале:
     // на 3 с длинный перевод обрывался на полузвуке (заход 24.11)
 
@@ -66,33 +74,53 @@ const MontemeetTranslate = (() => {
     // приглушится — поэтому на музыкальных уроках перевод и должен звучать
     // только в паузах, а это задача детектора речи.
 
-    function setDuck(active) {
-        // Ищем по всему документу, а не в одном контейнере: звук собеседника
-        // может идти и через <video>, и элементы пересоздаются по ходу урока.
-        // Своё превью всегда muted — его не трогаем.
+    let duckLevel = 1; // текущий множитель громкости оригинала
+    let duckWarned = false;
+
+    // Раскладываем текущий уровень по звучащим элементам. Ищем по всему
+    // документу, а не в одном контейнере: звук собеседника может идти и через
+    // <video>, и элементы пересоздаются по ходу урока. Своё превью всегда
+    // muted — его не трогаем, как и сам перевод.
+    function applyDuckLevel() {
         const els = document.querySelectorAll('audio, video');
         let touched = 0;
         for (const el of els) {
             if (el.muted || el.dataset.mmTranslate === '1') continue;
             if (el.dataset.mmFullVolume === undefined) el.dataset.mmFullVolume = String(el.volume ?? 1);
             const full = Number(el.dataset.mmFullVolume) || 1;
-            el.volume = active ? full * DUCK : full;
+            el.volume = Math.max(0, Math.min(1, full * duckLevel));
             touched++;
         }
-        if (active && !touched) log('приглушать нечего: звучащих элементов не нашлось');
+        if (!touched && duckLevel < 1 && !duckWarned) {
+            duckWarned = true;
+            log('приглушать нечего: звучащих элементов не нашлось');
+        }
+    }
+
+    function setDuck(active) {
+        // мгновенная установка — только когда перевод выключают совсем
+        duckUntil = 0;
+        duckLevel = active ? DUCK : 1;
+        applyDuckLevel();
     }
 
     function duckNow() {
-        duckUntil = Date.now() + DUCK_TAIL_MS;
-        setDuck(true);
         if (duckTimer) return;
+        const down = (1 - DUCK) / Math.max(1, DUCK_DOWN_MS / DUCK_TICK_MS);
+        const up = (1 - DUCK) / Math.max(1, DUCK_UP_MS / DUCK_TICK_MS);
         duckTimer = setInterval(() => {
-            if (Date.now() >= duckUntil) {
-                setDuck(false);
+            const target = Date.now() < duckUntil ? DUCK : 1;
+            if (duckLevel !== target) {
+                const step = target < duckLevel ? down : up;
+                duckLevel =
+                    Math.abs(target - duckLevel) <= step ? target : duckLevel + (target > duckLevel ? step : -step);
+                applyDuckLevel();
+            }
+            if (duckLevel === 1 && target === 1) {
                 clearInterval(duckTimer);
                 duckTimer = null;
             }
-        }, 120);
+        }, DUCK_TICK_MS);
     }
 
     // ---------- воспроизведение перевода ----------
@@ -215,14 +243,16 @@ const MontemeetTranslate = (() => {
             playAt += buf.duration;
 
             const endsInMs = (playAt - now) * 1000;
-            // Ворота отправки нужны только без петли: с ней перевод идёт путём
-            // связи, и эхоподавитель браузера вычитает его из микрофона сам.
-            // Держать их при работающей петле вредно — они съедают куски речи
-            // педагога, и перевод приходит рваным (заход 24.11).
-            if (!loopPc) {
-                muteSendUntil = Math.max(muteSendUntil, Date.now() + endsInMs + SEND_TAIL_MS);
-            }
-            duckUntil = Date.now() + endsInMs + DUCK_TAIL_MS;
+            // Ворота отправки держим всегда, пока перевод звучит. Сначала мы
+            // понадеялись на петлю: перевод идёт путём связи, и эхоподавитель
+            // браузера должен вычитать его из микрофона сам. На живом уроке он
+            // не справился — переводчики услышали друг друга и заговорили сами
+            // с собой (Иван, 24.11). Поэтому с петлёй хвост короткий, лишь бы
+            // не ловить собственный хвост перевода, а без петли — прежний
+            // длинный: там вся надежда на ворота.
+            const tail = loopPc ? SEND_TAIL_LOOP_MS : SEND_TAIL_MS;
+            muteSendUntil = Math.max(muteSendUntil, Date.now() + endsInMs + tail);
+            duckUntil = Math.max(duckUntil, Date.now() + endsInMs + DUCK_HOLD_MS);
             duckNow();
             markVoice(true);
             clearTimeout(playPcm16._off);
@@ -583,7 +613,7 @@ const MontemeetTranslate = (() => {
 #mmTrPanel {
     position: fixed; z-index: 2147483000;
     top: calc(env(safe-area-inset-top, 0px) + 72px); right: 12px;
-    width: min(344px, calc(100vw - 24px));
+    width: min(380px, calc(100vw - 24px));
     padding: 14px 16px 16px; border-radius: 16px;
     background: rgba(24,24,29,.94); color: #eceef2;
     box-shadow: 0 10px 34px rgba(0,0,0,.5); backdrop-filter: blur(10px);
@@ -632,7 +662,20 @@ const MontemeetTranslate = (() => {
 #mmTrPair .mmTrSide { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 #mmTrPair .mmTrWho { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; opacity: .5; }
 #mmTrPair select { width: 100%; max-width: none; font-size: 13px; padding: 7px 6px; }
-#mmTrPair select[id^="mmTrVoice"] { font-size: 12.5px; }
+/* Голос — тремя значками, а не вторым рядом списков: два выпадающих списка
+   один под другим неудобны (Иван, 24.11). «Как говорящий» — две фигуры, одна
+   сплошная, вторая повторяет её очертания. */
+.mmTrVoices { display: flex; gap: 4px; }
+.mmTrVoices button {
+    flex: 1; min-width: 0; height: 30px; padding: 0; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+    background: #31313a; color: #cfd2d9;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s, border-color .15s;
+}
+.mmTrVoices button svg { width: 17px; height: 17px; }
+.mmTrVoices button[aria-pressed="true"] { background: #2f6df6; color: #fff; border-color: transparent; }
+.mmTrVoices[hidden] { display: none; }
 #mmTrPair select[disabled] { opacity: .75; }
 #mmTrSign { align-self: center; margin-top: 18px; width: 34px; height: 34px; flex: none; }
 #mmTrSign path { transform-origin: 50% 50%; }
@@ -684,10 +727,32 @@ const MontemeetTranslate = (() => {
         const panel = document.createElement('div');
         panel.id = 'mmTrPanel';
         panel.hidden = true;
-        const voiceOptions =
-            '<option value="clone">как говорящий</option>' +
-            '<option value="female">женский</option>' +
-            '<option value="male">мужской</option>';
+        // Значки голоса. Женский и мужской — обычные фигуры; «как говорящий» —
+        // фигура и её повтор рядом, то есть копия того, кто сейчас говорит.
+        const ICON = {
+            clone:
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+                '<circle cx="9" cy="7.5" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/>' +
+                '<circle cx="17" cy="7.5" r="3" stroke-dasharray="2.6 2.4"/>' +
+                '<path d="M11.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke-dasharray="2.6 2.4"/></svg>',
+            female:
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+                '<circle cx="12" cy="8" r="4.5"/><path d="M12 12.5V21M8.5 18h7"/></svg>',
+            male:
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+                '<circle cx="10" cy="14" r="4.5"/><path d="M13.5 10.5 20 4m-4.5 0H20v4.5"/></svg>',
+        };
+        const TITLE = { clone: 'Голос говорящего', female: 'Женский голос', male: 'Мужской голос' };
+        const voiceGroup = (side) =>
+            `<div class="mmTrVoices" id="mmTrVoice${side}" role="group" aria-label="Голос перевода">` +
+            ['clone', 'female', 'male']
+                .map(
+                    (v) =>
+                        `<button type="button" data-v="${v}" title="${TITLE[v]}" aria-label="${TITLE[v]}"` +
+                        ` aria-pressed="${v === 'clone' ? 'true' : 'false'}">${ICON[v]}</button>`
+                )
+                .join('') +
+            '</div>';
 
         // Знак перевода: две встречные стрелки в цветах знака Montemeet.
         // Пока перевод идёт, они по очереди оживают — видно, что канал жив.
@@ -711,13 +776,13 @@ const MontemeetTranslate = (() => {
             '<div class="mmTrSide">' +
             '<span class="mmTrWho" id="mmTrWhoLeft">Педагог</span>' +
             `<select id="mmTrLangTeacher" aria-label="Язык педагога">${langOptions('ru')}</select>` +
-            `<select id="mmTrVoiceTeacher" aria-label="Голос перевода речи педагога">${voiceOptions}</select>` +
+            voiceGroup('Teacher') +
             '</div>' +
             sign +
             '<div class="mmTrSide">' +
             '<span class="mmTrWho" id="mmTrWhoRight">Студент</span>' +
             `<select id="mmTrLangStudent" aria-label="Язык студента">${langOptions('en')}</select>` +
-            `<select id="mmTrVoiceStudent" aria-label="Голос перевода речи студента">${voiceOptions}</select>` +
+            voiceGroup('Student') +
             '</div>' +
             '</div>' +
             // у студента, пока педагог не включил перевод, — объяснение вместо настроек
@@ -747,8 +812,16 @@ const MontemeetTranslate = (() => {
         const onSw = panel.querySelector('#mmTrOn');
         const teachSel = panel.querySelector('#mmTrLangTeacher');
         const studentSel = panel.querySelector('#mmTrLangStudent');
-        const voiceTeach = panel.querySelector('#mmTrVoiceTeacher');
-        const voiceStud = panel.querySelector('#mmTrVoiceStudent');
+        const voiceBox = {
+            teacher: panel.querySelector('#mmTrVoiceTeacher'),
+            student: panel.querySelector('#mmTrVoiceStudent'),
+        };
+        const getVoice = (side) => voiceBox[side].querySelector('[aria-pressed="true"]')?.dataset.v || 'clone';
+        const setVoice = (side, v) => {
+            for (const b of voiceBox[side].querySelectorAll('button')) {
+                b.setAttribute('aria-pressed', String(b.dataset.v === v));
+            }
+        };
         const offEl = panel.querySelector('#mmTrOff');
         const subsSw = panel.querySelector('#mmTrSubsOn');
         const volEl = panel.querySelector('#mmTrVol');
@@ -763,8 +836,8 @@ const MontemeetTranslate = (() => {
 
         function applyRole() {
             teachSel.disabled = !iAmPresenter; // студенту язык педагога — только показ
-            voiceTeach.hidden = !iAmPresenter;
-            voiceStud.hidden = !iAmPresenter;
+            voiceBox.teacher.hidden = !iAmPresenter;
+            voiceBox.student.hidden = !iAmPresenter;
             if (onRow) onRow.hidden = !iAmPresenter; // включает перевод только педагог
             offEl.hidden = iAmPresenter || on;
             note.hidden = !iAmPresenter && !on;
@@ -782,7 +855,10 @@ const MontemeetTranslate = (() => {
             else studentSel.value = mine;
             subsSw.checked = localStorage.getItem(SAVED_SUBS) !== '0';
             const v = localStorage.getItem(SAVED_VOICE);
-            if (v && ['clone', 'female', 'male'].includes(v)) voiceTeach.value = voiceStud.value = v;
+            if (v && ['clone', 'female', 'male'].includes(v)) {
+                setVoice('teacher', v);
+                setVoice('student', v);
+            }
             const st = localStorage.getItem(SAVED_STUDENT);
             if (st && LANGS.some(([x]) => x === st) && iAmPresenter) studentSel.value = st;
             const g = Number(localStorage.getItem(SAVED_GAIN));
@@ -857,7 +933,7 @@ const MontemeetTranslate = (() => {
                           on: true,
                           me: teachSel.value,
                           others: studentSel.value,
-                          voice: { teacher: voiceTeach.value, student: voiceStud.value },
+                          voice: { teacher: getVoice('teacher'), student: getVoice('student') },
                       }
                     : { on: false },
                 (r) => {
@@ -869,18 +945,22 @@ const MontemeetTranslate = (() => {
 
         // Голос каждой стороны отдельно: «голос говорящего» поставщик снимает
         // с него самого перед каждым ответом, женский и мужской — готовые.
-        const voiceChanged = (side, sel) => () => {
-            try {
-                localStorage.setItem(SAVED_VOICE, sel.value);
-            } catch {
-                /* не сохранилось — не беда */
-            }
-            socket.emit('translateVoiceMode', { side, voice: sel.value }, (r) => {
-                if (r && r.error) note.textContent = 'не вышло: ' + r.error;
+        for (const side of ['teacher', 'student']) {
+            voiceBox[side].addEventListener('click', (e) => {
+                const b = e.target.closest('button[data-v]');
+                if (!b || !iAmPresenter) return;
+                const v = b.dataset.v;
+                setVoice(side, v);
+                try {
+                    localStorage.setItem(SAVED_VOICE, v);
+                } catch {
+                    /* не сохранилось — не беда */
+                }
+                socket.emit('translateVoiceMode', { side, voice: v }, (r) => {
+                    if (r && r.error) note.textContent = 'не вышло: ' + r.error;
+                });
             });
-        };
-        voiceTeach.onchange = voiceChanged('teacher', voiceTeach);
-        voiceStud.onchange = voiceChanged('student', voiceStud);
+        }
 
         studentSel.onchange = () => {
             if (!iAmPresenter) return langChanged(); // студенту это его собственный язык
@@ -951,8 +1031,8 @@ const MontemeetTranslate = (() => {
                     if (teacher) teachSel.value = teacher.lang;
                 }
                 if (d.voices) {
-                    if (d.voices.teacher) voiceTeach.value = d.voices.teacher;
-                    if (d.voices.student) voiceStud.value = d.voices.student;
+                    if (d.voices.teacher) setVoice('teacher', d.voices.teacher);
+                    if (d.voices.student) setVoice('student', d.voices.student);
                 }
                 if (whoEl && Array.isArray(d.peers)) {
                     whoEl.textContent = d.peers.map((p) => `${p.name || '—'}: ${nameOfLang(p.lang)}`).join(' · ');
