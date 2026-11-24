@@ -4669,6 +4669,11 @@ class RoomClient {
 
         const clean = () => {
             this._isConnected = false;
+            // Montemeet: сначала глушим звук, потом рвём транспорты. Когда
+            // соединение закрывается под играющим элементом, приёмник начинает
+            // повторять последний полусекундный кусок — звук «вибрирует» туда
+            // и обратно, пока страница уходит (Иван, 24.11).
+            this.montemeetSilenceAll();
             this.stopConsumerReconcile();
             if (this.consumerTransport) this.consumerTransport.close();
             if (this.producerTransport) this.producerTransport.close();
@@ -4727,6 +4732,19 @@ class RoomClient {
                 });
         } else {
             clean();
+        }
+    }
+
+    // Montemeet: снять поток со всех играющих элементов — звук обрывается
+    // тишиной, а не повторами последнего куска.
+    montemeetSilenceAll() {
+        for (const el of document.querySelectorAll('audio, video')) {
+            try {
+                el.pause();
+                el.srcObject = null;
+            } catch (e) {
+                /* элемент уже убран — ничего страшного */
+            }
         }
     }
 

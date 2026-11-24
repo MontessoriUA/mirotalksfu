@@ -26,12 +26,12 @@
     try {
         if (window.BRAND?.site) {
             BRAND.site.icon = '../images/montemeet-mark.svg';
-            BRAND.site.appleTouchIcon = '../images/montemeet-og.png';
+            BRAND.site.appleTouchIcon = '../images/montemeet-mark-180.png';
         }
         const icon = document.getElementById('icon');
         if (icon) icon.href = '../images/montemeet-mark.svg';
         const apple = document.getElementById('appleTouchIcon');
-        if (apple) apple.href = '../images/montemeet-og.png';
+        if (apple) apple.href = '../images/montemeet-mark-180.png'; // квадратный знак, не превью ссылки
     } catch (e) {
         console.warn('MontemeetBrand: значок вкладки не поставился', e);
     }

@@ -5,7 +5,13 @@
 
         <title id="title">MiroTalk SFU - Room Video Calls, Messaging and Screen Sharing.</title>
         <link id="icon" rel="shortcut icon" href="../images/montemeet-mark.svg" />
-        <link id="appleTouchIcon" rel="apple-touch-icon" href="../images/montemeet-og.png" />
+        <!-- Montemeet: рядом с SVG кладём PNG. Safari со значками в SVG дружит
+             плохо, и у части людей вкладка оставалась со старым значком или
+             вовсе без него (Иван, 24.11). Браузер берёт тот формат, который
+             понимает. -->
+        <link rel="icon" type="image/png" sizes="32x32" href="../images/montemeet-mark-32.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="../images/montemeet-mark-192.png" />
+        <link id="appleTouchIcon" rel="apple-touch-icon" href="../images/montemeet-mark-180.png" />
 
         <!-- Meta Information -->
 
@@ -150,6 +156,7 @@
         <script defer src="../js/MontemeetI18n.dict.js"></script>
         <script defer src="../js/MontemeetI18n.js"></script>
         <script defer src="../js/MontemeetRoomPeek.js"></script>
+        <script defer src="../js/MontemeetRevive.js"></script>
     </head>
     <body>
         <noscript>You need to enable JavaScript to run this app.</noscript>
