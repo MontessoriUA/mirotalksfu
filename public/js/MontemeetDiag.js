@@ -101,7 +101,17 @@ const MontemeetDiag = (() => {
     // переключилась ли аудиосистема после захвата микрофона
     setTimeout(() => {
         const now = audioProbe();
-        if (now) report('audio-route', { when: 'in-room', ...now, start: atStart });
+        if (!now) return;
+        const phone = typeof isMobileDevice !== 'undefined' && isMobileDevice;
+        report('audio-route', {
+            when: 'in-room',
+            dev: phone ? 'phone' : 'computer',
+            rate: now.rate,
+            out: now.out,
+            state: now.state,
+            rate0: atStart && atStart.rate, // каким был до захвата микрофона
+            out0: atStart && atStart.out,
+        });
     }, 15000);
 
     // браузер не дал играть звук без касания: собеседник «молчит», хотя поток идёт.

@@ -59,6 +59,12 @@
 
     // MontemeetDiag объявлен через const — в window он не попадает, только в
     // общую область видимости скриптов страницы (те же грабли, что с rc).
+    // Сервер берёт в журнал только плоские значения: вложенный объект он молча
+    // отбрасывает, и первые замеры пришли пустыми (24.11). Поэтому «до» и
+    // «после» шлём отдельными полями, и сразу помечаем устройство — иначе мак и
+    // телефон в журнале не различить, они под одним именем.
+    const dev = () => (typeof isMobileDevice !== 'undefined' && isMobileDevice ? 'phone' : 'computer');
+
     const say = (what, data) => {
         try {
             if (typeof MontemeetDiag !== 'undefined') MontemeetDiag.report?.(what, data);
@@ -122,7 +128,15 @@
             const tracks = el.srcObject && el.srcObject.getAudioTracks ? el.srcObject.getAudioTracks() : [];
             const alive = !el.paused && tracks.some((t) => t.readyState === 'live' && !t.muted);
             const after = probe();
-            say('audio-route', { when: 'reconnect', alive, before, after });
+            say('audio-route', {
+                when: 'reconnect',
+                alive,
+                dev: dev(),
+                rate0: before && before.rate,
+                out0: before && before.out,
+                rate1: after && after.rate,
+                out1: after && after.out,
+            });
             if (!alive) {
                 // звук не пошёл — возвращаем как было, урок важнее опыта
                 try {
@@ -172,7 +186,7 @@
             if (p && typeof p.catch === 'function') {
                 p.catch(() => say('audio-route', { when: 'warmup-blocked' }));
             }
-            say('audio-route', { when: 'warmup', ...probe() });
+            say('audio-route', { when: 'warmup', dev: dev(), ...probe() });
         } catch (e) {
             say('audio-route', { when: 'warmup-failed', why: String(e && e.message).slice(0, 80) });
         }
