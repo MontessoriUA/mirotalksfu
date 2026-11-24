@@ -18,6 +18,24 @@
 (function () {
     const mmT = (s) => (window.mmT ? window.mmT(s) : s);
 
+    // Значок вкладки. В разметке он наш, но стоковый Brand.js перезаписывает
+    // его своим (BRAND.site.icon — logo.svg MiroTalk), и в браузере оставался
+    // прежний (Иван, 24.11). Brand.js подключён раньше нас, поэтому просто
+    // ставим своё обратно — стоковый файл не трогаем, чтобы не ловить
+    // конфликты при ребейзе на апстрим.
+    try {
+        if (window.BRAND?.site) {
+            BRAND.site.icon = '../images/montemeet-mark.svg';
+            BRAND.site.appleTouchIcon = '../images/montemeet-og.png';
+        }
+        const icon = document.getElementById('icon');
+        if (icon) icon.href = '../images/montemeet-mark.svg';
+        const apple = document.getElementById('appleTouchIcon');
+        if (apple) apple.href = '../images/montemeet-og.png';
+    } catch (e) {
+        console.warn('MontemeetBrand: значок вкладки не поставился', e);
+    }
+
     window.showAbout = function () {
         if (typeof sound === 'function') sound('open');
         Swal.fire({
