@@ -311,6 +311,7 @@ const MontemeetTranslate = (() => {
             revealUi();
             if (on) return;
             const r = await start({ lang: d.lang, stream: lastStream?.() });
+            if (!r.error) showToast(noticeFor(d.lang));
             log(r.error ? 'ведущий включил перевод, но не вышло: ' + r.error : 'перевод включил ведущий, язык ' + d.lang);
             for (const fn of onText) fn({ kind: 'state', on: !r.error, lang: d.lang, byTeacher: true });
         });
@@ -465,6 +466,63 @@ const MontemeetTranslate = (() => {
         ['fa', 'персидский'],
     ];
     const LANGS = [...MAIN_LANGS, ...MORE_LANGS];
+
+    // Сообщение студенту, когда педагог включил перевод, — на его же языке и с
+    // названием языка на нём же. Для языков без перевода берём английский
+    // шаблон: лучше понятная чужая фраза, чем непонятная своя.
+    const NOTICE = {
+        ru: (l) => `Включён синхронный перевод на ${l}`,
+        en: (l) => `Simultaneous translation into ${l} is on`,
+        de: (l) => `Simultanübersetzung ins ${l} ist aktiviert`,
+        fr: (l) => `La traduction simultanée en ${l} est activée`,
+        es: (l) => `Traducción simultánea al ${l} activada`,
+        zh: (l) => `已开启${l}同声传译`,
+        it: (l) => `Traduzione simultanea in ${l} attivata`,
+        pt: (l) => `Tradução simultânea para ${l} ativada`,
+        pl: (l) => `Włączono tłumaczenie symultaniczne na ${l}`,
+        nl: (l) => `Simultaanvertaling naar het ${l} is ingeschakeld`,
+        ja: (l) => `${l}への同時通訳を開始しました`,
+        ko: (l) => `${l} 동시통역이 켜졌습니다`,
+        tr: (l) => `${l} eşzamanlı çeviri açıldı`,
+        ar: (l) => `تم تشغيل الترجمة الفورية إلى ${l}`,
+        uk: (l) => `Увімкнено синхронний переклад на ${l}`,
+    };
+    // Название языка на нём самом — чтобы фраза читалась целиком на одном языке
+    const ENDONYM = {
+        ru: 'русский',
+        en: 'English',
+        de: 'Deutsche',
+        fr: 'français',
+        es: 'español',
+        zh: '中文',
+        it: 'italiano',
+        pt: 'português',
+        pl: 'polski',
+        nl: 'Nederlands',
+        ja: '日本語',
+        ko: '한국어',
+        tr: 'Türkçe',
+        ar: 'العربية',
+        id: 'Bahasa Indonesia',
+        th: 'ไทย',
+        vi: 'Tiếng Việt',
+        hi: 'हिन्दी',
+        ms: 'Bahasa Melayu',
+        ur: 'اردو',
+        nb: 'norsk',
+        sv: 'svenska',
+        da: 'dansk',
+        he: 'עברית',
+        fi: 'suomi',
+        is: 'íslenska',
+        cs: 'čeština',
+        fil: 'Filipino',
+        fa: 'فارسی',
+    };
+    const noticeFor = (lang) => {
+        const name = ENDONYM[lang] || lang;
+        return (NOTICE[lang] || NOTICE.en)(name);
+    };
     const langOptions = (sel) =>
         `<optgroup label="основные">${MAIN_LANGS.map(([v, t]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${t}</option>`).join('')}</optgroup>` +
         `<optgroup label="остальные">${MORE_LANGS.map(([v, t]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${t}</option>`).join('')}</optgroup>`;
@@ -474,7 +532,21 @@ const MontemeetTranslate = (() => {
     const SAVED_STUDENT = 'mmTranslateStudentLang';
 
     const CSS = `
-#mmTr, #mmTrSubs { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+#mmTr, #mmTrToast {
+    position: fixed; z-index: 2147483100; left: 50%; transform: translateX(-50%);
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
+    max-width: min(560px, calc(100vw - 32px));
+    padding: 11px 18px; border-radius: 999px;
+    background: rgba(28,28,34,.92); color: #fff;
+    border: 1px solid rgba(255,255,255,.3);
+    box-shadow: 0 6px 22px rgba(0,0,0,.45); backdrop-filter: blur(8px);
+    font-size: 15px; line-height: 1.3; text-align: center;
+    pointer-events: none; /* ничего не перекрывает: нажатия проходят сквозь */
+    opacity: 0; transition: opacity .22s;
+}
+#mmTrToast[data-show="1"] { opacity: 1; }
+@media (min-width: 900px) { #mmTrToast { top: 18px; } }
+#mmTrSubs { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 #mmTrBtn[hidden] { display: none; }
 #mmTrBtn {
     position: fixed; z-index: 2147483000;
@@ -576,7 +648,7 @@ const MontemeetTranslate = (() => {
         panel.hidden = true;
         panel.innerHTML =
             '<h4>Перевод голосом</h4>' +
-            '<div class="mmTrRow"><label for="mmTrOn">Включить</label>' +
+            '<div class="mmTrRow" id="mmTrOnRow"><label for="mmTrOn">Включить</label>' +
             '<span class="mmTrSwitch"><input type="checkbox" id="mmTrOn"><i></i></span></div>' +
             '<div class="mmTrRow"><label for="mmTrLang">Я говорю на</label>' +
             `<select id="mmTrLang">${langOptions('ru')}</select></div>` +
@@ -597,9 +669,12 @@ const MontemeetTranslate = (() => {
         const subs = document.createElement('div');
         subs.id = 'mmTrSubs';
 
-        document.body.append(btn, panel, subs);
-        ui = { btn, panel, subs };
-        if (allowed && iAmPresenter) btn.hidden = false;
+        const toast = document.createElement('div');
+        toast.id = 'mmTrToast';
+
+        document.body.append(btn, panel, subs, toast);
+        ui = { btn, panel, subs, toast };
+        if (allowed) btn.hidden = false;
 
         const onSw = panel.querySelector('#mmTrOn');
         const langSel = panel.querySelector('#mmTrLang');
@@ -701,6 +776,23 @@ const MontemeetTranslate = (() => {
             if (on) applyForAll(true);
         };
 
+        // Студент поправил свой язык: пересобираем ему перевод на ходу.
+        langSel.onchange = () => {
+            try {
+                localStorage.setItem(SAVED_LANG, langSel.value);
+            } catch {
+                /* не сохранилось — не беда */
+            }
+            if (!on || iAmPresenter) return;
+            socket.emit('translateJoin', { lang: langSel.value }, (r) => {
+                if (r && r.ok) {
+                    myLang = langSel.value;
+                    note.textContent = 'перевод идёт';
+                    showToast(noticeFor(langSel.value));
+                }
+            });
+        };
+
         subsSw.onchange = () => {
             try {
                 localStorage.setItem(SAVED_SUBS, subsSw.checked ? '1' : '0');
@@ -768,17 +860,27 @@ const MontemeetTranslate = (() => {
     // раньше, чем построен интерфейс, поэтому помним разрешение отдельно.
     let allowed = false;
     let iAmPresenter = false;
-    // Кнопку видит только ведущий: у студента никаких органов управления нет,
-    // перевод ему включает педагог (решение Ивана 24.11). Субтитры и голос
-    // студенту приходят сами.
+    // Кнопку видят оба. У педагога — включение и язык студента; у студента —
+    // только свой язык, громкость и субтитры: включает перевод педагог, но если
+    // он ошибся с языком (поставил китайский японцу), студент поправит сам
+    // (решение Ивана 24.11).
     function revealUi() {
         allowed = true;
         if (!ui) return;
-        if (iAmPresenter) {
-            ui.btn.hidden = false;
-            const box = ui.panel.querySelector('#mmTrTeacher');
-            if (box) box.hidden = false;
-        }
+        ui.btn.hidden = false;
+        const box = ui.panel.querySelector('#mmTrTeacher');
+        if (box && iAmPresenter) box.hidden = false;
+        const row = ui.panel.querySelector('#mmTrOnRow');
+        if (row && !iAmPresenter) row.hidden = true; // включать может только педагог
+    }
+
+    // Всплывашка: держится 4 секунды и ничего не перекрывает (решение Ивана).
+    function showToast(text, ms = 4000) {
+        if (!ui?.toast) return;
+        ui.toast.textContent = text;
+        ui.toast.dataset.show = '1';
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => (ui.toast.dataset.show = '0'), ms);
     }
 
     // кнопка слегка пульсирует, пока звучит перевод — видно, что он идёт
@@ -792,6 +894,8 @@ const MontemeetTranslate = (() => {
         stop,
         mountUi,
         ready: () => !!ui,
+        toast: showToast, // наружу — чтобы можно было проверить, не включая перевод
+        noticeFor,
         isOn: () => on,
         lang: () => myLang,
         onMessage: (fn) => onText.push(fn),
