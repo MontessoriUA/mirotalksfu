@@ -642,6 +642,7 @@ const MontemeetTranslate = (() => {
 .mmTrSwitch input:checked + i::after { transform: translateX(19px); }
 .mmTrSwitch input:disabled + i { opacity: .5; }
 #mmTrNote { margin-top: 10px; font-size: 12px; line-height: 1.4; opacity: .62; }
+#mmTrNote:empty { display: none; } /* пустая строка состояния места не занимает */
 #mmTrPanel .mmTrSep { height: 1px; background: rgba(255,255,255,.12); margin: 14px 0 10px; }
 #mmTrPanel optgroup { background: #31313a; }
 #mmTrSubs {
@@ -661,7 +662,14 @@ const MontemeetTranslate = (() => {
 #mmTrPair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; margin: 4px 0 2px; }
 #mmTrPair .mmTrSide { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 #mmTrPair .mmTrWho { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; opacity: .5; }
-#mmTrPair select { width: 100%; max-width: none; font-size: 13px; padding: 7px 6px; }
+#mmTrPair select {
+    width: 100%; max-width: none; font-size: 13px;
+    /* своя стрелка: у родной в Safari нет отступа от края, она липнет к стенке */
+    appearance: none; -webkit-appearance: none;
+    padding: 7px 26px 7px 10px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23cfd2d9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 9px center; background-size: 11px 7px;
+}
 /* Голос — тремя значками, а не вторым рядом списков: два выпадающих списка
    один под другим неудобны (Иван, 24.11). «Как говорящий» — две фигуры, одна
    сплошная, вторая повторяет её очертания. */
@@ -673,7 +681,7 @@ const MontemeetTranslate = (() => {
     display: flex; align-items: center; justify-content: center;
     transition: background .15s, color .15s, border-color .15s;
 }
-.mmTrVoices button svg { width: 17px; height: 17px; }
+.mmTrVoices button { font-size: 18px; line-height: 1; }
 .mmTrVoices button[aria-pressed="true"] { background: #2f6df6; color: #fff; border-color: transparent; }
 .mmTrVoices[hidden] { display: none; }
 #mmTrPair select[disabled] { opacity: .75; }
@@ -729,19 +737,9 @@ const MontemeetTranslate = (() => {
         panel.hidden = true;
         // Значки голоса. Женский и мужской — обычные фигуры; «как говорящий» —
         // фигура и её повтор рядом, то есть копия того, кто сейчас говорит.
-        const ICON = {
-            clone:
-                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-                '<circle cx="9" cy="7.5" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/>' +
-                '<circle cx="17" cy="7.5" r="3" stroke-dasharray="2.6 2.4"/>' +
-                '<path d="M11.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke-dasharray="2.6 2.4"/></svg>',
-            female:
-                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-                '<circle cx="12" cy="8" r="4.5"/><path d="M12 12.5V21M8.5 18h7"/></svg>',
-            male:
-                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-                '<circle cx="10" cy="14" r="4.5"/><path d="M13.5 10.5 20 4m-4.5 0H20v4.5"/></svg>',
-        };
+        // Цветные эмодзи вместо рисованных значков: нарисованные фигуры полов
+        // читались плохо (Иван, 24.11). «Как говорящий» — говорящая голова.
+        const ICON = { clone: '🗣️', female: '👩', male: '👨' };
         const TITLE = { clone: 'Голос говорящего', female: 'Женский голос', male: 'Мужской голос' };
         const voiceGroup = (side) =>
             `<div class="mmTrVoices" id="mmTrVoice${side}" role="group" aria-label="Голос перевода">` +
@@ -787,6 +785,10 @@ const MontemeetTranslate = (() => {
             '</div>' +
             // у студента, пока педагог не включил перевод, — объяснение вместо настроек
             '<div id="mmTrOff" hidden>Перевод не включён педагогом</div>' +
+            // строка состояния стоит здесь, а не внизу: под ползунком громкости
+            // она читалась как подпись к нему — «громкость регулируется обоим»
+            // (Иван, 24.11)
+            '<div id="mmTrNote"></div>' +
             '<div class="mmTrSep"></div>' +
             // второй уровень: сами настройки
             '<div class="mmTrRow" id="mmTrOnRow"><label for="mmTrOn">Включить перевод</label>' +
@@ -795,7 +797,6 @@ const MontemeetTranslate = (() => {
             '<span class="mmTrSwitch"><input type="checkbox" id="mmTrSubsOn" checked><i></i></span></div>' +
             '<div class="mmTrRow"><label for="mmTrVol">Громкость перевода</label>' +
             '<input type="range" id="mmTrVol" min="20" max="100" step="5" value="50"></div>' +
-            '<div id="mmTrNote">включается сразу обоим</div>' +
             '<div id="mmTrWho" style="font-size:12px;opacity:.6;margin-top:6px"></div>';
 
         const subs = document.createElement('div');
@@ -886,7 +887,7 @@ const MontemeetTranslate = (() => {
                 stop();
                 btn.dataset.on = '0';
                 panel.dataset.live = '0';
-                note.textContent = 'включается сразу обоим';
+                note.textContent = '';
                 return;
             }
             onSw.disabled = true;
