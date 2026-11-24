@@ -2799,7 +2799,16 @@ function startServer() {
             // сервер (TRANSLATE.md §6, вариант Б). Включается только в комнатах
             // из TRANSLATE_ROOMS и только если задан поставщик; иначе ни одного
             // обработчика не появляется и всё идёт как раньше.
-            montemeetTranslate.register({ io, socket, roomId: socket.room_id, peerName: peer_name, log });
+            montemeetTranslate.register({
+                io,
+                socket,
+                roomId: socket.room_id,
+                peerName: peer_name,
+                log,
+                // ведущий (педагог) может включать перевод за всех и выбирать
+                // язык студента — у него на уроке заняты руки
+                isPresenter: () => !!roomList.get(socket.room_id)?.getPeer(socket.id)?.peer_presenter,
+            });
 
             const roomJson = room.toJson();
 

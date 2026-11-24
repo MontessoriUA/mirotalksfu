@@ -47,7 +47,10 @@ const url = () => String(process.env.TRANSLATE_URL || '').trim();
 const key = () => String(process.env.TRANSLATE_KEY || '').trim();
 const model = () => String(process.env.TRANSLATE_MODEL || 'qwen3.8-livetranslate-flash-realtime').trim();
 const rooms = () => new Set(list(process.env.TRANSLATE_ROOMS).map((s) => s.toLowerCase()));
-const langs = () => new Set(list(process.env.TRANSLATE_LANGS || 'ru,zh,en'));
+// Языки, у которых поставщик умеет и голос, а не только текст (§3.1 TRANSLATE.md)
+const VOICE_LANGS =
+    'zh,en,ru,ar,de,fr,es,pt,id,it,ko,th,vi,ja,tr,hi,ms,nl,ur,nb,sv,da,he,fi,pl,is,cs,fil,fa';
+const langs = () => new Set(list(process.env.TRANSLATE_LANGS || VOICE_LANGS));
 const maxSec = () => Number(process.env.TRANSLATE_MAX_SEC || 1800);
 
 const enabled = () => url().length > 0 && key().length > 0;
@@ -281,23 +284,31 @@ function targetsFor(st, fromId) {
 
 function broadcastState(io, roomId) {
     const st = stateOf(roomId);
-    const peers = [...st.peers.values()].map((p) => ({ name: p.name, lang: p.lang }));
+    const peers = [...st.peers.entries()].map(([id, p]) => ({ id, name: p.name, lang: p.lang }));
     for (const id of st.peers.keys()) {
-        io.to(id).emit('translateState', { on: true, lang: st.peers.get(id).lang, peers, spentSec: Math.round(st.sec) });
+        io.to(id).emit('translateState', {
+            on: true,
+            lang: st.peers.get(id).lang,
+            peers,
+            spentSec: Math.round(st.sec),
+            presenter: !!st.peers.get(id).presenter,
+        });
     }
 }
 
-function register({ io, socket, roomId, peerName, log }) {
+function register({ io, socket, roomId, peerName, log, isPresenter }) {
     if (!enabled() || !allowedRoom(roomId)) return;
 
     socket.on('translateJoin', ({ lang } = {}, cb) => {
         const want = String(lang || '').trim();
         if (!langs().has(want)) {
-            log?.info('[Translate] язык не разрешён', { room: roomId, lang: want });
-            return cb?.({ error: 'язык не разрешён' });
+            // Пустой язык — это проба «есть ли перевод в комнате». Отвечаем и
+            // заодно говорим, ведущий ли спрашивает: от этого зависит, покажет
+            // ли ему браузер управление за всех.
+            return cb?.({ error: 'язык не разрешён', presenter: !!isPresenter?.() });
         }
         const st = stateOf(roomId);
-        st.peers.set(socket.id, { lang: want, name: peerName });
+        st.peers.set(socket.id, { lang: want, name: peerName, presenter: !!isPresenter?.() });
         log?.info('[Translate] участник включил перевод', { room: roomId, peer: peerName, lang: want });
         broadcastState(io, roomId);
         cb?.({ ok: true, lang: want });
@@ -361,6 +372,40 @@ function register({ io, socket, roomId, peerName, log }) {
             session.push(audio);
         }
         st.sec += Buffer.byteLength(audio, 'base64') / 2 / 16000;
+    });
+
+    // Ведущий включает перевод за всех и выбирает язык каждому. На уроке у
+    // педагога заняты руки, а студент может и не найти кнопку — поэтому всё
+    // управление собрано у него (решение Ивана 24.11).
+    socket.on('translateForAll', ({ on = true, langs = {} } = {}, cb) => {
+        if (!isPresenter?.()) {
+            log?.info('[Translate] не ведущий пытался включить перевод за всех', { room: roomId, peer: peerName });
+            return cb?.({ error: 'только ведущий' });
+        }
+        const st = stateOf(roomId);
+        const known = langs && typeof langs === 'object' ? langs : {};
+
+        if (!on) {
+            for (const [, s] of st.sessions) s.stop();
+            st.sessions.clear();
+            const ids = [...st.peers.keys()];
+            st.peers.clear();
+            for (const id of ids) io.to(id).emit('translateState', { on: false, reason: 'ведущий выключил' });
+            log?.info('[Translate] ведущий выключил перевод за всех', { room: roomId });
+            return cb?.({ ok: true, on: false });
+        }
+
+        let set = 0;
+        for (const [id, lang] of Object.entries(known)) {
+            if (!langs().has(lang)) continue;
+            const was = st.peers.get(id);
+            st.peers.set(id, { lang, name: was?.name || '', presenter: !!was?.presenter });
+            io.to(id).emit('translateTurnOn', { lang });
+            set++;
+        }
+        broadcastState(io, roomId);
+        log?.info('[Translate] ведущий включил перевод за всех', { room: roomId, участников: set });
+        cb?.({ ok: true, on: true, set });
     });
 
     const leave = () => {
