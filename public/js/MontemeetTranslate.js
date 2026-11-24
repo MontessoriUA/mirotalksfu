@@ -25,9 +25,9 @@ const MontemeetTranslate = (() => {
     const OUT_RATE = 24000; // перевод приходит в этой частоте
     const DUCK = 0.25; // во сколько раз приглушаем оригинал, пока звучит перевод
     const DUCK_TAIL_MS = 400; // и держим приглушение ещё немного после
-    const JITTER_S = 0.22; // запас перед началом воспроизведения — против заикания
+    const JITTER_S = 0.12; // запас перед началом воспроизведения — против заикания
     const SEND_TAIL_MS = 600; // сколько ещё не слать свой звук после перевода
-    const MAX_QUEUE_S = 1.5; // дальше очередь не копим — перевод и так отстаёт
+    const MAX_QUEUE_S = 3.0; // дальше очередь не копим — перевод и так отстаёт
 
     let socket = null;
     let remoteAudioEl = null;
@@ -44,6 +44,7 @@ const MontemeetTranslate = (() => {
     let loopEl = null; // <audio>, в котором перевод приходит «удалённой» дорожкой
     let loopPc = null;
     let playAt = 0;
+    const queued = []; // запланированные куски — чтобы было что гасить
     let duckUntil = 0;
     let duckTimer = null;
     let muteSendUntil = 0; // до какого момента не отправляем свой звук переводчику
@@ -180,20 +181,43 @@ const MontemeetTranslate = (() => {
             const src = playCtx.createBufferSource();
             src.buffer = buf;
             src.connect(playGain);
+            queued.push(src);
+            src.onended = () => {
+                const i = queued.indexOf(src);
+                if (i >= 0) queued.splice(i, 1);
+            };
             // куски приходят подряд, поэтому ставим их в очередь встык
             // Запас перед началом: куски идут по сети неровно, и без него
             // перевод заикается на каждом разрыве (заход 24.11).
+            // Куски играем строго встык, в порядке прихода. Сдвигать указатель
+            // назад нельзя: уже запланированные куски продолжают играть по
+            // своему расписанию, и новые накладываются поверх — на заходе 24.11
+            // это слышалось как «сначала конец фразы, потом поверх начало».
+            // Если очередь действительно убежала, её надо не сдвигать, а гасить.
             const now = playCtx.currentTime;
             if (playAt < now + 0.05) playAt = now + JITTER_S;
-            // Если очередь всё же убежала вперёд (сеть отдала пачку разом),
-            // не копим задержку бесконечно, а догоняем.
-            else if (playAt > now + MAX_QUEUE_S) playAt = now + JITTER_S;
+            else if (playAt > now + MAX_QUEUE_S) {
+                for (const old of queued.splice(0, queued.length)) {
+                    try {
+                        old.stop();
+                    } catch {
+                        /* уже доиграл */
+                    }
+                }
+                playAt = now + JITTER_S;
+                log('перевод отстал больше ' + MAX_QUEUE_S + ' с — остаток отброшен');
+            }
             src.start(playAt);
             playAt += buf.duration;
 
-            // ворота отправки: пока играет перевод и немного после
             const endsInMs = (playAt - now) * 1000;
-            muteSendUntil = Math.max(muteSendUntil, Date.now() + endsInMs + SEND_TAIL_MS);
+            // Ворота отправки нужны только без петли: с ней перевод идёт путём
+            // связи, и эхоподавитель браузера вычитает его из микрофона сам.
+            // Держать их при работающей петле вредно — они съедают куски речи
+            // педагога, и перевод приходит рваным (заход 24.11).
+            if (!loopPc) {
+                muteSendUntil = Math.max(muteSendUntil, Date.now() + endsInMs + SEND_TAIL_MS);
+            }
             duckUntil = Date.now() + endsInMs + DUCK_TAIL_MS;
             duckNow();
             markVoice(true);
@@ -358,6 +382,13 @@ const MontemeetTranslate = (() => {
         markVoice(false);
         muteSendUntil = 0;
         playAt = 0;
+        for (const src of queued.splice(0, queued.length)) {
+            try {
+                src.stop();
+            } catch {
+                /* уже доиграл */
+            }
+        }
         try {
             loopPc?.pc1.close();
             loopPc?.pc2.close();
