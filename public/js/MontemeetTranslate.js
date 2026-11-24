@@ -324,6 +324,15 @@ const MontemeetTranslate = (() => {
             if (d.audio) playPcm16(d.audio);
         });
 
+        // Сервер сам говорит, что перевод в комнате есть, — это надёжнее пробы.
+        // Тому, кого педагог впускает из зала ожидания, обработчики достаются
+        // только в момент впуска, а наши попытки к тому времени кончаются, и
+        // кнопка не появляется вовсе (стенд 24.11).
+        socket.on('mmTranslateReady', (d = {}) => {
+            if (d.presenter) iAmPresenter = true;
+            revealUi();
+        });
+
         probeRoom();
     }
 
@@ -685,6 +694,7 @@ const MontemeetTranslate = (() => {
         document.body.append(btn, panel, subs, toast);
         ui = { btn, panel, subs, toast };
         if (allowed) btn.hidden = false;
+        watchOverlays();
 
         const onSw = panel.querySelector('#mmTrOn');
         const langSel = panel.querySelector('#mmTrLang');
@@ -913,6 +923,44 @@ const MontemeetTranslate = (() => {
         ui.toast.dataset.show = '1';
         clearTimeout(showToast._t);
         showToast._t = setTimeout(() => (ui.toast.dataset.show = '0'), ms);
+    }
+
+    // ---------- кнопка не лезет поверх окон комнаты ----------
+    //
+    // Кнопка 文A висит на самом верхнем слое, чтобы её было видно всегда. Но
+    // окна комнаты лежат ниже (z-index 9999), и при открытых настройках кнопка
+    // оказывалась поверх них, накрывая крестик (Иван, 24.11). Пока открыто
+    // любое окно — прячем и кнопку, и свою панель; закрыли — возвращаем.
+
+    const OVERLAYS = ['mySettings', 'chatRoom', 'pollRoom', 'editorRoom', 'whiteboard', 'breakoutPanel', 'lobby'];
+
+    function overlayOpen() {
+        for (const id of OVERLAYS) {
+            const el = document.getElementById(id);
+            if (!el || el.classList.contains('hidden')) continue;
+            if (el.getBoundingClientRect().width > 0) return true;
+        }
+        // Swal оставляет свой контейнер в разметке и после закрытия, причём
+        // растянутым на весь экран, — по нему судить нельзя. Смотрим на само
+        // окно: есть видимый .swal2-popup — значит что-то открыто.
+        const popup = document.querySelector('.swal2-popup');
+        return !!popup && popup.getBoundingClientRect().width > 0;
+    }
+
+    function watchOverlays() {
+        const apply = () => {
+            if (!ui) return;
+            const busy = overlayOpen();
+            ui.btn.style.display = busy ? 'none' : '';
+            if (busy) ui.panel.hidden = true;
+        };
+        const obs = new MutationObserver(apply);
+        for (const id of OVERLAYS) {
+            const el = document.getElementById(id);
+            if (el) obs.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
+        }
+        obs.observe(document.body, { childList: true }); // окна Swal приходят и уходят целиком
+        apply();
     }
 
     // кнопка слегка пульсирует, пока звучит перевод — видно, что он идёт

@@ -319,6 +319,17 @@ function broadcastState(io, roomId) {
 function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom }) {
     if (!enabled() || !allowedRoom(roomId)) return;
 
+    // Сразу говорим устройству, что перевод в этой комнате есть, — чтобы оно не
+    // гадало. Клиент до 24.11 выяснял это пробой `translateJoin` с повтором, и
+    // тому, кого педагог впускал из зала ожидания позже 18 секунд, попытки уже
+    // кончались: обработчики к нему приходили, а кнопка не появлялась (стенд
+    // 24.11, после починки самой регистрации).
+    try {
+        socket.emit('mmTranslateReady', { presenter: !!isPresenter?.() });
+    } catch (e) {
+        /* сокет уже ушёл — ничего страшного */
+    }
+
     socket.on('translateJoin', ({ lang } = {}, cb) => {
         const want = String(lang || '').trim();
         if (!langs().has(want)) {

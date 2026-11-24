@@ -527,8 +527,13 @@ async function initClient() {
 
 function refreshMainButtonsToolTipPlacement() {
     if (!isMobileDevice) {
-        //
-        const position = BtnsBarPosition.options[BtnsBarPosition.selectedIndex].value;
+        // Montemeet: при selectedIndex === -1 (а он таким становится, когда в
+        // localStorage нет сохранённого значения) options[-1] — undefined, и
+        // здесь падал TypeError. Падение рушило всю дальнейшую инициализацию:
+        // до запроса микрофона и входа в комнату дело не доходило, человек
+        // видел вечный прелоадер (заход Ивана 24.11, возврат кнопкой «назад»).
+        const chosen = BtnsBarPosition?.options?.[BtnsBarPosition.selectedIndex];
+        const position = chosen ? chosen.value : 'vertical';
         const bPlacement = position == 'vertical' ? 'top' : 'right';
 
         // Bottom buttons
@@ -4196,7 +4201,9 @@ function loadSettingsFromLocalStorage() {
     BtnAspectRatio.selectedIndex = localStorageSettings.aspect_ratio;
     BtnVideoObjectFit.selectedIndex = localStorageSettings.video_obj_fit;
     BtnVideoControls.selectedIndex = localStorageSettings.video_controls;
-    BtnsBarPosition.selectedIndex = localStorageSettings.buttons_bar;
+    // Montemeet: пустое или испорченное значение не должно оставлять список без
+    // выбора — иначе дальше падает refreshMainButtonsToolTipPlacement().
+    BtnsBarPosition.selectedIndex = Number(localStorageSettings.buttons_bar) || 0;
     pinVideoPosition.selectedIndex = localStorageSettings.pin_grid;
     rc.handleVideoObjectFit(BtnVideoObjectFit.value);
     rc.handleVideoControls(BtnVideoControls.value);

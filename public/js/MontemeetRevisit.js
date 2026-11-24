@@ -38,9 +38,14 @@
         if (!/^\/join\//.test(location.pathname)) return;
 
         setTimeout(() => {
-            // клиент комнаты есть и сокет подключён — всё хорошо, молчим
-            const rcReady = typeof rc !== 'undefined' && rc && rc.socket && rc.socket.connected;
-            if (rcReady) return;
+            // Судим по тому, что человек видит, а не по внутренним признакам:
+            // прелоадер пропал — значит страница ожила, и мы молчим. Прежний
+            // критерий смотрел на сокет, а он подключается и при зависшем
+            // входе, поэтому у Ивана 24.11 подсказка так и не появилась.
+            const loader = document.getElementById('loadingDiv');
+            const stillLoading = loader && loader.getBoundingClientRect().width > 0;
+            const joined = typeof rc !== 'undefined' && rc && rc.isConnected && rc.isConnected();
+            if (joined || !stillLoading) return;
             if (document.getElementById('mmStuck')) return;
 
             const box = document.createElement('div');
