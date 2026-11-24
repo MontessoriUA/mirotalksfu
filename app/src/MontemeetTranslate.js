@@ -36,6 +36,7 @@
 
 const fs = require('fs');
 const { WebSocket } = require('ws');
+const montemeetProfiles = require('./MontemeetProfiles'); // голос перевода по полу педагога
 
 const list = (v) =>
     String(v || '')
@@ -296,7 +297,11 @@ const roomsState = new Map(); // roomId -> { peers: Map(socketId -> {lang, name}
 
 function stateOf(roomId) {
     if (!roomsState.has(roomId)) {
-        // Голос держим отдельно для речи педагога и для речи студента: это разные
+        // Голос педагога по умолчанию — по его полу из справочника школы; нет
+    // записи (служебная комната, концерт) — женский, он нейтральнее на слух.
+    const byGender = montemeetProfiles.presenterVoice(roomId) || 'female';
+
+    // Голос держим отдельно для речи педагога и для речи студента: это разные
     // люди, и одинаковый голос на обе стороны путает — слушателю не понятно,
     // кого ему сейчас переводят (Иван, 24.11). 'clone' — голос самого
     // говорящего, его поставщик снимает перед каждым ответом.
@@ -308,7 +313,7 @@ function stateOf(roomId) {
         // на живом уроке давал задержки до десяти секунд, и нить разговора
         // терялась (Иван, 24.11): поставщику нужно снять образец, прежде чем
         // ответить. Клон остаётся выбором педагога, умолчание — быстрый голос.
-        voices: { teacher: 'female', student: 'female' },
+        voices: { teacher: byGender, student: 'female' },
     });
     }
     return roomsState.get(roomId);

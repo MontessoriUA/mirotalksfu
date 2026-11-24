@@ -103,6 +103,16 @@ const POLICY_TO_MODERATOR = {
     mediaShareOff: ['media_cant_sharing'],
 };
 
+// Голос перевода по полу педагога — его ставит кабинет из справочника школы
+// (поле presenterVoice: 'f' | 'm'). Нужен как умолчание: клон звучит
+// естественнее, но снятие образца стоит до десяти секунд задержки на фразу
+// (Иван, 24.11). Нет записи — пусть решает конференция.
+function presenterVoice(roomId) {
+    const { presenterVoice: byRoom = {} } = load() || {};
+    const v = Object.prototype.hasOwnProperty.call(byRoom, roomId) ? byRoom[roomId] : null;
+    return v === 'f' ? 'female' : v === 'm' ? 'male' : null;
+}
+
 function isLessonRoom(roomId) {
     const { profiles = {}, rooms = {} } = load() || {};
     const profileName = Object.prototype.hasOwnProperty.call(rooms, roomId) ? rooms[roomId] : null;
@@ -268,6 +278,7 @@ function emailFromGrant(cookieHeader, roomId) {
 
 module.exports = {
     forRoom,
+    presenterVoice,
     isManagedRoom,
     applyToRoom,
     refreshRoom,
