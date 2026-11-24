@@ -377,13 +377,16 @@ function register({ io, socket, roomId, peerName, log, isPresenter }) {
     // Ведущий включает перевод за всех и выбирает язык каждому. На уроке у
     // педагога заняты руки, а студент может и не найти кнопку — поэтому всё
     // управление собрано у него (решение Ивана 24.11).
-    socket.on('translateForAll', ({ on = true, langs = {} } = {}, cb) => {
+    // Параметр нарочно НЕ langs: так называется функция разрешённых языков
+    // выше, и одноимённый параметр её затенял — «langs is not a function»,
+    // перевод не включался вовсе (заход 24.11).
+    socket.on('translateForAll', ({ on = true, langs: wanted = {} } = {}, cb) => {
         if (!isPresenter?.()) {
             log?.info('[Translate] не ведущий пытался включить перевод за всех', { room: roomId, peer: peerName });
             return cb?.({ error: 'только ведущий' });
         }
         const st = stateOf(roomId);
-        const known = langs && typeof langs === 'object' ? langs : {};
+        const known = wanted && typeof wanted === 'object' ? wanted : {};
 
         if (!on) {
             for (const [, s] of st.sessions) s.stop();

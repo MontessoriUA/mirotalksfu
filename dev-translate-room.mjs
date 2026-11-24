@@ -10,6 +10,7 @@
 //   room       — комната не в списке разрешённых: перевод не включается;
 //   pair       — двое с разными языками: говорящему возвращается «что услышали»,
 //                слушателю — перевод текстом и голосом;
+//   for-all    — ведущий включает перевод обоим, студент такого права не имеет;
 //   same-lang  — у обоих один язык: сессия не открывается и деньги не тратятся;
 //   same-speech — говорящий перешёл на язык слушателя: перевод не дублирует
 //             его живую речь;
@@ -347,6 +348,37 @@ async function sameSpeech() {
     }
 }
 
+// Ведущий включает перевод за всех: студенту приходит команда подняться с
+// назначенным языком. Заход 24.11: параметр обработчика затенил функцию
+// разрешённых языков («langs is not a function»), и перевод не включался вовсе.
+async function forAll() {
+    const server = await startServer(live);
+    try {
+        const t = await join(ROOM, 'Teacher'); // ведущий по реестру стенда
+        const s = await join(ROOM, 'Pupil');
+        const r = await t.c.emit(
+            'translateForAll',
+            { on: true, langs: { [t.c.sid]: 'ru', [s.c.sid]: 'zh' } },
+            true
+        );
+        const turnOn = await s.c.wait('translateTurnOn', 4000);
+        const denied = await s.c
+            .emit('translateForAll', { on: false }, true)
+            .catch(() => ({ error: 'нет ответа' }));
+
+        check('for-all', {
+            ведущемуРазрешили: r?.ok === true,
+            студентуПришлаКоманда: !!turnOn,
+            языкНазначенВерно: turnOn?.lang === 'zh',
+            студентуВключатьЗаВсехНельзя: !!denied?.error,
+        });
+        t.c.close();
+        s.c.close();
+    } finally {
+        await stopServer(server);
+    }
+}
+
 async function sameLang() {
     const server = await startServer(live);
     try {
@@ -387,7 +419,7 @@ async function lobby() {
 
 // ---------- запуск ----------
 
-const all = { off, room, pair, 'same-lang': sameLang, 'same-speech': sameSpeech, lobby };
+const all = { off, room, pair, 'for-all': forAll, 'same-lang': sameLang, 'same-speech': sameSpeech, lobby };
 const only = process.argv[2];
 if (only && !all[only]) {
     console.error('Сценарии: ' + Object.keys(all).join(', '));
