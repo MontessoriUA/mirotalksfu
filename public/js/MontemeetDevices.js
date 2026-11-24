@@ -247,16 +247,21 @@ const MontemeetDevices = (() => {
         }
     }
 
-    // Бейдж с фактическим режимом микрофона — только при ?mmec=… в адресе:
-    // на телефоне консоль не открыть, а видеть применённое нужно именно там
+    // Бейдж с фактическим режимом микрофона — при ?mmec=… и при ?mmvol=… в
+    // адресе: на телефоне консоль не открыть, а видеть применённое нужно именно
+    // там. Для mmvol главное на бейдже — частота: 16000 значит голосовой тракт
+    // (кнопки громкости уйдут на «Вызов»), 48000 — медийный (Иван, 24.11).
     function showMicBadge(s) {
         let mmec = null;
+        let mmvol = null;
         try {
-            mmec = new URL(location.href).searchParams.get('mmec');
+            const q = new URL(location.href).searchParams;
+            mmec = q.get('mmec');
+            mmvol = q.get('mmvol');
         } catch (e) {
             /* адрес не разобрался — значит и бейдж не нужен */
         }
-        if (!mmec) return;
+        if (!mmec && !mmvol) return;
         let el = document.getElementById('mmMicBadge');
         if (!el) {
             el = document.createElement('div');
@@ -267,7 +272,7 @@ const MontemeetDevices = (() => {
             document.body.appendChild(el);
         }
         el.textContent =
-            `mmec=${mmec}
+            `${mmec ? `mmec=${mmec}` : `mmvol=${mmvol}`}
 эхо: ${JSON.stringify(s.echoCancellation)}
 шумодав: ${s.noiseSuppression}
 авто: ${s.autoGainControl}

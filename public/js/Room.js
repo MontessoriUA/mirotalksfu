@@ -655,7 +655,8 @@ async function initEnumerateDevices() {
 async function initEnumerateDevicesTogether() {
     let both = null;
     try {
-        both = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        const mmAudio = typeof MontemeetVolumeKeys !== 'undefined' ? MontemeetVolumeKeys.audio(true) : true;
+        both = await navigator.mediaDevices.getUserMedia({ audio: mmAudio, video: true });
     } catch (e) {
         return false;
     }
