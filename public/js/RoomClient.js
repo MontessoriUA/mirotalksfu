@@ -4662,6 +4662,14 @@ class RoomClient {
     // ####################################################
 
     exit(offline = false) {
+        // Montemeet: воспроизведение отпускаем ПЕРВЫМ делом, до запроса выхода.
+        // Оно ниже есть и в clean(), но clean() ждёт ответа сервера на
+        // exitRoom — целый сетевой круг, в течение которого звук ещё играет,
+        // а соединение уже разбирают. Именно в этом окне он и «вибрировал»
+        // (Иван, 24.11). Мобильная сессия пришла к тому же порядку ещё в
+        // разборе 04.10: сначала отпустить воспроизведение, потом закрывать.
+        this.montemeetSilenceAll();
+
         if (VideoAI.active) this.stopSession();
         if (this.rtmpFilestreamer) this.stopRTMP();
         if (this.rtmpUrlstreamer) this.stopRTMPfromURL();
@@ -4669,10 +4677,8 @@ class RoomClient {
 
         const clean = () => {
             this._isConnected = false;
-            // Montemeet: сначала глушим звук, потом рвём транспорты. Когда
-            // соединение закрывается под играющим элементом, приёмник начинает
-            // повторять последний полусекундный кусок — звук «вибрирует» туда
-            // и обратно, пока страница уходит (Иван, 24.11).
+            // Montemeet: страховка на случай, если выход пошёл не через
+            // exit() — например, нас отключили. Повторный вызов безвреден.
             this.montemeetSilenceAll();
             this.stopConsumerReconcile();
             if (this.consumerTransport) this.consumerTransport.close();
