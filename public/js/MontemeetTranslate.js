@@ -27,6 +27,7 @@ const MontemeetTranslate = (() => {
     const DUCK_TAIL_MS = 400; // и держим приглушение ещё немного после
     const JITTER_S = 0.22; // запас перед началом воспроизведения — против заикания
     const SEND_TAIL_MS = 600; // сколько ещё не слать свой звук после перевода
+    const MAX_QUEUE_S = 1.5; // дальше очередь не копим — перевод и так отстаёт
 
     let socket = null;
     let remoteAudioEl = null;
@@ -49,6 +50,7 @@ const MontemeetTranslate = (() => {
     let voiceGain = 0.5; // громкость перевода: тише оригинала, заодно вдвое меньше эха
 
     let on = false;
+    let inited = false;
     let myLang = '';
     const onText = [];
 
@@ -183,6 +185,9 @@ const MontemeetTranslate = (() => {
             // перевод заикается на каждом разрыве (заход 24.11).
             const now = playCtx.currentTime;
             if (playAt < now + 0.05) playAt = now + JITTER_S;
+            // Если очередь всё же убежала вперёд (сеть отдала пачку разом),
+            // не копим задержку бесконечно, а догоняем.
+            else if (playAt > now + MAX_QUEUE_S) playAt = now + JITTER_S;
             src.start(playAt);
             playAt += buf.duration;
 
@@ -253,6 +258,12 @@ const MontemeetTranslate = (() => {
     // ---------- наружу ----------
 
     function init(opts = {}) {
+        // Заход 24.11: клиент комнаты позвал init, а следом самозапуск позвал
+        // его второй раз — обработчики навесились дважды, каждый кусок перевода
+        // играл и дописывался по два раза («ThatThat's's good good..»), а очередь
+        // звука росла вдвое и давала огромную задержку. Входим один раз.
+        if (inited) return;
+        inited = true;
         socket = opts.socket || null;
         remoteAudioEl = opts.remoteAudioEl || null;
         if (opts.log) log = opts.log;
