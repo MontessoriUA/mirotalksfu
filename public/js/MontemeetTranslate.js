@@ -38,6 +38,7 @@ const MontemeetTranslate = (() => {
     const JITTER_S = 0.12; // запас перед началом воспроизведения — против заикания
     const SEND_TAIL_MS = 600; // сколько ещё не слать свой звук после перевода
     const SEND_TAIL_LOOP_MS = 200; // с петлёй эхоподавитель помогает — хвост короче
+    const LOOP_WAIT_MS = 2500; // сколько ждать дорожку петли, прежде чем играть напрямую
     const MAX_QUEUE_S = 10; // отбрасываем остаток только при явном завале:
     // на 3 с длинный перевод обрывался на полузвуке (заход 24.11)
 
@@ -148,10 +149,39 @@ const MontemeetTranslate = (() => {
         const pc2 = new RTCPeerConnection();
         pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate).catch(() => {});
         pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate).catch(() => {});
-        pc2.ontrack = (e) => {
-            el.srcObject = e.streams[0];
-            el.play().catch(() => {});
-        };
+
+        // Петлю ждём по-настоящему, до соединения. Раньше она считалась
+        // поднятой сразу после согласования — и если соединение не
+        // устанавливалось, перевод уходил в MediaStreamDestination, из которого
+        // его никто не играл: ошибки нет, субтитры идут, а звука нет совсем
+        // (заход Ивана 24.11: «перевода не слышу, только субтитры»).
+        //
+        // Одного ontrack мало: на стенде он срабатывает, когда ICE ещё в
+        // состоянии new, то есть звук по петле ещё не пойдёт. Поэтому ждём и
+        // дорожку, и фактическое соединение.
+        let gotTrack = false;
+        const ready = new Promise((resolve) => {
+            let settled = false;
+            const finish = (ok) => {
+                if (settled) return;
+                settled = true;
+                resolve(ok);
+            };
+            const check = () => {
+                const st = pc1.iceConnectionState;
+                if (gotTrack && (st === 'connected' || st === 'completed')) finish(true);
+                if (st === 'failed' || st === 'closed') finish(false);
+            };
+            pc2.ontrack = (e) => {
+                el.srcObject = e.streams[0];
+                el.play().catch(() => {});
+                gotTrack = true;
+                check();
+            };
+            pc1.oniceconnectionstatechange = check;
+            setTimeout(() => finish(false), LOOP_WAIT_MS);
+        });
+
         for (const t of dest.stream.getAudioTracks()) pc1.addTrack(t, dest.stream);
 
         const offer = await pc1.createOffer();
@@ -160,6 +190,17 @@ const MontemeetTranslate = (() => {
         const answer = await pc2.createAnswer();
         await pc2.setLocalDescription(answer);
         await pc1.setRemoteDescription(answer);
+
+        if (!(await ready)) {
+            try {
+                pc1.close();
+                pc2.close();
+                el.remove();
+            } catch (e) {
+                /* уже закрыто */
+            }
+            throw new Error('дорожка петли не пришла');
+        }
 
         loopEl = el;
         loopPc = { pc1, pc2 };
@@ -610,6 +651,9 @@ const MontemeetTranslate = (() => {
 #mmTrBtn .mmTrGlyph b { position: absolute; font-weight: 600; }
 #mmTrBtn .mmTrGlyph b:first-child { left: 0; top: -2px; font-size: 18px; }
 #mmTrBtn .mmTrGlyph b:last-child { right: 0; bottom: -2px; font-size: 14px; opacity: .85; }
+/* панель открыта — кнопка становится крестиком: по ней же её и закрывают */
+#mmTrBtn[data-open="1"] .mmTrGlyph { display: none; }
+#mmTrBtn[data-open="1"]::before { content: '✕'; font-size: 20px; line-height: 1; }
 #mmTrPanel {
     position: fixed; z-index: 2147483000;
     top: calc(env(safe-area-inset-top, 0px) + 72px); right: 12px;
@@ -685,8 +729,13 @@ const MontemeetTranslate = (() => {
 .mmTrVoices button[aria-pressed="true"] { background: #2f6df6; color: #fff; border-color: transparent; }
 .mmTrVoices[hidden] { display: none; }
 #mmTrPair select[disabled] { opacity: .75; }
-#mmTrSign { align-self: center; margin-top: 18px; width: 34px; height: 34px; flex: none; }
-#mmTrSign path { transform-origin: 50% 50%; }
+#mmTrSign {
+    align-self: center; margin-top: 18px; width: 34px; height: 34px; flex: none;
+    padding: 0; border: 0; background: none; border-radius: 9px;
+}
+#mmTrSign[data-swap="1"] { cursor: pointer; }
+#mmTrSign[data-swap="1"]:active { transform: scale(.92); }
+#mmTrSign svg path { transform-origin: 50% 50%; }
 #mmTrSign .a, #mmTrSign .b { opacity: .5; transition: opacity .2s; }
 #mmTrPanel[data-live="1"] #mmTrSign .a { animation: mmTrFlow 1.8s ease-in-out infinite; }
 #mmTrPanel[data-live="1"] #mmTrSign .b { animation: mmTrFlow 1.8s ease-in-out infinite .9s; }
@@ -755,7 +804,8 @@ const MontemeetTranslate = (() => {
         // Знак перевода: две встречные стрелки в цветах знака Montemeet.
         // Пока перевод идёт, они по очереди оживают — видно, что канал жив.
         const sign =
-            '<svg id="mmTrSign" viewBox="0 0 36 36" aria-hidden="true">' +
+            '<button type="button" id="mmTrSign" title="Поменять языки местами" aria-label="Поменять языки местами">' +
+            '<svg viewBox="0 0 36 36" aria-hidden="true" style="width:100%;height:100%">' +
             '<defs>' +
             '<linearGradient id="mmTrGa" x1="0" y1="0" x2="1" y2="1">' +
             '<stop offset="0" stop-color="#88B92C"/><stop offset="1" stop-color="#008C99"/></linearGradient>' +
@@ -765,7 +815,7 @@ const MontemeetTranslate = (() => {
             '<g fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">' +
             '<path class="a" d="M7 13h17m-5-5 5 5-5 5" stroke="url(#mmTrGa)"/>' +
             '<path class="b" d="M29 25H12m5 5-5-5 5-5" stroke="url(#mmTrGb)"/>' +
-            '</g></svg>';
+            '</g></svg></button>';
 
         panel.innerHTML =
             '<h4>Перевод голосом</h4>' +
@@ -842,6 +892,8 @@ const MontemeetTranslate = (() => {
             if (onRow) onRow.hidden = !iAmPresenter; // включает перевод только педагог
             offEl.hidden = iAmPresenter || on;
             note.hidden = !iAmPresenter && !on;
+            const sw = panel.querySelector('#mmTrSign');
+            if (sw) sw.dataset.swap = iAmPresenter ? '1' : '0';
         }
         ui.applyRole = applyRole;
         applyRole();
@@ -871,12 +923,32 @@ const MontemeetTranslate = (() => {
             /* приватный режим — просто значения по умолчанию */
         }
 
+        const signBtn = panel.querySelector('#mmTrSign');
+
         btn.onclick = () => {
             panel.hidden = !panel.hidden;
+            btn.dataset.open = panel.hidden ? '0' : '1';
+        };
+
+        // Знак между языками меняет их местами — как в переводчиках (Иван,
+        // 24.11). Студенту менять нечего: язык педагога он не выбирает.
+        signBtn.onclick = () => {
+            if (!iAmPresenter) return;
+            const a = teachSel.value;
+            teachSel.value = studentSel.value;
+            studentSel.value = a;
+            try {
+                localStorage.setItem(SAVED_LANG, teachSel.value);
+                localStorage.setItem(SAVED_STUDENT, studentSel.value);
+            } catch (e) {
+                /* не сохранилось — не беда */
+            }
+            if (on) applyForAll(true);
         };
         document.addEventListener('click', (e) => {
             if (!panel.hidden && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
                 panel.hidden = true;
+                btn.dataset.open = '0';
             }
         });
 
@@ -1123,7 +1195,10 @@ const MontemeetTranslate = (() => {
             if (!ui) return;
             const busy = overlayOpen();
             ui.btn.style.display = busy ? 'none' : '';
-            if (busy) ui.panel.hidden = true;
+            if (busy) {
+                ui.panel.hidden = true;
+                ui.btn.dataset.open = '0';
+            }
         };
         const obs = new MutationObserver(apply);
         for (const id of OVERLAYS) {
