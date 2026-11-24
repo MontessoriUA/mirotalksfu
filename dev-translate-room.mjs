@@ -43,6 +43,9 @@ const PORT = 3016;
 const EXTERNAL = String(process.env.MM_TEST_BASE || '').trim();
 const BASE = EXTERNAL || `https://localhost:${PORT}`;
 const ROOM = String(process.env.MM_TEST_ROOM || 'spec-lesson').trim();
+// Имя ведущего задаёт реестр комнат, и в разных комнатах оно разное:
+// на стенде spec-lesson это Teacher, на боевом montemeet-test — Zal.
+const PRESENTER = String(process.env.MM_TEST_PRESENTER || 'Teacher').trim();
 const TIMEOUT = 8000;
 const HERE = import.meta.dirname;
 const PHRASES = process.env.TRANSLATE_PHRASES || path.resolve(HERE, '..', 'Montemeet', 'app-spec', 'translate-phrases');
@@ -354,7 +357,7 @@ async function sameSpeech() {
 async function forAll() {
     const server = await startServer(live);
     try {
-        const t = await join(ROOM, 'Teacher'); // ведущий по реестру стенда
+        const t = await join(ROOM, PRESENTER); // ведущий по реестру комнаты
         const s = await join(ROOM, 'Pupil');
         const r = await t.c.emit(
             'translateForAll',
@@ -426,7 +429,7 @@ if (only && !all[only]) {
     process.exit(2);
 }
 
-const plan = only ? [only] : EXTERNAL ? ['pair', 'same-speech'] : Object.keys(all);
+const plan = only ? [only] : EXTERNAL ? ['pair', 'for-all', 'same-speech'] : Object.keys(all);
 if (EXTERNAL) console.log(`против боевого: ${BASE}, комната ${ROOM} — только сценарий pair\n`);
 for (const name of plan) {
     try {
