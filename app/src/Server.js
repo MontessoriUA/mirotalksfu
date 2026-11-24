@@ -2423,6 +2423,37 @@ function startServer() {
     // SOCKET IO
     // ####################################################
 
+    // Montemeet: обработчики перевода. Вынесены из входа в комнату, потому что
+    // навесить их нужно и тому, кто пришёл через зал ожидания: у него `join`
+    // обрывается на лобби (`return cb('isLobby')`) и до регистрации не доходит.
+    // Когда педагог впускал такого студента, перевод у него оставался немым —
+    // проба `translateJoin` не получала ответа, и кнопка не появлялась вовсе
+    // (живой заход 24.11, в тот же день, когда зал ожидания включили на
+    // тестовой комнате).
+    function montemeetRegisterTranslate(socket, peerName) {
+        if (socket.mmTranslateReady) return; // второй раз обработчики не вешаем
+        socket.mmTranslateReady = true;
+        montemeetTranslate.register({
+            io,
+            socket,
+            roomId: socket.room_id,
+            peerName,
+            log,
+            // ведущий (педагог) может включать перевод за всех и выбирать
+            // язык студента — у него на уроке заняты руки
+            isPresenter: () => !!roomList.get(socket.room_id)?.getPeer(socket.id)?.peer_presenter,
+            // кто сейчас в комнате — чтобы ведущий раздал язык всем, а не
+            // только тем, кого успел увидеть его браузер
+            peersInRoom: () => {
+                const room = roomList.get(socket.room_id);
+                if (!room) return [];
+                return [...room.getPeers().entries()]
+                    .filter(([, p]) => !p.peer_lobby)
+                    .map(([id, p]) => ({ id, name: p.peer_name }));
+            },
+        });
+    }
+
     io.on('connection', (socket) => {
         // Montemeet: вопрос «сколько людей в комнате» задают ещё с экрана
         // выбора камеры, до входа, — поэтому обработчик ставим сразу.
@@ -2804,25 +2835,7 @@ function startServer() {
             // сервер (TRANSLATE.md §6, вариант Б). Включается только в комнатах
             // из TRANSLATE_ROOMS и только если задан поставщик; иначе ни одного
             // обработчика не появляется и всё идёт как раньше.
-            montemeetTranslate.register({
-                io,
-                socket,
-                roomId: socket.room_id,
-                peerName: peer_name,
-                log,
-                // ведущий (педагог) может включать перевод за всех и выбирать
-                // язык студента — у него на уроке заняты руки
-                isPresenter: () => !!roomList.get(socket.room_id)?.getPeer(socket.id)?.peer_presenter,
-                // кто сейчас в комнате — чтобы ведущий раздал язык всем, а не
-                // только тем, кого успел увидеть его браузер
-                peersInRoom: () => {
-                    const room = roomList.get(socket.room_id);
-                    if (!room) return [];
-                    return [...room.getPeers().entries()]
-                        .filter(([, p]) => !p.peer_lobby)
-                        .map(([id, p]) => ({ id, name: p.peer_name }));
-                },
-            });
+            montemeetRegisterTranslate(socket, peer_name);
 
             const roomJson = room.toJson();
 
@@ -3573,6 +3586,14 @@ function startServer() {
                     montemeetRememberAdmitted(room.id, peer.peer_info?.peer_uuid);
 
                     peer.updatePeerInfo({ type: 'lobby', status: false });
+
+                    // Montemeet: впущенный студент только теперь становится
+                    // полноправным участником — навешиваем ему перевод.
+                    const admitted = io.sockets.sockets.get(peer_id);
+                    if (admitted) {
+                        admitted.room_id = admitted.room_id || room.id;
+                        montemeetRegisterTranslate(admitted, peer.peer_name);
+                    }
 
                     handleJoinWebHook(room.id, room.getSessionId(), peer.peer_info);
                 }
