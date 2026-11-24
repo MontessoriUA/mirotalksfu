@@ -263,6 +263,11 @@ class RoomClient {
         this.isDesktopDevice = peer_info.is_desktop_device;
         this.isMobileDevice = peer_info.is_mobile_device;
         this.isMobileSafari = this.isMobileDevice && peer_info.browser_name.toLowerCase().includes('safari');
+        // Montemeet (24.11): Safari вообще, не только на телефоне — он не кодирует
+        // H.264 несколькими слоями simulcast (см. montemeetSafariOneLayer).
+        this.isSafari = String(peer_info.browser_name || '')
+            .toLowerCase()
+            .includes('safari');
 
         this.pendingSinkId = null; // store desired sink id until next user gesture
 
@@ -3026,7 +3031,45 @@ class RoomClient {
             }
         }
         this.montemeetNoTemporalForH264(encodings, codec);
+        encodings = this.montemeetSafariOneLayer(encodings, codec);
         return { encodings, codec };
+    }
+
+
+    /**
+     * Montemeet (24.11.2026): Safari не кодирует H.264 несколькими слоями simulcast.
+     *
+     * Заход 24.11: педагог в Safari на маке, студент на телефоне. Звук шёл в обе
+     * стороны, камера телефона приходила на мак (1610 кбит/с), а камера мака до
+     * телефона не доходила вовсе — в следе канала «идёт звук/видео: 140/0» при
+     * свободных 6,4 Мбит/с и отличной оценке приёма. В самом Safari дорожка была
+     * живая (enabled, не muted, live), три исходящих потока помечены active: true,
+     * и при этом bytesSent 0, framesEncoded 0 на всех трёх — энкодер не запускался
+     * вовсе. С одним слоем он сразу дал 75 кадров.
+     *
+     * Тянулось с 02.10, когда H.264 стал первым кодеком роутера: тогда у него
+     * убрали временные слои (montemeetNoTemporalForH264), а пространственные
+     * оставили. Значит с тех пор любой педагог в Safari камеру не отдавал, и
+     * заметили это только сейчас — в Safari обычно принимали, а не отправляли.
+     *
+     * Оставляем Safari один слой, верхний: пусть без выбора разрешения для разных
+     * получателей, зато картинка есть. Остальным браузерам — как было.
+     */
+    montemeetSafariOneLayer(encodings, codec) {
+        if (!this.isSafari || !Array.isArray(encodings) || encodings.length < 2) return encodings;
+
+        const chosen = codec || this.device?.rtpCapabilities?.codecs?.find((c) => c.kind === 'video');
+        if (
+            !String(chosen?.mimeType || '')
+                .toLowerCase()
+                .includes('h264')
+        ) {
+            return encodings;
+        }
+
+        const top = encodings[encodings.length - 1];
+        console.log('Montemeet: Safari + H.264 — один слой вместо ' + encodings.length, top);
+        return [top];
     }
 
     /**
@@ -3136,6 +3179,7 @@ class RoomClient {
             ];
         }
         this.montemeetNoTemporalForH264(encodings, codec);
+        encodings = this.montemeetSafariOneLayer(encodings, codec);
         return { encodings, codec };
     }
 

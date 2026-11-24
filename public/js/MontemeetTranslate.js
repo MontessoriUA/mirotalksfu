@@ -104,6 +104,9 @@ const MontemeetTranslate = (() => {
 
             duckUntil = Date.now() + buf.duration * 1000 + DUCK_TAIL_MS;
             duckNow();
+            markVoice(true);
+            clearTimeout(playPcm16._off);
+            playPcm16._off = setTimeout(() => markVoice(false), buf.duration * 1000 + 300);
         } catch (err) {
             log('не удалось проиграть перевод:', err.message);
         }
@@ -219,13 +222,24 @@ const MontemeetTranslate = (() => {
         }
         stopTap();
         setDuck(false);
+        markVoice(false);
         log('выключен');
     }
 
-    // ---------- простая панель ----------
+    // ---------- интерфейс ----------
     //
-    // Делаем из кода, а не в разметке комнаты: это опыт, и его не должно быть
-    // видно там, где перевод не включён.
+    // Круглая кнопка со знаком «文A» — она всегда на виду, потому что перевод
+    // включают и выключают по ходу урока. На телефоне сверху справа (внизу там
+    // панель кнопок комнаты и место занято), на широком экране — снизу справа,
+    // над той же панелью. По нажатию открывается карточка: тумблер перевода,
+    // свой язык и тумблер субтитров.
+    //
+    // Субтитры — то же, что приходит голосом, только текстом внизу экрана. На
+    // уроке они полезнее, чем кажется: по ним видно, что переводчик услышал, и
+    // ошибку замечаешь глазами раньше, чем она собьёт ученика.
+    //
+    // Всё своё, с запасом по z-index и отступом под «чёлку»; вёрстку комнаты не
+    // трогаем вовсе.
 
     const LANGS = [
         ['ru', 'русский'],
@@ -233,77 +247,218 @@ const MontemeetTranslate = (() => {
         ['zh', 'китайский'],
         ['fr', 'французский'],
     ];
+    const SAVED_LANG = 'mmTranslateLang';
+    const SAVED_SUBS = 'mmTranslateSubs';
+
+    const CSS = `
+#mmTr, #mmTrSubs { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+#mmTrBtn {
+    position: fixed; z-index: 2147483000;
+    top: calc(env(safe-area-inset-top, 0px) + 12px); right: 12px;
+    width: 52px; height: 52px; border: 0; border-radius: 50%;
+    background: rgba(28,28,34,.82); color: #f2f2f5; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(0,0,0,.4); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    transition: background .18s, transform .12s;
+}
+#mmTrBtn:active { transform: scale(.94); }
+#mmTrBtn[data-on="1"] { background: #2f6df6; }
+#mmTrBtn[data-voice="1"] { box-shadow: 0 0 0 4px rgba(47,109,246,.35), 0 4px 18px rgba(0,0,0,.4); }
+#mmTrBtn .mmTrGlyph { position: relative; width: 28px; height: 28px; }
+#mmTrBtn .mmTrGlyph b { position: absolute; font-weight: 600; }
+#mmTrBtn .mmTrGlyph b:first-child { left: 0; top: -2px; font-size: 18px; }
+#mmTrBtn .mmTrGlyph b:last-child { right: 0; bottom: -2px; font-size: 14px; opacity: .85; }
+#mmTrPanel {
+    position: fixed; z-index: 2147483000;
+    top: calc(env(safe-area-inset-top, 0px) + 72px); right: 12px;
+    width: min(300px, calc(100vw - 24px));
+    padding: 14px 16px 16px; border-radius: 16px;
+    background: rgba(24,24,29,.94); color: #eceef2;
+    box-shadow: 0 10px 34px rgba(0,0,0,.5); backdrop-filter: blur(10px);
+}
+#mmTrPanel[hidden] { display: none; }
+#mmTrPanel h4 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+#mmTrPanel .mmTrRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; }
+#mmTrPanel label { opacity: .9; }
+#mmTrPanel select {
+    background: #31313a; color: #eceef2; border: 0; border-radius: 9px;
+    padding: 7px 9px; font: inherit; max-width: 160px;
+}
+#mmTrPanel select:disabled { opacity: .55; }
+.mmTrSwitch { position: relative; width: 46px; height: 27px; flex: none; }
+.mmTrSwitch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.mmTrSwitch i {
+    position: absolute; inset: 0; border-radius: 999px; background: #4a4a55; transition: background .18s;
+    pointer-events: none;
+}
+.mmTrSwitch i::after {
+    content: ''; position: absolute; top: 3px; left: 3px; width: 21px; height: 21px;
+    border-radius: 50%; background: #fff; transition: transform .18s;
+}
+.mmTrSwitch input:checked + i { background: #2f6df6; }
+.mmTrSwitch input:checked + i::after { transform: translateX(19px); }
+.mmTrSwitch input:disabled + i { opacity: .5; }
+#mmTrNote { margin-top: 10px; font-size: 12px; line-height: 1.4; opacity: .62; }
+#mmTrHeard { margin-top: 8px; font-size: 12px; opacity: .5; min-height: 1.2em; }
+#mmTrSubs {
+    position: fixed; z-index: 2147482000; left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+    max-width: min(900px, calc(100vw - 32px));
+    padding: 10px 18px; border-radius: 12px;
+    background: rgba(0,0,0,.66); color: #fff;
+    font-size: clamp(17px, 2.4vw, 23px); line-height: 1.35; text-align: center;
+    text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    pointer-events: none; opacity: 0; transition: opacity .18s;
+}
+#mmTrSubs[data-show="1"] { opacity: 1; }
+#mmTrSubs .mmTrWho { display: block; font-size: 12px; opacity: .65; margin-bottom: 2px; }
+@media (min-width: 900px) {
+    #mmTrBtn { top: auto; bottom: 96px; right: 18px; }
+    #mmTrPanel { top: auto; bottom: 160px; right: 18px; }
+    #mmTrSubs { bottom: calc(env(safe-area-inset-bottom, 0px) + 112px); }
+}
+`;
+
+    let ui = null;
 
     function mountUi({ getStream } = {}) {
-        if (document.getElementById('mmTranslate')) return;
-        const box = document.createElement('div');
-        box.id = 'mmTranslate';
-        box.style.cssText =
-            'position:fixed;right:12px;bottom:84px;z-index:9;max-width:320px;padding:10px 12px;' +
-            'border-radius:12px;background:rgba(20,20,24,.86);color:#eee;font:13px/1.45 system-ui,sans-serif;' +
-            'box-shadow:0 6px 24px rgba(0,0,0,.35);backdrop-filter:blur(6px)';
-        const sel = LANGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
-        box.innerHTML =
-            '<div style="display:flex;gap:8px;align-items:center">' +
-            '<span style="opacity:.75">Перевод</span>' +
-            `<select id="mmTrLang" style="flex:1;background:#2a2a30;color:#eee;border:0;border-radius:8px;padding:4px 6px">${sel}</select>` +
-            '<button id="mmTrBtn" style="background:#3b6ef6;color:#fff;border:0;border-radius:8px;padding:5px 12px;cursor:pointer">Включить</button>' +
-            '</div>' +
-            '<div id="mmTrInfo" style="margin-top:6px;opacity:.6;font-size:12px">я говорю на этом языке</div>' +
-            '<div id="mmTrHeard" style="margin-top:6px;opacity:.65;font-size:12px"></div>' +
-            '<div id="mmTrText" style="margin-top:4px;font-size:14px"></div>';
-        document.body.appendChild(box);
+        if (ui) return;
 
-        const btn = box.querySelector('#mmTrBtn');
-        const langSel = box.querySelector('#mmTrLang');
-        const info = box.querySelector('#mmTrInfo');
-        const heardEl = box.querySelector('#mmTrHeard');
-        const textEl = box.querySelector('#mmTrText');
+        const style = document.createElement('style');
+        style.textContent = CSS;
+        document.head.appendChild(style);
 
-        btn.onclick = async () => {
-            if (on) {
+        const btn = document.createElement('button');
+        btn.id = 'mmTrBtn';
+        btn.title = 'Перевод';
+        btn.setAttribute('aria-label', 'Перевод');
+        btn.innerHTML = '<span class="mmTrGlyph"><b>文</b><b>A</b></span>';
+
+        const panel = document.createElement('div');
+        panel.id = 'mmTrPanel';
+        panel.hidden = true;
+        panel.innerHTML =
+            '<h4>Перевод голосом</h4>' +
+            '<div class="mmTrRow"><label for="mmTrOn">Включить</label>' +
+            '<span class="mmTrSwitch"><input type="checkbox" id="mmTrOn"><i></i></span></div>' +
+            '<div class="mmTrRow"><label for="mmTrLang">Я говорю на</label>' +
+            `<select id="mmTrLang">${LANGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></div>` +
+            '<div class="mmTrRow"><label for="mmTrSubsOn">Субтитры</label>' +
+            '<span class="mmTrSwitch"><input type="checkbox" id="mmTrSubsOn" checked><i></i></span></div>' +
+            '<div id="mmTrNote">перевод услышит тот, у кого выбран другой язык</div>' +
+            '<div id="mmTrHeard"></div>';
+
+        const subs = document.createElement('div');
+        subs.id = 'mmTrSubs';
+
+        document.body.append(btn, panel, subs);
+        ui = { btn, panel, subs };
+
+        const onSw = panel.querySelector('#mmTrOn');
+        const langSel = panel.querySelector('#mmTrLang');
+        const subsSw = panel.querySelector('#mmTrSubsOn');
+        const note = panel.querySelector('#mmTrNote');
+        const heardEl = panel.querySelector('#mmTrHeard');
+
+        try {
+            const saved = localStorage.getItem(SAVED_LANG);
+            if (saved && LANGS.some(([v]) => v === saved)) langSel.value = saved;
+            subsSw.checked = localStorage.getItem(SAVED_SUBS) !== '0';
+        } catch {
+            /* приватный режим — просто значения по умолчанию */
+        }
+
+        btn.onclick = () => {
+            panel.hidden = !panel.hidden;
+        };
+        document.addEventListener('click', (e) => {
+            if (!panel.hidden && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                panel.hidden = true;
+            }
+        });
+
+        onSw.onchange = async () => {
+            if (!onSw.checked) {
                 stop();
-                btn.textContent = 'Включить';
+                btn.dataset.on = '0';
                 langSel.disabled = false;
-                info.textContent = 'я говорю на этом языке';
+                note.textContent = 'перевод услышит тот, у кого выбран другой язык';
                 return;
             }
-            btn.disabled = true;
-            btn.textContent = 'Включаю…';
-            const r = await start({ lang: langSel.value, stream: getStream?.() });
-            btn.disabled = false;
-            if (r.error) {
-                btn.textContent = 'Включить';
-                info.textContent = 'не вышло: ' + r.error;
-                return;
-            }
-            btn.textContent = 'Выключить';
+            onSw.disabled = true;
             langSel.disabled = true;
-            info.textContent = 'перевод идёт';
+            note.textContent = 'включаю…';
+            const r = await start({ lang: langSel.value, stream: getStream?.() });
+            onSw.disabled = false;
+            if (r.error) {
+                onSw.checked = false;
+                langSel.disabled = false;
+                note.textContent = 'не вышло: ' + r.error;
+                return;
+            }
+            btn.dataset.on = '1';
+            try {
+                localStorage.setItem(SAVED_LANG, langSel.value);
+            } catch {
+                /* не сохранилось — не беда */
+            }
+            note.textContent = 'жду собеседника с другим языком';
         };
 
-        let translated = '';
+        subsSw.onchange = () => {
+            try {
+                localStorage.setItem(SAVED_SUBS, subsSw.checked ? '1' : '0');
+            } catch {
+                /* не сохранилось — не беда */
+            }
+            if (!subsSw.checked) subs.dataset.show = '0';
+        };
+
+        // ---------- то, что приходит с сервера ----------
+
+        let line = '';
+        let hideTimer = null;
+
+        const showSubs = (who, text) => {
+            if (!subsSw.checked) return;
+            subs.innerHTML = `<span class="mmTrWho">${who}</span>`;
+            subs.append(text);
+            subs.dataset.show = '1';
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => (subs.dataset.show = '0'), 5000);
+        };
+
         onText.push((d) => {
             if (d.kind === 'state') {
                 if (d.on === false) {
-                    btn.textContent = 'Включить';
+                    onSw.checked = false;
+                    btn.dataset.on = '0';
                     langSel.disabled = false;
-                    info.textContent = d.reason === 'limit' ? 'предел расхода на урок' : 'выключен';
+                    note.textContent = d.reason === 'limit' ? 'израсходован предел на урок' : 'перевод выключен';
                 } else if (Array.isArray(d.peers)) {
-                    const other = d.peers.filter((p) => p.lang !== myLang).length;
-                    info.textContent = other ? `перевод идёт, собеседников: ${other}` : 'жду собеседника с другим языком';
+                    const other = d.peers.filter((p) => p.lang && p.lang !== myLang).length;
+                    note.textContent = other
+                        ? `перевод идёт · собеседников: ${other}`
+                        : 'жду собеседника с другим языком';
                 }
                 return;
             }
             if (d.kind === 'heard') {
-                heardEl.textContent = '· ' + String(d.text).slice(-120);
-            } else if (d.kind === 'translated') {
-                translated = (translated + String(d.text)).slice(-200);
-                textEl.textContent = translated;
-                clearTimeout(mountUi._t);
-                mountUi._t = setTimeout(() => (translated = ''), 6000);
+                heardEl.textContent = 'услышано: ' + String(d.text).trim().slice(-90);
+                return;
+            }
+            if (d.kind === 'translated') {
+                line = (line + String(d.text)).slice(-220);
+                showSubs(d.from || '', line);
+                clearTimeout(mountUi._reset);
+                mountUi._reset = setTimeout(() => (line = ''), 5000);
             }
         });
+    }
+
+    // кнопка слегка пульсирует, пока звучит перевод — видно, что он идёт
+    function markVoice(active) {
+        if (ui) ui.btn.dataset.voice = active ? '1' : '0';
     }
 
     return {
