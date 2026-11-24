@@ -1,10 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Montessori Meet">
   <!--
     Знак Montessori Meet, неподвижный: закруглённая «м» из двух арок.
-    Пути, градиенты и тени — из айдентики мобильной версии
+    Пути и градиенты — из айдентики мобильной версии
     (montemeet-app/docs/Айдентика/прелоадер-u1.html и meet/src/ui/Logo.tsx).
 
     Для прелоадеров есть анимированный близнец — montemeet-arch.svg.
+
+    Теней из айдентики здесь нет намеренно: SVG-фильтр растрируется, и на
+    размерах интерфейса (знак в шапке — 42 точки) мягкая тень превращается в
+    мыло (Иван, 24.11). В крупной иконке магазина тени остаются.
 
     До 24.11 в вебе и в кабинете стоял прежний знак (две фигурки, logo-m.png);
     актуальный лежал только картинкой превью ссылок.
@@ -20,15 +24,9 @@
       <stop offset="0.55" stop-color="#EE7A33" />
       <stop offset="1" stop-color="#E5422E" />
     </linearGradient>
-    <filter id="markShadowLeft" x="-40%" y="-40%" width="180%" height="180%">
-      <feDropShadow dx="1.6" dy="2.2" stdDeviation="2.4" flood-color="#0A4A3C" flood-opacity="0.3" />
-    </filter>
-    <filter id="markShadowRight" x="-40%" y="-40%" width="180%" height="180%">
-      <feDropShadow dx="1.4" dy="2" stdDeviation="2.2" flood-color="#7A2410" flood-opacity="0.28" />
-    </filter>
   </defs>
   <g fill="none" stroke-width="14" stroke-linecap="round">
-    <path d="M20 70.5 V44.5 A15 15 0 0 1 50 44.5 V70.5" stroke="url(#markLeft)" filter="url(#markShadowLeft)" />
-    <path d="M50 70.5 V44.5 A15 15 0 0 1 80 44.5 V70.5" stroke="url(#markRight)" filter="url(#markShadowRight)" />
+    <path d="M20 70.5 V44.5 A15 15 0 0 1 50 44.5 V70.5" stroke="url(#markLeft)" />
+    <path d="M50 70.5 V44.5 A15 15 0 0 1 80 44.5 V70.5" stroke="url(#markRight)" />
   </g>
 </svg>
