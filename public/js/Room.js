@@ -7614,7 +7614,7 @@ window.addEventListener('popstate', (event) => {
     }).then((result) => {
         if (result.isConfirmed) {
             // Save recording if in progress
-            if (rc.isRecording() || rc.hasActiveRecorder()) {
+            if (rc && (rc.isRecording() || rc.hasActiveRecorder())) {
                 recShowInfo = false;
                 rc.saveRecording('User popstate changes');
             }
@@ -7631,7 +7631,10 @@ window.addEventListener('popstate', (event) => {
 // Intercept tab close, refresh, or direct URL navigation
 window.addEventListener('beforeunload', (e) => {
     // Save recording if in progress
-    if (rc.isRecording() || rc.hasActiveRecorder()) {
+    // Montemeet: rc может ещё не существовать — человек ушёл со страницы, не
+    // войдя в комнату. Тогда здесь падал TypeError прямо в обработчике ухода
+    // (видно в консоли при каждом таком уходе, 25.11).
+    if (rc && (rc.isRecording() || rc.hasActiveRecorder())) {
         recShowInfo = false;
         rc.saveRecording('User is closing the tab, refreshing, or navigating away');
     }
