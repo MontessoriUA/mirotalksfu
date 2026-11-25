@@ -100,7 +100,15 @@
 
         <!-- UAParser -->
 
-        <script defer src="https://cdn.jsdelivr.net/npm/ua-parser-js@latest/dist/ua-parser.min.js"></script>
+        <!-- Montemeet: три библиотеки держим у себя. Без них страница урока не
+             исполняется вовсе: первая же строка Room.js зовёт UAParser, окно
+             ввода имени — Swal, разбор адреса — filterXSS. Сервер стоит внутри
+             сети школы, и при упавшем внешнем канале конференция работала, а
+             страница — нет (разбор 25.11). Версии закреплены: ua-parser 1.0.37,
+             sweetalert2 11.4.8, xss 1.0.15 — раньше две из них тянулись как
+             @latest и могли измениться за ночь без нашей выкладки. При
+             подтягивании апстрима сверять версии. -->
+        <script defer src="../js/vendor/ua-parser.min.js"></script>
 
         <script async src="../js/Stats.js"></script>
         <script defer src="../js/Brand.js"></script>
@@ -114,7 +122,7 @@
         <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/fabric@5.3.0-browser/dist/fabric.min.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11.4.8"></script>
+        <script defer src="../js/vendor/sweetalert2.min.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/emoji-mart@latest/dist/browser.js"></script>
         <script defer src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.8/umd/popper.min.js"></script>
         <script defer src="https://cdnjs.cloudflare.com/ajax/libs/tippy.js/6.3.7/tippy-bundle.umd.min.js"></script>
@@ -125,7 +133,7 @@
         <script defer src="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/gifler@0.1.0/gifler.min.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/xss/dist/xss.min.js"></script>
+        <script defer src="../js/vendor/xss.min.js"></script>
 
         <script defer src="/socket.io/socket.io.js"></script>
         <script defer src="../sfu/MediasoupClient.js"></script>
