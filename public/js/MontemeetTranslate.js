@@ -64,6 +64,10 @@ const MontemeetTranslate = (() => {
     let voiceGain = 0.5; // громкость перевода: тише оригинала, заодно вдвое меньше эха
 
     let on = false;
+    // Перевод в комнате включён ведущим — даже если у нас самих он не поднялся.
+    // Нужен, чтобы студенту не писали «педагог не включил перевод», когда тот
+    // уже включил и студент его слышит (живой заход 25.11).
+    let roomOn = false;
     let inited = false;
     let myLang = '';
     const onText = [];
@@ -383,11 +387,35 @@ const MontemeetTranslate = (() => {
         // Ведущий включил перевод за всех — поднимаемся молча, без нажатий.
         socket.on('translateTurnOn', async (d = {}) => {
             revealUi();
+            roomOn = true; // перевод в комнате идёт, что бы ни вышло у нас
+            // Язык показываем сразу, не дожидаясь успеха: педагог его уже
+            // назначил, и человек должен видеть то, что есть на самом деле.
+            // Раньше при неудачном включении язык оставался прежним — педагог
+            // ставил английский, а у студента так и стоял русский (25.11).
+            for (const fn of onText) fn({ kind: 'lang', lang: d.lang });
+
+            if (on && d.lang && d.lang !== myLang) {
+                // уже переводим, но ведущий сменил язык — пересаживаемся
+                socket.emit('translateJoin', { lang: d.lang }, (r) => {
+                    if (r && r.ok) {
+                        myLang = d.lang;
+                        showToast(noticeFor(d.lang));
+                    }
+                });
+                return;
+            }
             if (on) return;
-            const r = await start({ lang: d.lang, stream: lastStream?.() });
+
+            let r = await start({ lang: d.lang, stream: lastStream?.() });
+            if (r.error) {
+                // Микрофон мог быть ещё не готов — это самое частое. Пробуем
+                // ещё раз через полторы секунды, молча.
+                await new Promise((res) => setTimeout(res, 1500));
+                r = await start({ lang: d.lang, stream: lastStream?.() });
+            }
             if (!r.error) showToast(noticeFor(d.lang));
             log(r.error ? 'ведущий включил перевод, но не вышло: ' + r.error : 'перевод включил ведущий, язык ' + d.lang);
-            for (const fn of onText) fn({ kind: 'state', on: !r.error, lang: d.lang, byTeacher: true });
+            for (const fn of onText) fn({ kind: 'state', on: !r.error, lang: d.lang, byTeacher: true, why: r.error });
         });
 
         socket.on('translateVoice', (d = {}) => {
@@ -435,11 +463,30 @@ const MontemeetTranslate = (() => {
     }
 
     // stream — тот же микрофонный поток, что идёт в урок
+    // Микрофон урока — тот самый, что идёт в комнату. Берём его сами, если нам
+    // не передали поток: у студента перевод включает ведущий, и в этот момент
+    // localAudioStream может быть ещё не выставлен. Тогда start() возвращал
+    // «нет микрофона», перевод у студента не поднимался — и выглядело это как
+    // «работает только в одну сторону», потому что речь студента никто не
+    // переводил, а его панель писала «педагог не включил перевод» (живой заход
+    // 25.11, компьютеры школы).
+    function micFromRoom() {
+        try {
+            if (typeof rc === 'undefined' || !rc) return null;
+            const id = rc.producerLabel.get('audioType');
+            const p = id && rc.producers.get(id);
+            const t = p && p.track;
+            return t && t.readyState === 'live' ? new MediaStream([t]) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     async function start({ lang, stream } = {}) {
         if (on) return { ok: true, lang: myLang };
         if (!socket) return { error: 'нет соединения' };
         if (!lang) return { error: 'не выбран язык' };
-        micStream = stream || micStream;
+        micStream = stream || micFromRoom() || micStream;
         if (!micStream) return { error: 'нет микрофона' };
 
         const ans = await new Promise((resolve) => {
@@ -467,6 +514,7 @@ const MontemeetTranslate = (() => {
     function stop() {
         if (!on) return;
         on = false;
+        roomOn = false;
         myLang = '';
         try {
             socket?.emit('translateLeave');
@@ -895,7 +943,7 @@ const MontemeetTranslate = (() => {
             voiceBox.teacher.hidden = !iAmPresenter;
             voiceBox.student.hidden = !iAmPresenter;
             if (onRow) onRow.hidden = !iAmPresenter; // включает перевод только педагог
-            offEl.hidden = iAmPresenter || on;
+            offEl.hidden = iAmPresenter || on || roomOn;
             note.hidden = !iAmPresenter && !on;
             const sw = panel.querySelector('#mmTrSign');
             if (sw) sw.dataset.swap = iAmPresenter ? '1' : '0';
@@ -1099,6 +1147,11 @@ const MontemeetTranslate = (() => {
         };
 
         onText.push((d) => {
+            if (d.kind === 'lang') {
+                if (d.lang) mySel().value = d.lang;
+                applyRole();
+                return;
+            }
             if (d.kind === 'state') {
                 if (Array.isArray(d.peers)) lastPeers = d.peers;
                 if (d.presenter) iAmPresenter = true;
@@ -1119,8 +1172,15 @@ const MontemeetTranslate = (() => {
                     onSw.checked = false;
                     btn.dataset.on = '0';
                     panel.dataset.live = '0';
-                    note.textContent = d.reason === 'limit' ? 'израсходован предел на урок' : 'перевод выключен';
+                    if (d.byTeacher) roomOn = true; // ведущий включил, не вышло у нас
+                    else if (d.reason) roomOn = false; // перевод в комнате выключен
+                    note.textContent = d.why
+                        ? 'перевод не включился: ' + d.why
+                        : d.reason === 'limit'
+                          ? 'израсходован предел на урок'
+                          : 'перевод выключен';
                 } else if (d.byTeacher) {
+                    roomOn = true;
                     onSw.checked = !!d.on;
                     btn.dataset.on = d.on ? '1' : '0';
                     panel.dataset.live = d.on ? '1' : '0';
