@@ -340,6 +340,13 @@ let isButtonsBarOver = false;
 let isRoomLocked = false;
 
 let initStream = null;
+// Montemeet: микрофонный поток экрана выбора устройств. Его держит индикатор
+// громкости, и до 25.11 он не останавливался вообще никогда — дорожки жили весь
+// урок рядом с микрофоном комнаты. Два одновременных захвата одного микрофона
+// сбивают эхоподавитель браузера: на школьных компьютерах в начале встречи
+// заводилась петля, которой в Google Meet и Zoom на тех же машинах нет (Иван,
+// 25.11). Теперь поток отпускаем перед входом в комнату.
+let initAudioStream = null;
 let isInitVideoLoaded = false;
 
 let audioContext = null;
@@ -633,6 +640,26 @@ async function initRoom() {
 // ENUMERATE DEVICES
 // ####################################################
 
+// Montemeet: отпустить всё, что держит экран выбора устройств, перед входом в
+// комнату. Комната берёт микрофон и камеру заново, и держать рядом первый
+// захват незачем: он сбивает эхоподавитель и мешает системе отдать устройство.
+async function montemeetReleasePreview() {
+    try {
+        stopMicrophoneProcessing();
+    } catch (e) {
+        /* индикатор уже остановлен */
+    }
+    for (const stream of [initAudioStream, initStream]) {
+        if (!stream) continue;
+        try {
+            await stopTracks(stream);
+        } catch (e) {
+            /* дорожки уже отпущены */
+        }
+    }
+    initAudioStream = null;
+}
+
 async function initEnumerateDevices() {
     console.log('01 ----> init Enumerate Devices');
     // Montemeet: один запрос на камеру И микрофон вместо двух подряд. Мобильный
@@ -665,6 +692,7 @@ async function initEnumerateDevicesTogether() {
     await enumerateVideoDevices(new MediaStream(both.getVideoTracks()));
     isVideoAllowed = true;
     const audioStream = new MediaStream(both.getAudioTracks());
+    initAudioStream = audioStream;
     await enumerateAudioDevices(audioStream);
     await getMicrophoneVolumeIndicator(audioStream);
     isAudioAllowed = true;
@@ -1351,6 +1379,10 @@ async function whoAreYou() {
         checkMedia();
         if (!BUTTONS.main.startScreenButton) isScreenAllowed = false;
         getPeerInfo();
+        // Montemeet: вход по ссылке из кабинета шёл мимо остановки превью —
+        // она есть только в ветке с окном имени (ниже). Педагоги заходят именно
+        // так, и у них два захвата жили рядом весь урок (Иван, 25.11).
+        await montemeetReleasePreview();
         joinRoom(peer_name, room_id);
         return;
     }
@@ -1470,8 +1502,10 @@ async function whoAreYou() {
         if (!usernameEmoji.classList.contains('hidden')) {
             usernameEmoji.classList.add('hidden');
         }
-        if (initStream && !joinRoomWithScreen) {
-            await stopTracks(initStream);
+        if (!joinRoomWithScreen) {
+            // Montemeet: раньше отпускали только видео, микрофонный поток
+            // оставался жить рядом с микрофоном комнаты (25.11).
+            await montemeetReleasePreview();
             elemDisplay('initVideo', false);
             initVideoContainerShow(false);
         }
