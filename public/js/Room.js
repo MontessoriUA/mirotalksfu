@@ -2785,41 +2785,53 @@ function handleButtons() {
             return userLog('warning', 'The moderator does not allow you to unmute', 'top-end', 6000);
         }
         if (isPushToTalkActive) return;
+        // Montemeet: запрет снимаем в finally. Он снимался только из событий
+        // «включилось/выключилось», а до них дело доходит не всегда: захват
+        // падает (на школьных компьютерах это «устройство занято» из-за
+        // SplitCam), и handleMediaError в конце бросает. Кнопка гасла навсегда,
+        // и ни включить, ни выключить до перезагрузки было нельзя (25.11).
         setAudioButtonsDisabled(true);
-        if (!isEnumerateAudioDevices) await initEnumerateAudioDevices();
+        try {
+            if (!isEnumerateAudioDevices) await initEnumerateAudioDevices();
 
-        const producerExist = rc.producerExist(RoomClient.mediaType.audio);
-        console.log('START AUDIO producerExist --->', producerExist);
+            const producerExist = rc.producerExist(RoomClient.mediaType.audio);
+            console.log('START AUDIO producerExist --->', producerExist);
 
-        // Montemeet: resume would revive the OLD device's track — if the mic
-        // was switched while muted, re-produce from the selected device instead
-        let micSwitchedWhileMuted = false;
-        if (producerExist && microphoneSelect.value) {
-            const audioProducer = [...rc.producers.values()].find((p) => (p.kind ?? p._kind) === 'audio');
-            const currentDeviceId = audioProducer?.track?.getSettings?.()?.deviceId;
-            micSwitchedWhileMuted = !!currentDeviceId && currentDeviceId !== microphoneSelect.value;
+            // Montemeet: resume would revive the OLD device's track — if the mic
+            // was switched while muted, re-produce from the selected device instead
+            let micSwitchedWhileMuted = false;
+            if (producerExist && microphoneSelect.value) {
+                const audioProducer = [...rc.producers.values()].find((p) => (p.kind ?? p._kind) === 'audio');
+                const currentDeviceId = audioProducer?.track?.getSettings?.()?.deviceId;
+                micSwitchedWhileMuted = !!currentDeviceId && currentDeviceId !== microphoneSelect.value;
+            }
+
+            producerExist
+                ? micSwitchedWhileMuted
+                    ? await rc.closeThenProduce(RoomClient.mediaType.audio, microphoneSelect.value)
+                    : await rc.resumeProducer(RoomClient.mediaType.audio)
+                : await rc.produce(RoomClient.mediaType.audio, microphoneSelect.value);
+
+            rc.updatePeerInfo(peer_name, socket.id, 'audio', true);
+        } finally {
+            setAudioButtonsDisabled(false);
         }
-
-        producerExist
-            ? micSwitchedWhileMuted
-                ? await rc.closeThenProduce(RoomClient.mediaType.audio, microphoneSelect.value)
-                : await rc.resumeProducer(RoomClient.mediaType.audio)
-            : await rc.produce(RoomClient.mediaType.audio, microphoneSelect.value);
-
-        rc.updatePeerInfo(peer_name, socket.id, 'audio', true);
     };
     stopAudioButton.onclick = async () => {
         if (isPushToTalkActive) return;
         setAudioButtonsDisabled(true);
+        try {
+            const producerExist = rc.producerExist(RoomClient.mediaType.audio);
+            console.log('STOP AUDIO producerExist --->', producerExist);
 
-        const producerExist = rc.producerExist(RoomClient.mediaType.audio);
-        console.log('STOP AUDIO producerExist --->', producerExist);
+            producerExist
+                ? await rc.pauseProducer(RoomClient.mediaType.audio)
+                : await rc.closeProducer(RoomClient.mediaType.audio);
 
-        producerExist
-            ? await rc.pauseProducer(RoomClient.mediaType.audio)
-            : await rc.closeProducer(RoomClient.mediaType.audio);
-
-        rc.updatePeerInfo(peer_name, socket.id, 'audio', false);
+            rc.updatePeerInfo(peer_name, socket.id, 'audio', false);
+        } finally {
+            setAudioButtonsDisabled(false);
+        }
     };
     startVideoButton.onclick = async () => {
         const moderator = rc.getModerator();
@@ -2827,14 +2839,20 @@ function handleButtons() {
             return userLog('warning', 'The moderator does not allow you to unhide', 'top-end', 6000);
         }
         setVideoButtonsDisabled(true);
-        if (!isEnumerateVideoDevices) await initEnumerateVideoDevices();
-        await rc.produce(RoomClient.mediaType.video, videoSelect.value);
-        // await rc.resumeProducer(RoomClient.mediaType.video);
+        try {
+            if (!isEnumerateVideoDevices) await initEnumerateVideoDevices();
+            await rc.produce(RoomClient.mediaType.video, videoSelect.value);
+        } finally {
+            setVideoButtonsDisabled(false);
+        }
     };
     stopVideoButton.onclick = () => {
         setVideoButtonsDisabled(true);
-        rc.closeProducer(RoomClient.mediaType.video);
-        // await rc.pauseProducer(RoomClient.mediaType.video);
+        try {
+            rc.closeProducer(RoomClient.mediaType.video);
+        } finally {
+            setVideoButtonsDisabled(false);
+        }
     };
     startScreenButton.onclick = async () => {
         const moderator = rc.getModerator();

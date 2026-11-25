@@ -3549,11 +3549,28 @@ class RoomClient {
         const producer_id = this.producerLabel.get(type);
         this.producers.get(producer_id).resume();
 
+        // Montemeet: ответ сервера нельзя глотать. Раньше при отказе дорожка
+        // оживала локально, событие «включено» поднималось всё равно, и
+        // интерфейс с сервером считали микрофон включённым — а продюсер на
+        // сервере оставался на паузе, и пакеты никуда не шли. Это второй, сам
+        // по себе, механизм «невидимки»: дорожка живая, ни ended, ни muted не
+        // случилось, и MontemeetRevive.js его не ловит. Лечилось только
+        // передёргиванием микрофона (разбор 25.11).
         try {
-            const response = await this.socket.request('resumeProducer', { producer_id, type });
+            const response = await this.socket.requestWithRetry('resumeProducer', { producer_id, type });
             console.log('Producer resumed', response);
         } catch (error) {
             console.error('Error resuming producer', error);
+            // Возвращаем всё как было: локальная пауза и явная пауза на
+            // сервере, чтобы состояния не разъехались в другую сторону.
+            try {
+                this.producers.get(producer_id).pause();
+                await this.socket.request('pauseProducer', { producer_id, type });
+            } catch (e) {
+                /* сервер недоступен — локальной паузы достаточно */
+            }
+            this.event(type === mediaType.audio ? _EVENTS.pauseAudio : _EVENTS.pauseVideo);
+            return;
         }
 
         switch (type) {
