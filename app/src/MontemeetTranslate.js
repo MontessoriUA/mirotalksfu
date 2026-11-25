@@ -47,7 +47,13 @@ const list = (v) =>
 const url = () => String(process.env.TRANSLATE_URL || '').trim();
 const key = () => String(process.env.TRANSLATE_KEY || '').trim();
 const model = () => String(process.env.TRANSLATE_MODEL || 'qwen3.8-livetranslate-flash-realtime').trim();
-const rooms = () => new Set(list(process.env.TRANSLATE_ROOMS).map((s) => s.toLowerCase()));
+// Комнаты с переводом: сначала настройка кабинета, потом переменная окружения.
+// Звёздочка означает «все комнаты, которыми ведает кабинет» — то есть комнаты
+// педагогов. Именно все, а не вообще любые: в случайной комнате, заведённой по
+// ссылке, перевод включаться не должен (Иван, 25.11: «распространить на все
+// комнаты педагогов, нам для тестирования»).
+const rooms = () =>
+    new Set(list(montemeetProfiles.translateRooms() || process.env.TRANSLATE_ROOMS).map((s) => s.toLowerCase()));
 // Языки, у которых поставщик умеет и голос, а не только текст (§3.1 TRANSLATE.md)
 const VOICE_LANGS =
     'zh,en,ru,ar,de,fr,es,pt,id,it,ko,th,vi,ja,tr,hi,ms,nl,ur,nb,sv,da,he,fi,pl,is,cs,fil,fa';
@@ -58,7 +64,12 @@ const langs = () => new Set(list(montemeetProfiles.translateLangs() || process.e
 const maxSec = () => Number(process.env.TRANSLATE_MAX_SEC || 1800);
 
 const enabled = () => url().length > 0 && key().length > 0;
-const allowedRoom = (roomId) => rooms().has(String(roomId || '').toLowerCase());
+const allowedRoom = (roomId) => {
+    const id = String(roomId || '').toLowerCase();
+    const set = rooms();
+    if (set.has('*')) return montemeetProfiles.isManagedRoom(roomId);
+    return set.has(id);
+};
 
 // Глоссарий у поставщика односторонний («источник → перевод»), поэтому для
 // каждого направления свой. Без обратного термины остаются иероглифами прямо в

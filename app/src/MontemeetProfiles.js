@@ -114,6 +114,13 @@ function translateLangs() {
     return String(list || '').trim();
 }
 
+// Комнаты с переводом из админки: строка через запятую либо «*» — все комнаты,
+// которыми ведает кабинет. Пусто — решает переменная окружения.
+function translateRooms() {
+    const { translateRooms: list = '' } = load() || {};
+    return String(list || '').trim();
+}
+
 function presenterVoice(roomId) {
     const { presenterVoice: byRoom = {} } = load() || {};
     const v = Object.prototype.hasOwnProperty.call(byRoom, roomId) ? byRoom[roomId] : null;
@@ -287,6 +294,7 @@ module.exports = {
     forRoom,
     presenterVoice,
     translateLangs,
+    translateRooms,
     isManagedRoom,
     applyToRoom,
     refreshRoom,
