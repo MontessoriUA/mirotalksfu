@@ -134,4 +134,21 @@
         if (!r) return;
         for (const kind of Object.keys(KINDS)) hook(kind, trackOf(r, kind));
     }, HOOK_EVERY_MS);
+
+    // Сервер говорит, что наш поток идёт пустым. Это третий случай, которого
+    // события дорожки не ловят: она живая, не заглушена, а байтов в ней нет —
+    // у собеседников замирает картинка или пропадает звук, и узнать об этом
+    // раньше было неоткуда, кроме как от них самих (разбор 25.11). Лечим тем
+    // же передёргиванием, с тем же холодком и пределом попыток.
+    const MEDIA_TO_KIND = { mic: 'audioType', cam: 'videoType' };
+    const listen = setInterval(() => {
+        const r = client();
+        if (!r || !r.socket) return;
+        clearInterval(listen);
+        r.socket.on('montemeetSilent', ({ media } = {}) => {
+            const kind = MEDIA_TO_KIND[media];
+            if (!kind) return; // экран и звук компьютера не трогаем
+            revive(kind, 'silent', trackOf(r, kind));
+        });
+    }, 1000);
 })();

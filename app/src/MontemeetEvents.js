@@ -47,6 +47,13 @@ const DIAG_PER_MINUTE = 60;
 const ICE_FAILED_MS = 20000;
 
 const MEDIA = { audioType: 'mic', videoType: 'cam', screenType: 'screen', audioTab: 'pcsound' };
+
+// Сколько опросов подряд поток должен молчать, прежде чем мы скажем об этом
+// хозяину. Опрос раз в две секунды, значит три опроса — шесть секунд. Меньше
+// нельзя: случайная просадка передёрнет исправный микрофон посреди фразы.
+const SILENT_POLLS = 3;
+const SILENT_KBPS = 1; // ниже этого поток считаем молчащим
+let ioRef = null;
 // звук компьютера веб шлёт типом `audioType`, как микрофон, — различаем по `appData.pcsound` (12.10)
 const mediaOf = (p) => (p.appData?.pcsound ? 'pcsound' : MEDIA[p.appData?.mediaType] || p.kind);
 
@@ -273,21 +280,25 @@ function logJoin(socket, data, at) {
           : info.is_desktop_device
             ? 'computer'
             : null;
-    write(roomId, {
-        ev: peer ? 'join' : 'join-failed',
-        peer: info.peer_name || '?',
-        role: peer ? (teacher ? 'teacher' : 'student') : null,
-        via: teacher ? roleSource(socket, roomId, info) : undefined,
-        lobby: peer ? !!peer.peer_lobby : undefined,
-        dev,
-        os: [info.os_name, info.os_version].filter(Boolean).join(' ') || null,
-        br: [info.browser_name, info.browser_version].filter(Boolean).join(' ') || null,
-        mic: !!info.peer_audio,
-        cam: !!info.peer_video,
-        net: maskIp(socketIp(socket)),
-        sid: short(socket.id),
-        uuid: short(info.peer_uuid),
-    }, at);
+    write(
+        roomId,
+        {
+            ev: peer ? 'join' : 'join-failed',
+            peer: info.peer_name || '?',
+            role: peer ? (teacher ? 'teacher' : 'student') : null,
+            via: teacher ? roleSource(socket, roomId, info) : undefined,
+            lobby: peer ? !!peer.peer_lobby : undefined,
+            dev,
+            os: [info.os_name, info.os_version].filter(Boolean).join(' ') || null,
+            br: [info.browser_name, info.browser_version].filter(Boolean).join(' ') || null,
+            mic: !!info.peer_audio,
+            cam: !!info.peer_video,
+            net: maskIp(socketIp(socket)),
+            sid: short(socket.id),
+            uuid: short(info.peer_uuid),
+        },
+        at
+    );
 }
 
 // откуда у педагога роль — от этого зависит, переживёт ли он переподключение
@@ -406,7 +417,7 @@ function pollRoom(roomId, room) {
         ps.mic = mic;
         ps.cam = cam;
 
-        pollProducers(roomId, peer, ps, name);
+        pollProducers(roomId, peer, ps, name, sid);
         pollConsumers(roomId, room, peer, ps, name);
         pollTransports(roomId, peer, ps, name);
     }
@@ -419,7 +430,7 @@ function pollRoom(roomId, room) {
     }
 }
 
-function pollProducers(roomId, peer, ps, name) {
+function pollProducers(roomId, peer, ps, name, sid) {
     const alive = new Set();
     for (const [pid, p] of peer.producers.entries()) {
         if (p.closed) continue;
@@ -428,13 +439,41 @@ function pollProducers(roomId, peer, ps, name) {
         const score = bestScore(p.score);
         let st = ps.producers.get(pid);
         if (!st) {
-            st = { media, paused: p.paused, poor: false, low: 0 };
+            st = { media, paused: p.paused, poor: false, low: 0, silent: 0, toldSilent: false };
             ps.producers.set(pid, st);
             write(roomId, { ev: 'send-start', peer: name, media, paused: p.paused || undefined });
         } else if (st.paused !== p.paused) {
             write(roomId, { ev: p.paused ? 'send-pause' : 'send-resume', peer: name, media });
             st.paused = p.paused;
         }
+        // Поток идёт, но в нём ничего нет. Продюсер жив и не на паузе, а байты
+        // не приходят: у собеседников замерла картинка или пропал звук, и
+        // никто об этом не узнаёт — ни отправитель, ни получатель. Раньше мы
+        // только писали это в журнал (mic: "on" при heard: 0). Теперь говорим
+        // хозяину потока, и его клиент передёргивает дорожку сам (разбор
+        // 25.11). Пауза — дело законное, её не трогаем.
+        if (!p.paused) {
+            p.getStats()
+                .then((stats) => {
+                    const rtp = (stats || []).find((x) => x.type === 'inbound-rtp');
+                    if (!rtp || typeof rtp.bitrate !== 'number') return;
+                    if (rtp.bitrate / 1000 >= SILENT_KBPS) {
+                        st.silent = 0;
+                        st.toldSilent = false;
+                        return;
+                    }
+                    if (++st.silent < SILENT_POLLS || st.toldSilent) return;
+                    st.toldSilent = true; // один раз на тишину, не в каждом опросе
+                    write(roomId, { ev: 'send-silent', peer: name, media });
+                    try {
+                        ioRef?.to(sid).emit('montemeetSilent', { media });
+                    } catch (e) {
+                        /* сокет уже ушёл */
+                    }
+                })
+                .catch(() => {});
+        }
+
         // качество ОТ человека к серверу: два опроса подряд плохо — пишем
         if (score !== null && !p.paused) {
             if (score <= POOR_SCORE) {
@@ -470,7 +509,12 @@ function pollConsumers(roomId, room, peer, ps, name) {
             write(roomId, { ev: 'receive', peer: name, from: st.from, media: st.media });
         } else if (st.paused !== c.paused) {
             // пауза со стороны получателя: сток так глушит невидимые плитки
-            write(roomId, { ev: c.paused ? 'receive-pause' : 'receive-resume', peer: name, from: st.from, media: st.media });
+            write(roomId, {
+                ev: c.paused ? 'receive-pause' : 'receive-resume',
+                peer: name,
+                from: st.from,
+                media: st.media,
+            });
             st.paused = c.paused;
         }
         // качество ОТ сервера к человеку — по звуку, он важнее всего
@@ -516,7 +560,8 @@ function pollTransports(roomId, peer, ps, name) {
         };
         const was = ps.transports.get(tid);
         // направление выясняется только с первым консьюмером — его смену не пишем
-        const changed = !was || was.ice !== now.ice || was.dtls !== now.dtls || was.proto !== now.proto || was.net !== now.net;
+        const changed =
+            !was || was.ice !== now.ice || was.dtls !== now.dtls || was.proto !== now.proto || was.net !== now.net;
         const started = connecting.get(tid);
         const seen = {
             ...now,
@@ -644,6 +689,7 @@ function read({ day, room } = {}) {
 function start({ io, roomList: list, log } = {}) {
     if (roomList || !io || !list) return;
     roomList = list;
+    ioRef = io;
     if (log) logger = log;
     try {
         fs.mkdirSync(DIR, { recursive: true });
