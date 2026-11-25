@@ -1480,14 +1480,23 @@ class RoomClient {
                 return;
             }
 
-            for (let { producer_id, peer_name, peer_info, type } of data) {
-                // Skip own producers to prevent echo from self-consumption
-                if (peer_info.peer_id === this.peer_id) {
-                    console.warn('Skipping own producer to prevent echo', { producer_id, type });
-                    continue;
-                }
-                await this.consume(producer_id, peer_name, peer_info, type);
+            // Montemeet: приём идёт разом, а не по очереди. Последовательный
+            // цикл с повторами по пять секунд задерживал всех остальных: на
+            // двух залипших потоках пятый участник появлялся через полминуты,
+            // и люди успевали перезагрузить страницу (разбор 25.11). Двойного
+            // приёма не будет — от него защищают consumingProducers и
+            // consumersProducer.
+            const mine = data.filter(({ peer_info }) => peer_info.peer_id === this.peer_id);
+            for (const { producer_id, type } of mine) {
+                console.warn('Skipping own producer to prevent echo', { producer_id, type });
             }
+            await Promise.allSettled(
+                data
+                    .filter(({ peer_info }) => peer_info.peer_id !== this.peer_id)
+                    .map(({ producer_id, peer_name, peer_info, type }) =>
+                        this.consume(producer_id, peer_name, peer_info, type)
+                    )
+            );
 
             this.applyPendingFollowMe();
         }

@@ -636,15 +636,37 @@ async function initRoom() {
         handleSelectsInit();
         handleUsernameEmojiPicker();
         await whoAreYou();
-        await setSelectsInit();
-        // Montemeet: preferred devices (e.g. SplitCam on school computers)
-        if (typeof MontemeetDevices !== 'undefined') await MontemeetDevices.applyPriority();
+        // Montemeet: при входе по ссылке из кабинета устройства уже выбраны
+        // внутри whoAreYou() — там это надо сделать ДО входа в комнату.
+        await montemeetPickDevices();
     }
 }
 
 // ####################################################
 // ENUMERATE DEVICES
 // ####################################################
+
+// Montemeet: выбрать устройства до входа. setSelectsInit() ставит запомненный
+// выбор, applyPriority() — предпочтительные (на школьных компьютерах это
+// SplitCam). При входе по ссылке из кабинета вход начинался раньше них, и
+// комната успевала взять встроенную камеру: кто успел, того и устройство
+// (разбор 25.11). Ошибки глушим: не выбрали — не повод не войти.
+let montemeetDevicesPicked = false;
+
+async function montemeetPickDevices() {
+    if (montemeetDevicesPicked) return; // при входе по ссылке это уже сделано
+    montemeetDevicesPicked = true;
+    try {
+        await setSelectsInit();
+    } catch (e) {
+        console.warn('Montemeet: не удалось выставить запомненные устройства', e);
+    }
+    try {
+        if (typeof MontemeetDevices !== 'undefined') await MontemeetDevices.applyPriority();
+    } catch (e) {
+        console.warn('Montemeet: не удалось применить предпочтительные устройства', e);
+    }
+}
 
 // Montemeet: отпустить всё, что держит экран выбора устройств, перед входом в
 // комнату. Комната берёт микрофон и камеру заново, и держать рядом первый
@@ -1385,9 +1407,11 @@ async function whoAreYou() {
         checkMedia();
         if (!BUTTONS.main.startScreenButton) isScreenAllowed = false;
         getPeerInfo();
-        // Montemeet: вход по ссылке из кабинета шёл мимо остановки превью —
-        // она есть только в ветке с окном имени (ниже). Педагоги заходят именно
-        // так, и у них два захвата жили рядом весь урок (Иван, 25.11).
+        // Montemeet: порядок важен. Сначала выбираем устройства (иначе комната
+        // возьмёт встроенную камеру вместо SplitCam), потом отпускаем захват
+        // экрана выбора — он шёл мимо остановки, она есть только в ветке с
+        // окном имени, — и только потом входим (Иван, 25.11).
+        await montemeetPickDevices();
         await montemeetReleasePreview();
         joinRoom(peer_name, room_id);
         return;
@@ -1660,6 +1684,23 @@ async function checkInitVideo(isVideoAllowed) {
             initVideoContainerShow();
             await changeCamera(initVideoSelect.value);
             isInitVideoLoaded = true;
+        } else {
+            // Montemeet: камер в списке нет, а разрешение уже получено. Раньше
+            // признак готовности так и оставался false, и кнопка
+            // «Присоединиться» молча не работала — под полем имени висело
+            // «Please wait for video to initialize…», и ждать было бесполезно
+            // (разбор 25.11). Бывает, когда камеру выдернули между запросом и
+            // перечислением, и когда наш отбор спрятал все камеры, а SplitCam
+            // не отдал подпись. Входим без видео, но говорим об этом.
+            console.warn('Montemeet: камер не нашлось — входим без видео');
+            isVideoAllowed = false;
+            isInitVideoLoaded = true;
+            elemDisplay('initVideo', false);
+            elemDisplay('initVideoLoader', false);
+            initVideoContainerShow(false);
+            if (typeof userLog === 'function') {
+                userLog('warning', 'Камера не найдена — входим без видео', 'top-end', 6000);
+            }
         }
         sound('joined');
     } else {

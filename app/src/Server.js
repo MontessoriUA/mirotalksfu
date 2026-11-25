@@ -3022,7 +3022,8 @@ function startServer() {
                     room.addProducerToActiveSpeakerObserver({ producerId: producer_id });
                 }
 
-                if (appData.mediaType === 'screenType') montemeetScreenCap(room, peer, producerTransportId, producer_id);
+                if (appData.mediaType === 'screenType')
+                    montemeetScreenCap(room, peer, producerTransportId, producer_id);
 
                 callback({ producer_id });
             } catch (err) {
@@ -3030,6 +3031,12 @@ function startServer() {
                     error: err,
                     peerInfo,
                 });
+                // Montemeet: признак «включено» мы подняли до создания
+                // продюсера. Раз не вышло — опускаем обратно, иначе у всех
+                // остальных микрофон этого человека показан включённым, а
+                // звука нет, и в журнале остаётся mic: "on" при heard: 0
+                // (разбор 25.11).
+                if (!pcsound) peer.updatePeerInfo({ ...data, status: false });
                 callback({ error: err.message });
             }
         });
@@ -3589,9 +3596,7 @@ function startServer() {
                     // ждёт ровно один — просто его.
                     if (!peer?.peer_lobby) {
                         const waiting = [...room.getPeers().entries()].filter(([, p]) => p.peer_lobby);
-                        const named = data.peer_name
-                            ? waiting.filter(([, p]) => p.peer_name === data.peer_name)
-                            : [];
+                        const named = data.peer_name ? waiting.filter(([, p]) => p.peer_name === data.peer_name) : [];
                         const pick = named.length === 1 ? named[0] : waiting.length === 1 ? waiting[0] : null;
                         // Montemeet: гость мог уйти, пока педагог нажимал «впустить», — раньше
                         // здесь падал весь сервер (PROTOCOL.md §3.4).
