@@ -42,10 +42,15 @@
             // прелоадер пропал — значит страница ожила, и мы молчим. Прежний
             // критерий смотрел на сокет, а он подключается и при зависшем
             // входе, поэтому у Ивана 24.11 подсказка так и не появилась.
+            // Судим ТОЛЬКО по прелоадеру. Признак «вошёл» тут не помощник:
+            // клиент выставляет его сразу после отправки запроса на вход, не
+            // дожидаясь ответа (join() не возвращает свою цепочку), и через
+            // один сетевой круг он уже true — подсказка молчала даже при
+            // зависшем входе (разбор 25.11). Прелоадер прячется на успешном
+            // входе, так что ложных подсказок не будет.
             const loader = document.getElementById('loadingDiv');
             const stillLoading = loader && loader.getBoundingClientRect().width > 0;
-            const joined = typeof rc !== 'undefined' && rc && rc.isConnected && rc.isConnected();
-            if (joined || !stillLoading) return;
+            if (!stillLoading) return;
             if (document.getElementById('mmStuck')) return;
 
             const box = document.createElement('div');
