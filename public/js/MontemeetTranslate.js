@@ -27,6 +27,15 @@ const MontemeetTranslate = (() => {
     // переводом и мешал слушать (Иван, 24.11). −22 дБ — слышно, что человек
     // говорит, но слова не разбираются и не отвлекают.
     const DUCK = 0.05;
+    // Пока говорит сам человек, собеседника приглушаем — несильно, на 15 дБ.
+    // Зачем: эхоподавитель, когда в динамике громко, режет и нашу речь — у
+    // мобильной сессии от этого «счёт Ирины рвался» под музыку с веба, и
+    // лечили они это тем же приёмом. У нас поверх речи всегда звучит перевод,
+    // то есть двойной разговор постоянный (Лев, 25.11; решение Ивана — можно).
+    const SELF_DUCK = 0.18; // −15 дБ
+    const SELF_LEVEL = 0.02; // выше этого считаем, что человек говорит
+    const SELF_HOLD_MS = 700; // держим после того, как он замолчал
+    let selfUntil = 0;
     // Приглушение ведём плавно и с удержанием. Резкий скачок громкости слышен
     // сам по себе, а между кусками перевода приходят паузы в полсекунды — на
     // них приглушение отпускало и тут же возвращалось, и оригинал «дёргался»
@@ -89,11 +98,15 @@ const MontemeetTranslate = (() => {
     function applyDuckLevel() {
         const els = document.querySelectorAll('audio, video');
         let touched = 0;
+        // Два приглушения разом: под перевод и под свою речь. Берём то, что
+        // тише, — иначе они спорили бы друг с другом.
+        const self = Date.now() < selfUntil ? SELF_DUCK : 1;
+        const level = Math.min(duckLevel, self);
         for (const el of els) {
             if (el.muted || el.dataset.mmTranslate === '1') continue;
             if (el.dataset.mmFullVolume === undefined) el.dataset.mmFullVolume = String(el.volume ?? 1);
             const full = Number(el.dataset.mmFullVolume) || 1;
-            el.volume = Math.max(0, Math.min(1, full * duckLevel));
+            el.volume = Math.max(0, Math.min(1, full * level));
             touched++;
         }
         if (!touched && duckLevel < 1 && !duckWarned) {
@@ -119,9 +132,12 @@ const MontemeetTranslate = (() => {
                 const step = target < duckLevel ? down : up;
                 duckLevel =
                     Math.abs(target - duckLevel) <= step ? target : duckLevel + (target > duckLevel ? step : -step);
-                applyDuckLevel();
             }
-            if (duckLevel === 1 && target === 1) {
+            // Раскладываем уровень каждый такт: он зависит не только от
+            // перевода, но и от того, говорит ли человек прямо сейчас.
+            applyDuckLevel();
+            // Останавливаемся, когда оба приглушения отпустили.
+            if (duckLevel === 1 && target === 1 && Date.now() >= selfUntil) {
                 clearInterval(duckTimer);
                 duckTimer = null;
             }
@@ -352,6 +368,17 @@ const MontemeetTranslate = (() => {
             // снимают вопрос совсем, но рассчитывать на них нельзя.
             if (Date.now() < muteSendUntil) return;
             const pcm = e.data;
+            // уровень своей речи: кадр уже здесь, считать его почти ничего не стоит
+            let sum = 0;
+            const samples = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2);
+            for (let i = 0; i < samples.length; i++) {
+                const v = samples[i] / 32768;
+                sum += v * v;
+            }
+            if (samples.length && Math.sqrt(sum / samples.length) > SELF_LEVEL) {
+                selfUntil = Date.now() + SELF_HOLD_MS;
+                duckNow();
+            }
             let s = '';
             const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
             for (let i = 0; i < bytes.length; i += 0x8000) {
