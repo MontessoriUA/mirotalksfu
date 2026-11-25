@@ -2881,7 +2881,9 @@ class RoomClient {
         const mmAudio = typeof MontemeetProfile !== 'undefined' ? MontemeetProfile.audioResolved() : null;
         if (mmAudio) {
             audioConstraints.echoCancellation =
-                typeof mmAudio.echoCancellation === 'string' ? mmAudio.echoCancellation : mmAudio.echoCancellation !== false;
+                typeof mmAudio.echoCancellation === 'string'
+                    ? mmAudio.echoCancellation
+                    : mmAudio.echoCancellation !== false;
             audioConstraints.autoGainControl = mmAudio.autoGainControl !== false;
             audioConstraints.noiseSuppression = mmAudio.noiseSuppression !== false;
             if (mmAudio.voiceIsolation !== undefined) audioConstraints.voiceIsolation = !!mmAudio.voiceIsolation;
@@ -3077,7 +3079,6 @@ class RoomClient {
         encodings = this.montemeetSafariOneLayer(encodings, codec);
         return { encodings, codec };
     }
-
 
     /**
      * Montemeet (24.11.2026): Safari не кодирует H.264 несколькими слоями simulcast.
@@ -4799,6 +4800,25 @@ class RoomClient {
         } else {
             clean();
         }
+    }
+
+    // Montemeet: сказать человеку, что он застрял, и дать кнопку. Вид тот же,
+    // что у подсказки в MontemeetRevisit.js, — чтобы не плодить разных окон.
+    montemeetSayStuck(text) {
+        if (document.getElementById('mmStuck')) return;
+        const box = document.createElement('div');
+        box.id = 'mmStuck';
+        box.style.cssText =
+            'position:fixed;z-index:2147483200;left:50%;top:50%;transform:translate(-50%,-50%);' +
+            'max-width:min(420px,calc(100vw - 32px));padding:20px 22px;border-radius:16px;' +
+            'background:rgba(24,24,29,.95);color:#eceef2;border:1px solid rgba(255,255,255,.18);' +
+            'box-shadow:0 12px 40px rgba(0,0,0,.5);font:15px/1.5 system-ui,-apple-system,sans-serif;text-align:center';
+        box.innerHTML =
+            `<div>${text}</div>` +
+            '<button id="mmStuckBtn" style="margin-top:16px;background:#2f6df6;color:#fff;border:0;' +
+            'border-radius:10px;padding:10px 18px;font:inherit;cursor:pointer">Обновить страницу</button>';
+        document.body.appendChild(box);
+        box.querySelector('#mmStuckBtn').onclick = () => location.reload();
     }
 
     // Montemeet: снять поток со всех играющих элементов — звук обрывается
@@ -10429,9 +10449,22 @@ class RoomClient {
                     return;
                 }
                 this.RoomLobbyAccepted = true;
-                await this.joinAllowed(data.room);
-                bottomButtons.style.display = 'flex';
-                this.showLobbyDecision('accept');
+                // Montemeet: вход после впуска может упасть — внутри
+                // joinAllowed идёт захват микрофона и камеры, а он бросает,
+                // если устройство занято или разрешение отозвали. Тогда ни
+                // кнопок, ни закрытия окна ожидания: студент навсегда остаётся
+                // в «ожидаем подтверждения», хотя педагог уже впустил и видит,
+                // что впустил (разбор 25.11). Окно закрываем в любом случае, а
+                // про беду говорим вслух — молчать тут нельзя.
+                try {
+                    await this.joinAllowed(data.room);
+                    bottomButtons.style.display = 'flex';
+                    this.showLobbyDecision('accept');
+                } catch (err) {
+                    console.error('Montemeet: впустили, но войти не вышло', err);
+                    this.showLobbyDecision('accept');
+                    this.montemeetSayStuck('Педагог впустил, но войти не вышло. Обновите страницу.');
+                }
                 break;
             case 'reject':
                 if (this.lobbyRemovePearForPresenter(data)) {

@@ -55,13 +55,24 @@ const model = () => String(process.env.TRANSLATE_MODEL || 'qwen3.8-livetranslate
 const rooms = () =>
     new Set(list(montemeetProfiles.translateRooms() || process.env.TRANSLATE_ROOMS).map((s) => s.toLowerCase()));
 // Языки, у которых поставщик умеет и голос, а не только текст (§3.1 TRANSLATE.md)
-const VOICE_LANGS =
-    'zh,en,ru,ar,de,fr,es,pt,id,it,ko,th,vi,ja,tr,hi,ms,nl,ur,nb,sv,da,he,fi,pl,is,cs,fil,fa';
+const VOICE_LANGS = 'zh,en,ru,ar,de,fr,es,pt,id,it,ko,th,vi,ja,tr,hi,ms,nl,ur,nb,sv,da,he,fi,pl,is,cs,fil,fa';
 // Список языков задаёт админка (глобальные настройки кабинета); дальше —
 // переменная окружения, и только потом всё, в чём модель умеет говорить.
 // Раньше список жил лишь в .env, и правка требовала захода на сервер.
 const langs = () => new Set(list(montemeetProfiles.translateLangs() || process.env.TRANSLATE_LANGS || VOICE_LANGS));
-const maxSec = () => Number(process.env.TRANSLATE_MAX_SEC || 1800);
+// Предел на время перевода. По умолчанию его НЕТ: перевод принудительно не
+// рубим (решение Ивана 25.11). Прежние полчаса на комнату выходили боком —
+// педагог может сидеть в комнате весь день, впуская и выпуская студентов, и
+// счётчик копился за день. А если язык окажется не тот, педагог со студентом
+// это заметят сами, посмеются и поправят. Значение в TRANSLATE_MAX_SEC
+// остаётся на случай, если предел когда-нибудь понадобится; 0 или пусто —
+// без ограничения. Само время мы по-прежнему считаем и пишем в состояние:
+// расход видно, просто он ничего не обрывает.
+const maxSec = () => Number(process.env.TRANSLATE_MAX_SEC || 0);
+const overLimit = (sec) => {
+    const limit = maxSec();
+    return limit > 0 && sec > limit;
+};
 
 const enabled = () => url().length > 0 && key().length > 0;
 const allowedRoom = (roomId) => {
@@ -187,6 +198,23 @@ class Session {
                 session.audio = { output: { voice: VOICES[this.voice] } };
             }
             ws.send(JSON.stringify({ type: 'session.update', session }));
+
+            // Ответа ждём с оглядкой на часы. Поставщик может держать
+            // соединение открытым и не прислать session.updated вовсе —
+            // например, не понравилось поле в настройке. Тогда ready остаётся
+            // false, закрытия нет, переоткрытия нет: тишина и пустые субтитры
+            // до конца урока (разбор 25.11). Восемь секунд — с запасом: первый
+            // голос приходит через 1,5-3,5 с (TRANSLATE.md §10.1).
+            clearTimeout(this.readyTimer);
+            this.readyTimer = setTimeout(() => {
+                if (this.ready || this.closed) return;
+                this.log?.warn('[Translate] поставщик не подтвердил настройку — переоткрываю', { room: this.roomId });
+                try {
+                    ws.close();
+                } catch (e) {
+                    /* уже закрыт */
+                }
+            }, 8000);
         });
 
         ws.on('message', (buf) => {
@@ -198,6 +226,7 @@ class Session {
             }
             switch (m.type) {
                 case 'session.updated':
+                    clearTimeout(this.readyTimer);
                     this.ready = true;
                     for (const chunk of this.queued.splice(0, this.queued.length)) this.push(chunk);
                     break;
@@ -275,8 +304,8 @@ class Session {
             if (this.queued.length < 50) this.queued.push(b64);
             return;
         }
-        this.sentSec += (Buffer.byteLength(b64, 'base64') / 2 / 16000) || 0;
-        if (this.sentSec > maxSec()) {
+        this.sentSec += Buffer.byteLength(b64, 'base64') / 2 / 16000 || 0;
+        if (overLimit(this.sentSec)) {
             this.onFail?.('limit');
             this.stop();
             return;
@@ -291,6 +320,7 @@ class Session {
     stop() {
         if (this.closed) return;
         this.closed = true;
+        clearTimeout(this.readyTimer);
         const ws = this.ws;
         this.ws = null;
         if (!ws) return;
@@ -318,23 +348,23 @@ const roomsState = new Map(); // roomId -> { peers: Map(socketId -> {lang, name}
 function stateOf(roomId) {
     if (!roomsState.has(roomId)) {
         // Голос педагога по умолчанию — по его полу из справочника школы; нет
-    // записи (служебная комната, концерт) — женский, он нейтральнее на слух.
-    const byGender = montemeetProfiles.presenterVoice(roomId) || 'female';
+        // записи (служебная комната, концерт) — женский, он нейтральнее на слух.
+        const byGender = montemeetProfiles.presenterVoice(roomId) || 'female';
 
-    // Голос держим отдельно для речи педагога и для речи студента: это разные
-    // люди, и одинаковый голос на обе стороны путает — слушателю не понятно,
-    // кого ему сейчас переводят (Иван, 24.11). 'clone' — голос самого
-    // говорящего, его поставщик снимает перед каждым ответом.
-    roomsState.set(roomId, {
-        peers: new Map(),
-        sessions: new Map(),
-        sec: 0,
-        // По умолчанию — готовый голос, не клон. Клон звучит естественнее, но
-        // на живом уроке давал задержки до десяти секунд, и нить разговора
-        // терялась (Иван, 24.11): поставщику нужно снять образец, прежде чем
-        // ответить. Клон остаётся выбором педагога, умолчание — быстрый голос.
-        voices: { teacher: byGender, student: 'female' },
-    });
+        // Голос держим отдельно для речи педагога и для речи студента: это разные
+        // люди, и одинаковый голос на обе стороны путает — слушателю не понятно,
+        // кого ему сейчас переводят (Иван, 24.11). 'clone' — голос самого
+        // говорящего, его поставщик снимает перед каждым ответом.
+        roomsState.set(roomId, {
+            peers: new Map(),
+            sessions: new Map(),
+            sec: 0,
+            // По умолчанию — готовый голос, не клон. Клон звучит естественнее, но
+            // на живом уроке давал задержки до десяти секунд, и нить разговора
+            // терялась (Иван, 24.11): поставщику нужно снять образец, прежде чем
+            // ответить. Клон остаётся выбором педагога, умолчание — быстрый голос.
+            voices: { teacher: byGender, student: 'female' },
+        });
     }
     return roomsState.get(roomId);
 }
@@ -410,7 +440,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
         if (!audio) return;
         const st = stateOf(roomId);
         if (!st.peers.has(socket.id)) return;
-        if (st.sec > maxSec()) return;
+        if (overLimit(st.sec)) return;
 
         const targets = targetsFor(st, socket.id);
 
@@ -467,6 +497,19 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     },
                     onFail: (reason) => {
                         log?.warn('[Translate] перевод выключен', { room: roomId, reason });
+                        // Убираем сессии этого говорящего из карты: закрытая
+                        // сессия оставалась в ней навсегда, новая не создавалась,
+                        // и включить перевод обратно было нельзя, пока все не
+                        // выйдут из комнаты (разбор 25.11).
+                        for (const [k, s2] of st.sessions) {
+                            if (!k.startsWith(`${socket.id}->`)) continue;
+                            try {
+                                s2.stop();
+                            } catch (e) {
+                                /* уже закрыта */
+                            }
+                            st.sessions.delete(k);
+                        }
                         for (const id of st.peers.keys()) io.to(id).emit('translateState', { on: false, reason });
                     },
                 });
@@ -495,9 +538,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
         // Сессии переоткроются с новым голосом: сменить его на ходу поставщик
         // не обещает, настройку ждут до первого звука. Закрываем только те,
         // чья сторона изменилась, — чужой разговор рвать незачем.
-        const presenterIds = new Set(
-            (peersInRoom?.() || []).filter((p) => p.presenter).map((p) => p.id)
-        );
+        const presenterIds = new Set((peersInRoom?.() || []).filter((p) => p.presenter).map((p) => p.id));
         for (const [key, session] of st.sessions) {
             const fromId = key.slice(0, key.indexOf('->'));
             const sideOfSession = presenterIds.has(fromId) ? 'teacher' : 'student';

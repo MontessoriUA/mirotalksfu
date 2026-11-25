@@ -211,25 +211,37 @@ const MontemeetTranslate = (() => {
         return dest;
     }
 
+    // Защёлка на подъём вывода. Куски перевода приходят через 100-300 мс, а
+    // петля поднимается до двух с половиной секунд — второй кусок запускал
+    // подъём ещё раз. Поднимались две петли: вторая переписывала усилитель,
+    // первая оставалась в документе с живым соединением и продолжала играть
+    // даже после выключения перевода. Снаружи — двойной звук с призвуком и
+    // перевод, который не замолкает (разбор 25.11).
+    let outputReady = null;
+
     async function ensureOutput() {
         if (playDest) return;
-        if (!playCtx) playCtx = new AudioContext({ sampleRate: OUT_RATE });
-        if (playCtx.state !== 'running') playCtx.resume().catch(() => {});
+        if (outputReady) return outputReady;
+        outputReady = (async () => {
+            if (!playCtx) playCtx = new AudioContext({ sampleRate: OUT_RATE });
+            if (playCtx.state !== 'running') playCtx.resume().catch(() => {});
 
-        // громкость перевода: тише оригинала — это прямо уменьшает и эхо
-        playGain = playCtx.createGain();
-        playGain.gain.value = voiceGain;
+            // громкость перевода: тише оригинала — это прямо уменьшает и эхо
+            playGain = playCtx.createGain();
+            playGain.gain.value = voiceGain;
 
-        try {
-            const dest = await buildLoop();
-            playGain.connect(dest);
-            playDest = dest;
-            log('перевод идёт через петлю — эхоподавитель видит его своей опорой');
-        } catch (err) {
-            playGain.connect(playCtx.destination);
-            playDest = playCtx.destination;
-            log('петля не поднялась, играю напрямую:', err.message);
-        }
+            try {
+                const dest = await buildLoop();
+                playGain.connect(dest);
+                playDest = dest;
+                log('перевод идёт через петлю — эхоподавитель видит его своей опорой');
+            } catch (err) {
+                playGain.connect(playCtx.destination);
+                playDest = playCtx.destination;
+                log('петля не поднялась, играю напрямую:', err.message);
+            }
+        })();
+        return outputReady;
     }
 
     function playPcm16(b64) {
@@ -421,7 +433,9 @@ const MontemeetTranslate = (() => {
                 r = await start({ lang: d.lang, stream: lastStream?.() });
             }
             if (!r.error) showToast(noticeFor(d.lang));
-            log(r.error ? 'ведущий включил перевод, но не вышло: ' + r.error : 'перевод включил ведущий, язык ' + d.lang);
+            log(
+                r.error ? 'ведущий включил перевод, но не вышло: ' + r.error : 'перевод включил ведущий, язык ' + d.lang
+            );
             for (const fn of onText) fn({ kind: 'state', on: !r.error, lang: d.lang, byTeacher: true, why: r.error });
         });
 
@@ -548,6 +562,7 @@ const MontemeetTranslate = (() => {
             /* уже закрыто */
         }
         loopPc = null;
+        outputReady = null; // иначе повторное включение не поднимет вывод
         loopEl = null;
         playDest = null;
         playGain = null;
@@ -1179,7 +1194,8 @@ const MontemeetTranslate = (() => {
                     onSw.checked = false;
                     btn.dataset.on = '0';
                     panel.dataset.live = '0';
-                    if (d.byTeacher) roomOn = true; // ведущий включил, не вышло у нас
+                    if (d.byTeacher)
+                        roomOn = true; // ведущий включил, не вышло у нас
                     else if (d.reason) roomOn = false; // перевод в комнате выключен
                     note.textContent = d.why
                         ? 'перевод не включился: ' + d.why
