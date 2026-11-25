@@ -41,7 +41,7 @@ const showDocumentPipBtn = !isEmbedded && 'documentPictureInPicture' in window;
  *
  * @property {string[]} transports - The transport mechanisms to use. Default: ['polling', 'websocket']. Here, only ['websocket'] is used.
  * @property {boolean} reconnection - Whether to automatically reconnect if connection is lost. Default: true.
- * @property {number} reconnectionAttempts - Maximum number of reconnection attempts before giving up. Default: Infinity. Here, set to 10.
+ * @property {number} reconnectionAttempts - Maximum number of reconnection attempts before giving up. Default: Infinity. Here: Infinity (Montemeet, 25.11).
  * @property {number} reconnectionDelay - How long to initially wait before attempting a new reconnection (in ms). Default: 1000. Here, set to 3000.
  * @property {number} reconnectionDelayMax - Maximum amount of time to wait between reconnections (in ms). Default: 5000. Here, set to 15000.
  * @property {number} timeout - Connection timeout before an error is emitted (in ms). Default: 20000.
@@ -49,7 +49,13 @@ const showDocumentPipBtn = !isEmbedded && 'documentPictureInPicture' in window;
 const socket = io({
     transports: ['websocket'],
     reconnection: true,
-    reconnectionAttempts: 10,
+    // Montemeet: попытки не ограничиваем. Десять попыток с нарастающей паузой —
+    // это около двух минут, после чего socket.io прекращает их навсегда, и
+    // баннер «Unable to reconnect» висит, даже если сеть вернулась минуту назад
+    // (Иван, 25.11: «иногда баннер не уходит и не переподключается»). Школьный
+    // интернет пропадает и на дольше. Кнопку «войти заново» в баннере
+    // оставляем: человек не должен часами смотреть на «переподключение».
+    reconnectionAttempts: Infinity,
     reconnectionDelay: 3000,
     reconnectionDelayMax: 15000,
     timeout: 20000,

@@ -1043,7 +1043,19 @@ class RoomClient {
                     }
                     break;
                 case 'failed':
+                    // Montemeet: «сбой» раньше только записывался в консоль —
+                    // перезапуск ICE висел лишь на «отключено». Звук и картинка
+                    // пропадали в обе стороны, участники оставались в списке,
+                    // сокет живой, баннера нет: люди говорили в пустоту, пока
+                    // кто-нибудь не догадается перезайти (разбор 25.11).
+                    // Пробуем поднять один раз, и только потом сдаёмся.
                     console.warn('❌ Producer Transport failed', { id: this.producerTransport.id });
+                    try {
+                        if (!(await this.restartProducerIce())) this.showMaxAttemptsAlert();
+                    } catch (error) {
+                        console.error('❌ Producer ICE restart after failure', error.message);
+                        this.showMaxAttemptsAlert();
+                    }
                     break;
                 default:
                     console.log('Producer transport connection state changed', {
@@ -1121,7 +1133,14 @@ class RoomClient {
                     }
                     break;
                 case 'failed':
+                    // Montemeet: то же, что у продюсера, — см. выше.
                     console.warn('❌ Consumer Transport failed', { id: this.consumerTransport.id });
+                    try {
+                        if (!(await this.restartConsumerIce())) this.showMaxAttemptsAlert();
+                    } catch (error) {
+                        console.error('❌ Consumer ICE restart after failure', error.message);
+                        this.showMaxAttemptsAlert();
+                    }
                     break;
                 default:
                     console.log('Consumer transport connection state changed', {
@@ -1220,11 +1239,35 @@ class RoomClient {
         return false;
     }
 
+    // Montemeet: защёлка. Флаги iceProducerRestarting/iceConsumerRestarting были
+    // объявлены в стоке и не использовались ни разу: каждое «отключено»
+    // запускало новый цикл на пять попыток, и при дрожащей сети получался шторм
+    // перезапусков с несколькими всплывашками подряд (разбор 25.11).
     async restartProducerIce(retries = 5, delay = 1000) {
+        if (this.iceProducerRestarting) return false;
+        this.iceProducerRestarting = true;
+        try {
+            return await this.montemeetRestartProducerIce(retries, delay);
+        } finally {
+            this.iceProducerRestarting = false;
+        }
+    }
+
+    async montemeetRestartProducerIce(retries = 5, delay = 1000) {
         return this.restartTransportWithRetry(this.producerTransport, 'Producer', retries, delay);
     }
 
     async restartConsumerIce(retries = 5, delay = 1000) {
+        if (this.iceConsumerRestarting) return false;
+        this.iceConsumerRestarting = true;
+        try {
+            return await this.montemeetRestartConsumerIce(retries, delay);
+        } finally {
+            this.iceConsumerRestarting = false;
+        }
+    }
+
+    async montemeetRestartConsumerIce(retries = 5, delay = 1000) {
         return this.restartTransportWithRetry(this.consumerTransport, 'Consumer', retries, delay);
     }
 
