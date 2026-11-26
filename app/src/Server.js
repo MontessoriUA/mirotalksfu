@@ -5815,8 +5815,13 @@ function startServer() {
     async function getPeerGeoLocation(ip) {
         const endpoint = config?.integrations?.IPLookup?.getEndpoint(ip);
         log.debug('Get peer geo', { ip: ip, endpoint: endpoint });
+        // Montemeet: с таймаутом. Запрос идёт внутрь обработчика входа, и без
+        // ограничения весь вход в комнату ждал бы ответа внешнего адреса
+        // сколько угодно. Сейчас поиск по адресу выключен (IP_LOOKUP_ENABLED),
+        // но если его когда-нибудь включат, это уже не станет сюрпризом
+        // (разбор 25.11).
         return axios
-            .get(endpoint)
+            .get(endpoint, { timeout: 3000 })
             .then((response) => response.data)
             .catch((error) => log.error(error));
     }

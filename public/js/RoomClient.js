@@ -1430,6 +1430,21 @@ class RoomClient {
 
     handleRemoveMe = (data) => {
         console.log('SocketOn Remove me:', data);
+        // Montemeet: отправитель файла ушёл посреди передачи — панель приёма с
+        // замершим указателем висела до конца урока, закрыть её было нечем
+        // (разбор 25.11).
+        // sender_id — это отправитель; peer_id в тех же данных означает
+        // получателя, по нему судить нельзя.
+        if (this.receiveInProgress && this.incomingFileInfo?.sender_id === data.peer_id) {
+            this.receiveInProgress = false;
+            this.incomingFileInfo = null;
+            try {
+                receiveFileDiv.style.display = 'none';
+            } catch (e) {
+                /* панели нет — ничего страшного */
+            }
+            this.userLog('warning', 'Отправитель файла вышел — приём прерван', 'top-end', 6000);
+        }
         this.removeVideoOff(data.peer_id);
         this.lobbyRemoveMe(data.peer_id);
         participantsCount = data.peer_counts;

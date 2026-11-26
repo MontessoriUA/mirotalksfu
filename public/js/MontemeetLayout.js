@@ -357,6 +357,13 @@ const MontemeetLayout = (() => {
         seedPending = false;
         if (pending) clearTimeout(pending.timer);
         pending = null;
+        // Montemeet: сторож тишины тикал раз в секунду и после выхода из
+        // комнаты не останавливался — его никто не снимал (разбор 25.11).
+        // Снимаем вместе с раскладкой: пока она не ведётся, сторожить нечего.
+        if (watchdog) {
+            clearInterval(watchdog);
+            watchdog = null;
+        }
     }
 
     // A candidate must survive holdMs before the layout switches to them
