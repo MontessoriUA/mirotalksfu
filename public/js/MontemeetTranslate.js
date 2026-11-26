@@ -77,10 +77,6 @@ const MontemeetTranslate = (() => {
     // Нужен, чтобы студенту не писали «педагог не включил перевод», когда тот
     // уже включил и студент его слышит (живой заход 25.11).
     let roomOn = false;
-    // Список предметов приходит от сервера и может опередить панель — помним
-    // его отдельно, как и роль (на эти грабли мы уже наступали 24.11).
-    let lastSubjects = null;
-    let lastSubject = '';
     // Есть ли у педагога заранее созданный голос: от этого зависит, какой голос
     // панель предлагает по умолчанию. Приходит от сервера и тоже может
     // опередить панель.
@@ -474,13 +470,6 @@ const MontemeetTranslate = (() => {
             for (const fn of onText) fn({ kind: 'state', on: !r.error, lang: d.lang, byTeacher: true, why: r.error });
         });
 
-        // ведущий сменил предмет — показываем всем, у кого панель открыта
-        socket.on('translateSubjectSet', (d = {}) => {
-            lastSubject = d.subject || '';
-            const sel = ui?.panel?.querySelector('#mmTrSubject');
-            if (sel) sel.value = lastSubject;
-        });
-
         socket.on('translateVoice', (d = {}) => {
             revealUi();
             if (d.audio) playPcm16(d.audio);
@@ -492,11 +481,6 @@ const MontemeetTranslate = (() => {
         // кнопка не появляется вовсе (стенд 24.11).
         socket.on('mmTranslateReady', (d = {}) => {
             if (d.presenter) iAmPresenter = true;
-            if (d.subjects) {
-                lastSubjects = d.subjects;
-                lastSubject = d.subject || '';
-                ui?.setSubjects?.(lastSubjects, lastSubject);
-            }
             if (Array.isArray(d.langs) && d.langs.length) keepLangs(d.langs);
             if (d.ownVoice) {
                 lastOwnVoice = true;
@@ -736,6 +720,9 @@ const MontemeetTranslate = (() => {
     const SAVED_GAIN = 'mmTranslateGain';
     const SAVED_STUDENT = 'mmTranslateStudentLang';
     const SAVED_VOICE = 'mmTranslateVoice';
+    // Предлагали ли уже этому педагогу его собственный голос: предложение
+    // одноразовое, дальше решает он сам.
+    const OWN_VOICE_SEEN = 'mmTranslateOwnVoiceSeen';
 
     const CSS = `
 #mmTr, #mmTrToast {
@@ -848,7 +835,14 @@ const MontemeetTranslate = (() => {
     transition: background .15s, color .15s, border-color .15s;
 }
 .mmTrVoices button { font-size: 18px; line-height: 1; }
-.mmTrVoices button[aria-pressed="true"] { background: #2f6df6; color: #fff; border-color: transparent; }
+/* Выбранный значок — на светлом, а не на синем: значок говорящей головы сам
+   сине-серый и на синей заливке почти пропадал (Иван, 26.11). Белить его
+   фильтром нельзя — силуэт пересвечивается в пятно; на светлом хорошо видны
+   все три. */
+.mmTrVoices button[aria-pressed="true"] {
+    background: #e2eaf8; color: #1b2a4a; border-color: #2f6df6;
+    box-shadow: inset 0 0 0 1px #2f6df6;
+}
 .mmTrVoices[hidden] { display: none; }
 #mmTrPair select[disabled] { opacity: .75; }
 #mmTrSign {
@@ -916,9 +910,13 @@ const MontemeetTranslate = (() => {
             female: 'Женский голос',
             male: 'Мужской голос',
         };
+        // У студента голоса говорящего нет: педагог, не зная подробностей, мог
+        // выбрать его студенту и получить задержку на каждой фразе — образец
+        // студента заранее никто не записывал, и поставщик снимал бы его на
+        // уроке (Иван, 26.11). Свой голос есть только у педагога.
         const voiceGroup = (side) =>
             `<div class="mmTrVoices" id="mmTrVoice${side}" role="group" aria-label="Голос перевода">` +
-            ['clone', 'female', 'male']
+            (side === 'Teacher' ? ['clone', 'female', 'male'] : ['female', 'male'])
                 .map(
                     (v) =>
                         `<button type="button" data-v="${v}" title="${TITLE[v]}" aria-label="${TITLE[v]}"` +
@@ -961,8 +959,6 @@ const MontemeetTranslate = (() => {
             '</div>' +
             // Предмет урока: от него зависит глоссарий, который уходит
             // поставщику. Видит и меняет только педагог (Иван, 25.11).
-            '<div class="mmTrRow" id="mmTrSubjRow" hidden><label for="mmTrSubject">Предмет урока</label>' +
-            '<select id="mmTrSubject"><option value="">без предмета</option></select></div>' +
             // у студента, пока педагог не включил перевод, — объяснение вместо настроек
             '<div id="mmTrOff" hidden>Перевод не включён педагогом</div>' +
             // строка состояния стоит здесь, а не внизу: под ползунком громкости
@@ -1004,8 +1000,6 @@ const MontemeetTranslate = (() => {
             }
         };
         const offEl = panel.querySelector('#mmTrOff');
-        const subjRow = panel.querySelector('#mmTrSubjRow');
-        const subjSel = panel.querySelector('#mmTrSubject');
         const subsSw = panel.querySelector('#mmTrSubsOn');
         const volEl = panel.querySelector('#mmTrVol');
         const note = panel.querySelector('#mmTrNote');
@@ -1022,7 +1016,6 @@ const MontemeetTranslate = (() => {
             voiceBox.teacher.hidden = !iAmPresenter;
             voiceBox.student.hidden = !iAmPresenter;
             if (onRow) onRow.hidden = !iAmPresenter; // включает перевод только педагог
-            if (subjRow) subjRow.hidden = !iAmPresenter || !subjSel.options.length;
             offEl.hidden = iAmPresenter || on || roomOn;
             note.hidden = !iAmPresenter && !on;
             const sw = panel.querySelector('#mmTrSign');
@@ -1065,42 +1058,35 @@ const MontemeetTranslate = (() => {
 
         // Знак между языками меняет их местами — как в переводчиках (Иван,
         // 24.11). Студенту менять нечего: язык педагога он не выбирает.
-        // список предметов приходит от сервера: какие глоссарии есть, те и видно
-        ui.setSubjects = (list, current) => {
-            if (!Array.isArray(list)) return;
-            const was = subjSel.value || current || '';
-            subjSel.innerHTML =
-                '<option value="">без предмета</option>' +
-                list.map((x) => `<option value="${x.key}">${x.title}</option>`).join('');
-            if (was) subjSel.value = was;
-            applyRole();
-        };
-
         // Свой голос педагога, созданный заранее: он и естественнее, и больше не
-        // стоит задержки (замер 26.11), поэтому с ним умолчание — он. Прежний
-        // выбор педагога уважаем: трогаем значки, только пока он ничего не
-        // выбирал сам.
+        // стоит задержки (замер 26.11), поэтому с ним умолчание — он.
+        //
+        // Один раз это умолчание сильнее прежнего выбора. Иван зашёл первым, и
+        // панель показала мужской голос: он выбирал его в прежние дни, когда
+        // своего голоса ещё не было, — выбор сохранён и перекрывал умолчание
+        // (заход 26.11). Поэтому при первом появлении своего голоса ставим его
+        // и помечаем, что предлагали; дальше выбор педагога снова главнее.
         ui.setOwnVoice = (yes) => {
             if (!yes) return;
             const b = voiceBox.teacher.querySelector('button[data-v="clone"]');
-            if (b) b.title = 'ваш голос — создан заранее, без задержки';
-            let chosen = null;
+            if (b) b.title = 'Ваш голос — записан заранее, перевод не задерживает';
+            let offered = null;
             try {
-                chosen = localStorage.getItem(SAVED_VOICE);
+                offered = localStorage.getItem(OWN_VOICE_SEEN);
             } catch {
-                /* памяти нет — считаем, что выбора не было */
+                /* памяти нет — предложим снова при следующем заходе */
             }
-            if (!chosen) setVoice('teacher', 'clone');
+            if (offered) return;
+            setVoice('teacher', 'clone');
+            try {
+                localStorage.setItem(OWN_VOICE_SEEN, '1');
+                localStorage.setItem(SAVED_VOICE, 'clone');
+            } catch {
+                /* не сохранилось — не беда */
+            }
         };
 
-        if (lastSubjects) ui.setSubjects(lastSubjects, lastSubject);
         if (lastOwnVoice) ui.setOwnVoice(true);
-
-        subjSel.onchange = () => {
-            socket.emit('translateSubject', { subject: subjSel.value || null }, (r) => {
-                if (r && r.error) note.textContent = 'не вышло: ' + r.error;
-            });
-        };
 
         signBtn.onclick = () => {
             if (!iAmPresenter) return;

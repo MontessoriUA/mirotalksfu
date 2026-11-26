@@ -99,9 +99,11 @@ let glossaries = null;
 const GLOSSARY_DIR =
     process.env.TRANSLATE_GLOSSARY_DIR || path.join(__dirname, '../../../Montemeet/app-spec/translate-glossary');
 
+const DIRECTIONS_FILE = 'directions.json';
+
 function loadGlossaries(log) {
     if (glossaries !== null) return glossaries;
-    glossaries = { subjects: {}, titles: {} };
+    glossaries = { subjects: {}, titles: {}, byDirection: {} };
     let files = [];
     try {
         files = fs.readdirSync(GLOSSARY_DIR).filter((f) => f.endsWith('.json'));
@@ -113,24 +115,47 @@ function loadGlossaries(log) {
         const key = file.replace(/\.json$/, '');
         try {
             const spec = JSON.parse(fs.readFileSync(path.join(GLOSSARY_DIR, file), 'utf8'));
+            // Карта направлений — не словарь терминов, а указание, какие
+            // словари брать в комнате этого типа.
+            if (file === DIRECTIONS_FILE) {
+                for (const [dir, list] of Object.entries(spec)) {
+                    if (Array.isArray(list)) glossaries.byDirection[dir] = list;
+                }
+                continue;
+            }
             glossaries.subjects[key] = spec.pairs || {};
             glossaries.titles[key] = spec.title || key;
         } catch (err) {
             log?.warn('[Translate] глоссарий не прочитан', { file, error: err.message });
         }
     }
-    log?.info('[Translate] глоссарии загружены', { предметы: Object.keys(glossaries.subjects) });
+    log?.info('[Translate] глоссарии загружены', {
+        наборы: Object.keys(glossaries.subjects),
+        направления: Object.keys(glossaries.byDirection),
+    });
     return glossaries;
 }
 
-// Словарь для направления «откуда → куда» по предмету урока. Общий берём
-// всегда, предметный подмешиваем сверху: его термины важнее.
-function glossaryFor(fromLang, toLang, subject, log) {
+// Какие наборы терминов берём в комнате этого направления. Направление
+// (оно же тип комнаты) кабинет выводит из направления педагога, и педагог на
+// него не влияет — выбора предмета на уроке больше нет (Иван, 26.11): в
+// музыкальной комнате уходят все музыкальные наборы разом, а предметные файлы
+// остаются просто способом хранить термины по разделам.
+function setsFor(direction, log) {
+    const all = loadGlossaries(log);
+    const named = all.byDirection[String(direction || '')];
+    if (Array.isArray(named)) return named;
+    // Направления нет в карте — берём только общий набор, если он есть.
+    return all.subjects.common ? ['common'] : [];
+}
+
+// Словарь для пары языков «откуда → куда» в комнате этого направления.
+function glossaryFor(fromLang, toLang, direction, log) {
     const all = loadGlossaries(log);
     if (!fromLang || !toLang || fromLang === toLang) return null;
 
     const out = {};
-    for (const key of ['common', subject]) {
+    for (const key of setsFor(direction, log)) {
         const pairs = key && all.subjects[key];
         if (!pairs) continue;
         const direct = pairs[`${fromLang}-${toLang}`];
@@ -147,14 +172,6 @@ function glossaryFor(fromLang, toLang, subject, log) {
     }
     const n = Object.keys(out).length;
     return n ? out : null;
-}
-
-// Какие предметы у нас вообще есть — список для панели педагога.
-function glossarySubjects(log) {
-    const all = loadGlossaries(log);
-    return Object.keys(all.subjects)
-        .filter((k) => k !== 'common')
-        .map((k) => ({ key: k, title: all.titles[k] }));
 }
 
 // На каком языке сказано — по письменности. Этого хватает: кириллица,
@@ -200,7 +217,7 @@ class Session {
         fromName,
         source,
         target,
-        subject,
+        direction,
         voice,
         readyVoice,
         log,
@@ -214,7 +231,7 @@ class Session {
         this.fromName = fromName;
         this.target = target;
         this.source = source || null; // язык говорящего — нужен для глоссария
-        this.subject = subject || null; // предмет урока: piano, guitar, violin
+        this.direction = direction || null; // направление комнаты: от него словарь
         this.readyVoice = readyVoice || null; // заранее созданный голос { id, model }
         this.log = log;
         this.onText = onText;
@@ -251,7 +268,7 @@ class Session {
 
         ws.on('open', () => {
             const translation = { language: this.target };
-            const g = glossaryFor(this.source, this.target, this.subject, this.log);
+            const g = glossaryFor(this.source, this.target, this.direction, this.log);
             if (g) translation.corpus = { phrases: g };
 
             const session = { output_modalities: ['text', 'audio'], translation };
@@ -449,7 +466,6 @@ function stateOf(roomId) {
             sessions: new Map(),
             sec: 0,
             voices: { teacher: teacherVoice, student: 'female' },
-            subject: null, // предмет урока для глоссария; ставит педагог
         });
     }
     return roomsState.get(roomId);
@@ -498,9 +514,6 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
     try {
         socket.emit('mmTranslateReady', {
             presenter: !!isPresenter?.(),
-            // какие предметные глоссарии есть: добавили файл — появился пункт
-            subjects: glossarySubjects(log),
-            subject: stateOf(roomId).subject,
             // какие языки сервер примет: панель показывала все, а сервер молча
             // отвергал лишние, и перевод оставался на прежнем языке — выглядело
             // как «немецкий даёт английский» (Иван, 24.11)
@@ -571,7 +584,10 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     fromName: peerName,
                     source: st.peers.get(socket.id)?.lang || null,
                     target,
-                    subject: st.subject,
+                    // Направление комнаты — её профиль в реестре: кабинет
+                    // выводит его из направления педагога, так что словарь
+                    // определён заранее и выбирать на уроке нечего.
+                    direction: montemeetProfiles.forRoom(roomId)?.name || null,
                     // готовый голос берём только для речи педагога: он его и
                     // записывал
                     readyVoice: isPresenter?.() ? montemeetProfiles.presenterVoiceId(roomId) : null,
@@ -626,26 +642,6 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
     // выше, и одноимённый параметр её затенял — «langs is not a function»,
     // перевод не включался вовсе (заход 24.11).
     // Ведущий выбирает голос перевода: клон говорящего, женский или мужской.
-    // Предмет урока выбирает ведущий: от него зависит, какой глоссарий уйдёт
-    // поставщику. Общий музыкальный берётся всегда, предметный подмешивается
-    // сверху (Иван, 25.11: «глоссарии по предметам, начать с фортепиано,
-    // гитары, скрипки»).
-    socket.on('translateSubject', ({ subject } = {}, cb) => {
-        if (!isPresenter?.()) return cb?.({ error: 'только ведущий' });
-        const known = new Set(glossarySubjects(log).map((x) => x.key));
-        const want = subject && known.has(subject) ? subject : null;
-        const st = stateOf(roomId);
-        if (st.subject === want) return cb?.({ ok: true, subject: want });
-        st.subject = want;
-        // Глоссарий уходит в настройке сессии, на ходу его не сменить —
-        // переоткрываем сессии комнаты.
-        for (const [, session] of st.sessions) session.stop();
-        st.sessions.clear();
-        log?.info('[Translate] предмет урока', { room: roomId, subject: want });
-        for (const id of st.peers.keys()) io.to(id).emit('translateSubjectSet', { subject: want });
-        cb?.({ ok: true, subject: want });
-    });
-
     socket.on('translateVoiceMode', ({ side = 'teacher', voice } = {}, cb) => {
         if (!isPresenter?.()) return cb?.({ error: 'только ведущий' });
         const which = side === 'student' ? 'student' : 'teacher';
