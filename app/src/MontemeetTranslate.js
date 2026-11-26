@@ -35,6 +35,7 @@
 // голоса около 3,4 с на русский→китайский и 1,5 с обратно, урок ≈ $0,74.
 
 const fs = require('fs');
+const path = require('path');
 const { WebSocket } = require('ws');
 const montemeetProfiles = require('./MontemeetProfiles'); // голос перевода по полу педагога
 
@@ -86,20 +87,74 @@ const allowedRoom = (roomId) => {
 // каждого направления свой. Без обратного термины остаются иероглифами прямо в
 // русском тексте — проверено замером (TRANSLATE.md §10.1a).
 let glossaries = null;
-function glossaryFor(targetLang, log) {
-    if (glossaries === null) {
-        glossaries = {};
-        const file = String(process.env.TRANSLATE_GLOSSARY || '').trim();
-        if (file) {
-            try {
-                const spec = JSON.parse(fs.readFileSync(file, 'utf8'));
-                glossaries = { zh: spec.glossary || null, ru: spec.glossary_zh || null };
-            } catch (err) {
-                log?.warn('[Translate] глоссарий не прочитан', { file, error: err.message });
-            }
+// Глоссарии лежат папкой: common.json — общая музыкальная терминология, и по
+// файлу на инструмент (piano, guitar, violin). В каждом — пары «русский термин
+// → перевод» для ru-en и ru-zh: педагоги ведут на русском (Иван, 25.11).
+// Обратные направления строим инверсией здесь же, вручную их не держим, чтобы
+// не расходились; при совпадении перевода выигрывает первый термин.
+//
+// Зачем вообще: замеры 23.11 показали, что без глоссария поставщик переводит
+// «колодочка» как «琴码» (подставка) — указание меняется на противоположное, а
+// «Ганон» становится «пушкой». С глоссарием из 56 терминов сошлось 55.
+const GLOSSARY_DIR =
+    process.env.TRANSLATE_GLOSSARY_DIR || path.join(__dirname, '../../../Montemeet/app-spec/translate-glossary');
+
+function loadGlossaries(log) {
+    if (glossaries !== null) return glossaries;
+    glossaries = { subjects: {}, titles: {} };
+    let files = [];
+    try {
+        files = fs.readdirSync(GLOSSARY_DIR).filter((f) => f.endsWith('.json'));
+    } catch (err) {
+        log?.warn('[Translate] папка глоссариев не прочитана', { dir: GLOSSARY_DIR, error: err.message });
+        return glossaries;
+    }
+    for (const file of files) {
+        const key = file.replace(/\.json$/, '');
+        try {
+            const spec = JSON.parse(fs.readFileSync(path.join(GLOSSARY_DIR, file), 'utf8'));
+            glossaries.subjects[key] = spec.pairs || {};
+            glossaries.titles[key] = spec.title || key;
+        } catch (err) {
+            log?.warn('[Translate] глоссарий не прочитан', { file, error: err.message });
         }
     }
-    return glossaries[targetLang] || null;
+    log?.info('[Translate] глоссарии загружены', { предметы: Object.keys(glossaries.subjects) });
+    return glossaries;
+}
+
+// Словарь для направления «откуда → куда» по предмету урока. Общий берём
+// всегда, предметный подмешиваем сверху: его термины важнее.
+function glossaryFor(fromLang, toLang, subject, log) {
+    const all = loadGlossaries(log);
+    if (!fromLang || !toLang || fromLang === toLang) return null;
+
+    const out = {};
+    for (const key of ['common', subject]) {
+        const pairs = key && all.subjects[key];
+        if (!pairs) continue;
+        const direct = pairs[`${fromLang}-${toLang}`];
+        if (direct) {
+            Object.assign(out, direct);
+            continue;
+        }
+        // обратного направления в файле нет — строим из прямого
+        const back = pairs[`${toLang}-${fromLang}`];
+        if (!back) continue;
+        for (const [term, translated] of Object.entries(back)) {
+            if (!(translated in out)) out[translated] = term;
+        }
+    }
+    const n = Object.keys(out).length;
+    return n ? out : null;
+}
+
+// Какие предметы у нас вообще есть — список для панели педагога.
+function glossarySubjects(log) {
+    const all = loadGlossaries(log);
+    return Object.keys(all.subjects)
+        .filter((k) => k !== 'common')
+        .map((k) => ({ key: k, title: all.titles[k] }));
 }
 
 // На каком языке сказано — по письменности. Этого хватает: кириллица,
@@ -139,12 +194,14 @@ const scriptForTarget = (target) => (target === 'zh' ? 'zh' : target === 'ru' ? 
 const VOICES = { female: 'Tina', male: 'Andre' };
 
 class Session {
-    constructor({ roomId, fromId, fromName, target, voice, log, onText, onVoice, onFail }) {
+    constructor({ roomId, fromId, fromName, source, target, subject, voice, log, onText, onVoice, onFail }) {
         this.voice = voice || 'clone';
         this.roomId = roomId;
         this.fromId = fromId;
         this.fromName = fromName;
         this.target = target;
+        this.source = source || null; // язык говорящего — нужен для глоссария
+        this.subject = subject || null; // предмет урока: piano, guitar, violin
         this.log = log;
         this.onText = onText;
         this.onVoice = onVoice;
@@ -180,7 +237,7 @@ class Session {
 
         ws.on('open', () => {
             const translation = { language: this.target };
-            const g = glossaryFor(this.target, this.log);
+            const g = glossaryFor(this.source, this.target, this.subject, this.log);
             if (g) translation.corpus = { phrases: g };
 
             const session = { output_modalities: ['text', 'audio'], translation };
@@ -364,6 +421,7 @@ function stateOf(roomId) {
             // терялась (Иван, 24.11): поставщику нужно снять образец, прежде чем
             // ответить. Клон остаётся выбором педагога, умолчание — быстрый голос.
             voices: { teacher: byGender, student: 'female' },
+            subject: null, // предмет урока для глоссария; ставит педагог
         });
     }
     return roomsState.get(roomId);
@@ -412,6 +470,9 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
     try {
         socket.emit('mmTranslateReady', {
             presenter: !!isPresenter?.(),
+            // какие предметные глоссарии есть: добавили файл — появился пункт
+            subjects: glossarySubjects(log),
+            subject: stateOf(roomId).subject,
             // какие языки сервер примет: панель показывала все, а сервер молча
             // отвергал лишние, и перевод оставался на прежнем языке — выглядело
             // как «немецкий даёт английский» (Иван, 24.11)
@@ -475,7 +536,9 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     roomId,
                     fromId: socket.id,
                     fromName: peerName,
+                    source: st.peers.get(socket.id)?.lang || null,
                     target,
+                    subject: st.subject,
                     voice: isPresenter?.() ? st.voices.teacher : st.voices.student,
                     log,
                     onText: (kind, text) => {
@@ -527,6 +590,26 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
     // выше, и одноимённый параметр её затенял — «langs is not a function»,
     // перевод не включался вовсе (заход 24.11).
     // Ведущий выбирает голос перевода: клон говорящего, женский или мужской.
+    // Предмет урока выбирает ведущий: от него зависит, какой глоссарий уйдёт
+    // поставщику. Общий музыкальный берётся всегда, предметный подмешивается
+    // сверху (Иван, 25.11: «глоссарии по предметам, начать с фортепиано,
+    // гитары, скрипки»).
+    socket.on('translateSubject', ({ subject } = {}, cb) => {
+        if (!isPresenter?.()) return cb?.({ error: 'только ведущий' });
+        const known = new Set(glossarySubjects(log).map((x) => x.key));
+        const want = subject && known.has(subject) ? subject : null;
+        const st = stateOf(roomId);
+        if (st.subject === want) return cb?.({ ok: true, subject: want });
+        st.subject = want;
+        // Глоссарий уходит в настройке сессии, на ходу его не сменить —
+        // переоткрываем сессии комнаты.
+        for (const [, session] of st.sessions) session.stop();
+        st.sessions.clear();
+        log?.info('[Translate] предмет урока', { room: roomId, subject: want });
+        for (const id of st.peers.keys()) io.to(id).emit('translateSubjectSet', { subject: want });
+        cb?.({ ok: true, subject: want });
+    });
+
     socket.on('translateVoiceMode', ({ side = 'teacher', voice } = {}, cb) => {
         if (!isPresenter?.()) return cb?.({ error: 'только ведущий' });
         const which = side === 'student' ? 'student' : 'teacher';

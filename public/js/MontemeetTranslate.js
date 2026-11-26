@@ -77,6 +77,10 @@ const MontemeetTranslate = (() => {
     // Нужен, чтобы студенту не писали «педагог не включил перевод», когда тот
     // уже включил и студент его слышит (живой заход 25.11).
     let roomOn = false;
+    // Список предметов приходит от сервера и может опередить панель — помним
+    // его отдельно, как и роль (на эти грабли мы уже наступали 24.11).
+    let lastSubjects = null;
+    let lastSubject = '';
     let inited = false;
     let myLang = '';
     const onText = [];
@@ -466,6 +470,13 @@ const MontemeetTranslate = (() => {
             for (const fn of onText) fn({ kind: 'state', on: !r.error, lang: d.lang, byTeacher: true, why: r.error });
         });
 
+        // ведущий сменил предмет — показываем всем, у кого панель открыта
+        socket.on('translateSubjectSet', (d = {}) => {
+            lastSubject = d.subject || '';
+            const sel = ui?.panel?.querySelector('#mmTrSubject');
+            if (sel) sel.value = lastSubject;
+        });
+
         socket.on('translateVoice', (d = {}) => {
             revealUi();
             if (d.audio) playPcm16(d.audio);
@@ -477,6 +488,11 @@ const MontemeetTranslate = (() => {
         // кнопка не появляется вовсе (стенд 24.11).
         socket.on('mmTranslateReady', (d = {}) => {
             if (d.presenter) iAmPresenter = true;
+            if (d.subjects) {
+                lastSubjects = d.subjects;
+                lastSubject = d.subject || '';
+                ui?.setSubjects?.(lastSubjects, lastSubject);
+            }
             if (Array.isArray(d.langs) && d.langs.length) keepLangs(d.langs);
             revealUi();
         });
@@ -935,6 +951,10 @@ const MontemeetTranslate = (() => {
             voiceGroup('Student') +
             '</div>' +
             '</div>' +
+            // Предмет урока: от него зависит глоссарий, который уходит
+            // поставщику. Видит и меняет только педагог (Иван, 25.11).
+            '<div class="mmTrRow" id="mmTrSubjRow" hidden><label for="mmTrSubject">Предмет урока</label>' +
+            '<select id="mmTrSubject"><option value="">без предмета</option></select></div>' +
             // у студента, пока педагог не включил перевод, — объяснение вместо настроек
             '<div id="mmTrOff" hidden>Перевод не включён педагогом</div>' +
             // строка состояния стоит здесь, а не внизу: под ползунком громкости
@@ -976,6 +996,8 @@ const MontemeetTranslate = (() => {
             }
         };
         const offEl = panel.querySelector('#mmTrOff');
+        const subjRow = panel.querySelector('#mmTrSubjRow');
+        const subjSel = panel.querySelector('#mmTrSubject');
         const subsSw = panel.querySelector('#mmTrSubsOn');
         const volEl = panel.querySelector('#mmTrVol');
         const note = panel.querySelector('#mmTrNote');
@@ -992,6 +1014,7 @@ const MontemeetTranslate = (() => {
             voiceBox.teacher.hidden = !iAmPresenter;
             voiceBox.student.hidden = !iAmPresenter;
             if (onRow) onRow.hidden = !iAmPresenter; // включает перевод только педагог
+            if (subjRow) subjRow.hidden = !iAmPresenter || !subjSel.options.length;
             offEl.hidden = iAmPresenter || on || roomOn;
             note.hidden = !iAmPresenter && !on;
             const sw = panel.querySelector('#mmTrSign');
@@ -1034,6 +1057,25 @@ const MontemeetTranslate = (() => {
 
         // Знак между языками меняет их местами — как в переводчиках (Иван,
         // 24.11). Студенту менять нечего: язык педагога он не выбирает.
+        // список предметов приходит от сервера: какие глоссарии есть, те и видно
+        ui.setSubjects = (list, current) => {
+            if (!Array.isArray(list)) return;
+            const was = subjSel.value || current || '';
+            subjSel.innerHTML =
+                '<option value="">без предмета</option>' +
+                list.map((x) => `<option value="${x.key}">${x.title}</option>`).join('');
+            if (was) subjSel.value = was;
+            applyRole();
+        };
+
+        if (lastSubjects) ui.setSubjects(lastSubjects, lastSubject);
+
+        subjSel.onchange = () => {
+            socket.emit('translateSubject', { subject: subjSel.value || null }, (r) => {
+                if (r && r.error) note.textContent = 'не вышло: ' + r.error;
+            });
+        };
+
         signBtn.onclick = () => {
             if (!iAmPresenter) return;
             const a = teachSel.value;
