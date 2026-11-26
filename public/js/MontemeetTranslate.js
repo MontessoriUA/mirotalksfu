@@ -81,6 +81,10 @@ const MontemeetTranslate = (() => {
     // его отдельно, как и роль (на эти грабли мы уже наступали 24.11).
     let lastSubjects = null;
     let lastSubject = '';
+    // Есть ли у педагога заранее созданный голос: от этого зависит, какой голос
+    // панель предлагает по умолчанию. Приходит от сервера и тоже может
+    // опередить панель.
+    let lastOwnVoice = false;
     let inited = false;
     let myLang = '';
     const onText = [];
@@ -494,6 +498,10 @@ const MontemeetTranslate = (() => {
                 ui?.setSubjects?.(lastSubjects, lastSubject);
             }
             if (Array.isArray(d.langs) && d.langs.length) keepLangs(d.langs);
+            if (d.ownVoice) {
+                lastOwnVoice = true;
+                ui?.setOwnVoice?.(true);
+            }
             revealUi();
         });
 
@@ -1068,7 +1076,25 @@ const MontemeetTranslate = (() => {
             applyRole();
         };
 
+        // Свой голос педагога, созданный заранее: он и естественнее, и больше не
+        // стоит задержки (замер 26.11), поэтому с ним умолчание — он. Прежний
+        // выбор педагога уважаем: трогаем значки, только пока он ничего не
+        // выбирал сам.
+        ui.setOwnVoice = (yes) => {
+            if (!yes) return;
+            const b = voiceBox.teacher.querySelector('button[data-v="clone"]');
+            if (b) b.title = 'ваш голос — создан заранее, без задержки';
+            let chosen = null;
+            try {
+                chosen = localStorage.getItem(SAVED_VOICE);
+            } catch {
+                /* памяти нет — считаем, что выбора не было */
+            }
+            if (!chosen) setVoice('teacher', 'clone');
+        };
+
         if (lastSubjects) ui.setSubjects(lastSubjects, lastSubject);
+        if (lastOwnVoice) ui.setOwnVoice(true);
 
         subjSel.onchange = () => {
             socket.emit('translateSubject', { subject: subjSel.value || null }, (r) => {
