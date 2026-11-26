@@ -1015,9 +1015,10 @@ function startServer() {
     app.post('/mm/voice/create', montemeetLocalOnly, express.json({ limit: '1mb' }), async (req, res) => {
         const room = String(req.body?.room || '').trim();
         const file = String(req.body?.file || '').trim();
+        const replace = String(req.body?.replace || '').trim();
         if (!room || !file) return res.json({ error: 'нужны комната и файл' });
         try {
-            const made = await montemeetVoiceClone.createVoice({ room, file, log });
+            const made = await montemeetVoiceClone.createVoice({ room, file, replace, log });
             res.json({ ok: true, ...made });
         } catch (err) {
             log.warn('Montemeet: голос не создан', { room, error: err.message });
@@ -1025,11 +1026,36 @@ function startServer() {
         }
     });
 
+    // Что поставщик знает про голос. Проверки записи, как у моделей синтеза,
+    // здесь нет: голос пригоден сразу после создания (проверено 26.11), так
+    // что ответ — либо запись о голосе, либо «нет такого».
     app.post('/mm/voice/status', montemeetLocalOnly, express.json({ limit: '64kb' }), async (req, res) => {
         const voiceId = String(req.body?.voiceId || '').trim();
         if (!voiceId) return res.json({ error: 'нужен идентификатор' });
         try {
-            res.json({ ok: true, status: await montemeetVoiceClone.voiceStatus(voiceId, log) });
+            const info = await montemeetVoiceClone.voiceInfo(voiceId, log);
+            res.json({ ok: true, exists: !!info, ...(info || {}) });
+        } catch (err) {
+            res.json({ error: err.message });
+        }
+    });
+
+    // Список голосов у поставщика — чтобы из админки было видно, что там
+    // накопилось, и чтобы чужие (не наши) не удалить случайно.
+    app.post('/mm/voice/list', montemeetLocalOnly, express.json({ limit: '64kb' }), async (req, res) => {
+        try {
+            res.json({ ok: true, voices: await montemeetVoiceClone.listVoices(log) });
+        } catch (err) {
+            res.json({ error: err.message });
+        }
+    });
+
+    app.post('/mm/voice/delete', montemeetLocalOnly, express.json({ limit: '64kb' }), async (req, res) => {
+        const voiceId = String(req.body?.voiceId || '').trim();
+        if (!voiceId) return res.json({ error: 'нужен идентификатор' });
+        try {
+            await montemeetVoiceClone.deleteVoice(voiceId, log);
+            res.json({ ok: true });
         } catch (err) {
             res.json({ error: err.message });
         }
