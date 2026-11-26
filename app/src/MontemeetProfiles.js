@@ -121,6 +121,15 @@ function translateRooms() {
     return String(list || '').trim();
 }
 
+// Заранее созданный голос педагога: { id, model }. Его кладёт кабинет после
+// того, как поставщик принял образец. Нет записи — снимаем голос на уроке или
+// берём готовый по полу.
+function presenterVoiceId(roomId) {
+    const { presenterVoiceId: byRoom = {} } = load() || {};
+    const v = Object.prototype.hasOwnProperty.call(byRoom, roomId) ? byRoom[roomId] : null;
+    return v && v.id ? v : null;
+}
+
 function presenterVoice(roomId) {
     const { presenterVoice: byRoom = {} } = load() || {};
     const v = Object.prototype.hasOwnProperty.call(byRoom, roomId) ? byRoom[roomId] : null;
@@ -293,6 +302,7 @@ function emailFromGrant(cookieHeader, roomId) {
 module.exports = {
     forRoom,
     presenterVoice,
+    presenterVoiceId,
     translateLangs,
     translateRooms,
     isManagedRoom,

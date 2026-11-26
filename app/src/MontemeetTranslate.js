@@ -194,7 +194,20 @@ const scriptForTarget = (target) => (target === 'zh' ? 'zh' : target === 'ru' ? 
 const VOICES = { female: 'Tina', male: 'Andre' };
 
 class Session {
-    constructor({ roomId, fromId, fromName, source, target, subject, voice, log, onText, onVoice, onFail }) {
+    constructor({
+        roomId,
+        fromId,
+        fromName,
+        source,
+        target,
+        subject,
+        voice,
+        readyVoice,
+        log,
+        onText,
+        onVoice,
+        onFail,
+    }) {
         this.voice = voice || 'clone';
         this.roomId = roomId;
         this.fromId = fromId;
@@ -202,6 +215,7 @@ class Session {
         this.target = target;
         this.source = source || null; // язык говорящего — нужен для глоссария
         this.subject = subject || null; // предмет урока: piano, guitar, violin
+        this.readyVoice = readyVoice || null; // заранее созданный голос { id, model }
         this.log = log;
         this.onText = onText;
         this.onVoice = onVoice;
@@ -241,7 +255,14 @@ class Session {
             if (g) translation.corpus = { phrases: g };
 
             const session = { output_modalities: ['text', 'audio'], translation };
-            if (this.voice === 'clone') {
+            if (this.voice === 'clone' && this.readyVoice && this.readyVoice.model === model()) {
+                // Готовый голос: снимать образец на уроке не нужно, и задержки
+                // от этого нет. Модель сверяем: голос привязан к ней, и после
+                // смены модели старый не подойдёт (26.11).
+                session.enable_voice_clone = true;
+                session.voice_clone_options = { frequency: 'never' };
+                session.voice = this.readyVoice.id;
+            } else if (this.voice === 'clone') {
                 // Голос снимается с речи говорящего один раз, в начале сессии.
                 // Сначала стояло 'always' — снимать перед каждым ответом; на
                 // живом уроке это дало лишние паузы перед каждой фразой и срывы
@@ -539,6 +560,9 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     source: st.peers.get(socket.id)?.lang || null,
                     target,
                     subject: st.subject,
+                    // готовый голос берём только для речи педагога: он его и
+                    // записывал
+                    readyVoice: isPresenter?.() ? montemeetProfiles.presenterVoiceId(roomId) : null,
                     voice: isPresenter?.() ? st.voices.teacher : st.voices.student,
                     log,
                     onText: (kind, text) => {

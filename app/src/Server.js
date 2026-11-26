@@ -104,6 +104,7 @@ const montemeetJournal = require('./MontemeetJournal');
 const montemeetEvents = require('./MontemeetEvents');
 const montemeetTranslate = require('./MontemeetTranslate'); // Montemeet: синхронный перевод голосом
 const montemeetRoomPeek = require('./MontemeetRoomPeek'); // Montemeet: сколько людей в комнате до входа
+const montemeetVoiceClone = require('./MontemeetVoiceClone'); // Montemeet: голос педагога, созданный заранее
 const log = new Logger('Server');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
@@ -999,6 +1000,41 @@ function startServer() {
     });
 
     // Check if room active (exists)
+    // Montemeet: создание голоса педагога заранее. Зовёт кабинет, он на той же
+    // машине; ключ поставщика лежит здесь и во второе место не выносится
+    // (решение Ивана 26.11). Снаружи этот путь недоступен: nginx его не
+    // проксирует, а здесь мы дополнительно проверяем, что запрос пришёл с
+    // петлевого адреса.
+    const montemeetLocalOnly = (req, res, next) => {
+        const ip = String(req.ip || req.socket?.remoteAddress || '');
+        if (/^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/.test(ip)) return next();
+        log.warn('Montemeet: чужой запрос к внутреннему пути', { path: req.path, ip });
+        return res.status(403).json({ error: 'только со своей машины' });
+    };
+
+    app.post('/mm/voice/create', montemeetLocalOnly, express.json({ limit: '1mb' }), async (req, res) => {
+        const room = String(req.body?.room || '').trim();
+        const file = String(req.body?.file || '').trim();
+        if (!room || !file) return res.json({ error: 'нужны комната и файл' });
+        try {
+            const made = await montemeetVoiceClone.createVoice({ room, file, log });
+            res.json({ ok: true, ...made });
+        } catch (err) {
+            log.warn('Montemeet: голос не создан', { room, error: err.message });
+            res.json({ error: err.message });
+        }
+    });
+
+    app.post('/mm/voice/status', montemeetLocalOnly, express.json({ limit: '64kb' }), async (req, res) => {
+        const voiceId = String(req.body?.voiceId || '').trim();
+        if (!voiceId) return res.json({ error: 'нужен идентификатор' });
+        try {
+            res.json({ ok: true, status: await montemeetVoiceClone.voiceStatus(voiceId, log) });
+        } catch (err) {
+            res.json({ error: err.message });
+        }
+    });
+
     app.post('/isRoomActive', (req, res) => {
         const { roomId } = checkXSS(req.body);
 
