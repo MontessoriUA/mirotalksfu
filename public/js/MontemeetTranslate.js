@@ -77,10 +77,10 @@ const MontemeetTranslate = (() => {
     // Нужен, чтобы студенту не писали «педагог не включил перевод», когда тот
     // уже включил и студент его слышит (живой заход 25.11).
     let roomOn = false;
-    // Есть ли у педагога заранее созданный голос: от этого зависит, какой голос
-    // панель предлагает по умолчанию. Приходит от сервера и тоже может
-    // опередить панель.
+    // Есть ли у педагога заранее созданный голос и какой голос сервер считает
+    // умолчанием. Приходит от сервера и может опередить панель.
     let lastOwnVoice = false;
+    let lastServerVoice = '';
     let inited = false;
     let myLang = '';
     const onText = [];
@@ -482,10 +482,9 @@ const MontemeetTranslate = (() => {
         socket.on('mmTranslateReady', (d = {}) => {
             if (d.presenter) iAmPresenter = true;
             if (Array.isArray(d.langs) && d.langs.length) keepLangs(d.langs);
-            if (d.ownVoice) {
-                lastOwnVoice = true;
-                ui?.setOwnVoice?.(true);
-            }
+            lastOwnVoice = !!d.ownVoice;
+            lastServerVoice = d.voice || '';
+            ui?.setOwnVoice?.(lastOwnVoice, lastServerVoice);
             revealUi();
         });
 
@@ -844,6 +843,9 @@ const MontemeetTranslate = (() => {
     box-shadow: inset 0 0 0 1px #2f6df6;
 }
 .mmTrVoices[hidden] { display: none; }
+/* Своё display: flex сильнее браузерного правила для hidden, и скрытая кнопка
+   оставалась на виду (поймано на стенде 26.11). */
+.mmTrVoices button[hidden] { display: none; }
 #mmTrPair select[disabled] { opacity: .75; }
 #mmTrSign {
     align-self: center; margin-top: 18px; width: 34px; height: 34px; flex: none;
@@ -910,16 +912,19 @@ const MontemeetTranslate = (() => {
             female: 'Женский голос',
             male: 'Мужской голос',
         };
-        // У студента голоса говорящего нет: педагог, не зная подробностей, мог
-        // выбрать его студенту и получить задержку на каждой фразе — образец
-        // студента заранее никто не записывал, и поставщик снимал бы его на
-        // уроке (Иван, 26.11). Свой голос есть только у педагога.
+        // Голос говорящего предлагаем, только когда он записан заранее, и только
+        // педагогу. Иначе поставщик снимает образец прямо на уроке и задерживает
+        // каждую фразу: у студента образца нет вовсе, у педагога без записи —
+        // тоже (Иван, 26.11, оба решения). Поэтому у студента кнопки нет совсем,
+        // а у педагога она нарисована скрытой и открывается, когда сервер
+        // подтвердит, что голос записан.
         const voiceGroup = (side) =>
             `<div class="mmTrVoices" id="mmTrVoice${side}" role="group" aria-label="Голос перевода">` +
             (side === 'Teacher' ? ['clone', 'female', 'male'] : ['female', 'male'])
                 .map(
                     (v) =>
                         `<button type="button" data-v="${v}" title="${TITLE[v]}" aria-label="${TITLE[v]}"` +
+                        `${v === 'clone' ? ' hidden' : ''}` +
                         ` aria-pressed="${v === 'female' ? 'true' : 'false'}">${ICON[v]}</button>`
                 )
                 .join('') +
@@ -1066,10 +1071,31 @@ const MontemeetTranslate = (() => {
         // своего голоса ещё не было, — выбор сохранён и перекрывал умолчание
         // (заход 26.11). Поэтому при первом появлении своего голоса ставим его
         // и помечаем, что предлагали; дальше выбор педагога снова главнее.
-        ui.setOwnVoice = (yes) => {
-            if (!yes) return;
+        ui.setOwnVoice = (yes, serverVoice) => {
             const b = voiceBox.teacher.querySelector('button[data-v="clone"]');
-            if (b) b.title = 'Ваш голос — записан заранее, перевод не задерживает';
+            if (!yes) {
+                // Голос не записан — кнопки нет. Ставим то, что умолчанием
+                // считает сервер: он берёт голос по полу педагога из справочника
+                // школы, а панель показывала женский независимо от этого и при
+                // включении перевода пересиливала сервер своим значком. Прежний
+                // выбор педагога не трогаем — кроме «как говорящего», который
+                // иначе остался бы висеть на скрытой кнопке.
+                if (b) b.hidden = true;
+                let chosen = null;
+                try {
+                    chosen = localStorage.getItem(SAVED_VOICE);
+                } catch {
+                    /* памяти нет — считаем, что выбора не было */
+                }
+                if ((!chosen || chosen === 'clone') && ['female', 'male'].includes(serverVoice)) {
+                    setVoice('teacher', serverVoice);
+                }
+                return;
+            }
+            if (b) {
+                b.hidden = false;
+                b.title = 'Ваш голос — записан заранее, перевод не задерживает';
+            }
             let offered = null;
             try {
                 offered = localStorage.getItem(OWN_VOICE_SEEN);
@@ -1086,7 +1112,7 @@ const MontemeetTranslate = (() => {
             }
         };
 
-        if (lastOwnVoice) ui.setOwnVoice(true);
+        ui.setOwnVoice(lastOwnVoice, lastServerVoice);
 
         signBtn.onclick = () => {
             if (!iAmPresenter) return;
