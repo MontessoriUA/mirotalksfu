@@ -210,6 +210,31 @@ const scriptForTarget = (target) => (target === 'zh' ? 'zh' : target === 'ru' ? 
 // мешает, выбирает женский или мужской голос.
 const VOICES = { female: 'Tina', male: 'Andre' };
 
+// Ход разговора и скорость голоса — по замеру 27.11 на живых записях Ивана
+// (TRANSLATE.md §10.4), решение Ивана: «1.15 — естественно звучит».
+//
+// server_vad вместо speaker_detection (умолчание поставщика для 3.8):
+// первый звук стабильно на секунду раньше (2,4 против 3,4 с в девяти прогонах
+// из девяти), и нет фиксированного порога 0,5, ниже которого звук «не доходит
+// до модели» — по документации, — а с ним и тихое начало фразы. Распознавать
+// говорящих нам незачем: у каждого говорящего своя сессия.
+//
+// speech_rate в документации 3.8 нет, но поставщик его принимает и применяет.
+// Без него голос перевода длиннее самой речи: на монологе 42 с — 53 с, и
+// студент дослушивает педагога через 12–17 с после того, как тот замолчал;
+// с 1,15 — 40,6 с, через 3–4 с. Дальше 1,15 речь уже не ускоряется (1,25 дал
+// ту же длину), а 1,2 на китайском «звучит как молотящий робот» (Иван).
+//
+// Оба — переменными окружения, чтобы откатить без выкладки кода.
+const TURN = () => {
+    const t = String(process.env.TRANSLATE_TURN || 'server_vad').trim();
+    return t === 'speaker_detection' ? t : 'server_vad';
+};
+const SPEECH_RATE = () => {
+    const v = Number(process.env.TRANSLATE_SPEECH_RATE || 1.15);
+    return Number.isFinite(v) && v >= 0.5 && v <= 2 ? v : 1.15;
+};
+
 class Session {
     constructor({
         roomId,
@@ -271,7 +296,12 @@ class Session {
             const g = glossaryFor(this.source, this.target, this.direction, this.log);
             if (g) translation.corpus = { phrases: g };
 
-            const session = { output_modalities: ['text', 'audio'], translation };
+            const session = {
+                output_modalities: ['text', 'audio'],
+                translation,
+                audio: { input: { turn_detection: { type: TURN() } } },
+            };
+            if (SPEECH_RATE() !== 1) session.speech_rate = SPEECH_RATE();
             if (this.voice === 'clone' && this.readyVoice && this.readyVoice.model === model()) {
                 // Готовый голос: снимать образец на уроке не нужно, и задержки
                 // от этого нет. Модель сверяем: голос привязан к ней, и после
@@ -290,7 +320,8 @@ class Session {
                 session.voice_clone_options = { frequency: 'once' };
                 session.voice = 'default'; // при клонировании обязан быть такой
             } else if (VOICES[this.voice]) {
-                session.audio = { output: { voice: VOICES[this.voice] } };
+                // audio уже несёт настройку хода разговора — не затирать
+                session.audio.output = { voice: VOICES[this.voice] };
             }
             ws.send(JSON.stringify({ type: 'session.update', session }));
 
@@ -582,6 +613,8 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     from: peerName,
                     'на язык': target,
                     голос: isPresenter?.() ? st.voices.teacher : st.voices.student,
+                    ход: TURN(),
+                    скорость: SPEECH_RATE(),
                 });
                 session = new Session({
                     roomId,
