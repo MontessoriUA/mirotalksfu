@@ -84,6 +84,15 @@ const MontemeetTranslate = (() => {
     // Нужен, чтобы студенту не писали «педагог не включил перевод», когда тот
     // уже включил и студент его слышит (живой заход 25.11).
     let roomOn = false;
+    // Кто ведёт перевод в комнате (записка моба ВЕБУ-27.11 §4). Сервер говорит
+    // это в translateState: lead — веду ли я, leadName — кто ведёт, и выбор
+    // ведущего. undefined — сервер старый, тогда всё как раньше.
+    let roomLead;
+    let roomLeadName = '';
+    let roomStudentLang = '';
+    // Второй педагог: я ведущий урока, но перевод ведёт другой. Тогда языки и
+    // голоса комнаты — только показ, свой язык и тумблер — только себе.
+    const secondTeacher = () => iAmPresenter && roomLead === false && (on || roomOn);
     // Есть ли у педагога заранее созданный голос и какой голос сервер считает
     // умолчанием. Приходит от сервера и может опередить панель.
     let lastOwnVoice = false;
@@ -1560,13 +1569,19 @@ const MontemeetTranslate = (() => {
             relabel();
             ui?.syncQuick?.();
             teachSel.disabled = !iAmPresenter; // студенту язык педагога — только показ
+            // второму педагогу язык студента и голоса — только показ: их выбрал
+            // ведущий перевода, и переписывать его нельзя (записка §4)
+            const second = secondTeacher();
+            studentSel.disabled = iAmPresenter && second;
+            for (const b of panel.querySelectorAll('.mmTrVoices button')) b.disabled = second;
             voiceBox.teacher.hidden = !iAmPresenter;
             voiceBox.student.hidden = !iAmPresenter;
             if (onRow) onRow.hidden = !iAmPresenter; // включает перевод только педагог
             offEl.hidden = iAmPresenter || on || roomOn;
             note.hidden = !iAmPresenter && !on;
             const sw = panel.querySelector('#mmTrSign');
-            if (sw) sw.dataset.swap = iAmPresenter ? '1' : '0';
+            if (sw) sw.dataset.swap = iAmPresenter && !second ? '1' : '0';
+            if (second && roomLeadName) note.textContent = 'перевод ведёт ' + roomLeadName;
         }
         ui.applyRole = applyRole;
         applyRole();
@@ -1659,7 +1674,7 @@ const MontemeetTranslate = (() => {
         ui.setOwnVoice(lastOwnVoice, lastServerVoice);
 
         signBtn.onclick = () => {
-            if (!iAmPresenter) return;
+            if (!iAmPresenter || secondTeacher()) return;
             const a = teachSel.value;
             teachSel.value = studentSel.value;
             studentSel.value = a;
@@ -1750,6 +1765,7 @@ const MontemeetTranslate = (() => {
         // Кому какой язык, решает сервер по списку комнаты: браузер на момент
         // нажатия ещё никого не знает (заход 24.11).
         const applyForAll = (on) => {
+            if (secondTeacher()) return; // правки второго педагога — только себе
             socket.emit(
                 'translateForAll',
                 on
@@ -1761,6 +1777,15 @@ const MontemeetTranslate = (() => {
                       }
                     : { on: false },
                 (r) => {
+                    // Перевод уже ведёт другой ведущий: мы включились себе, его
+                    // выбор не трогаем — так и говорим, без «не вышло».
+                    if (r && r.leadName) {
+                        roomLead = false;
+                        roomLeadName = r.leadName;
+                        roomOn = true;
+                        applyRole();
+                        return;
+                    }
                     if (r && r.error) note.textContent = 'не вышло: ' + r.error;
                     else if (r && r.set !== undefined) note.textContent = `перевод идёт · участников: ${r.set}`;
                 }
@@ -1772,7 +1797,7 @@ const MontemeetTranslate = (() => {
         for (const side of ['teacher', 'student']) {
             voiceBox[side].addEventListener('click', (e) => {
                 const b = e.target.closest('button[data-v]');
-                if (!b || !iAmPresenter) return;
+                if (!b || !iAmPresenter || secondTeacher()) return;
                 const v = b.dataset.v;
                 setVoice(side, v);
                 try {
@@ -1788,6 +1813,7 @@ const MontemeetTranslate = (() => {
 
         studentSel.onchange = () => {
             if (!iAmPresenter) return langChanged(); // студенту это его собственный язык
+            if (secondTeacher()) return; // выбор ведущего перевода — только показ
             try {
                 localStorage.setItem(SAVED_STUDENT, studentSel.value);
             } catch {
@@ -1805,10 +1831,11 @@ const MontemeetTranslate = (() => {
                 /* не сохранилось — не беда */
             }
             if (!on) return;
-            if (iAmPresenter) {
+            if (iAmPresenter && !secondTeacher()) {
                 applyForAll(true); // педагог: пересобираем обоим
                 return;
             }
+            // студент — свой язык; второй педагог — тоже только свой
             socket.emit('translateJoin', { lang: sel.value }, (r) => {
                 if (r && r.ok) {
                     myLang = sel.value;
@@ -1895,6 +1922,13 @@ const MontemeetTranslate = (() => {
             if (d.kind === 'state') {
                 if (Array.isArray(d.peers)) lastPeers = d.peers;
                 if (d.presenter) iAmPresenter = true;
+                if ('lead' in d) {
+                    roomLead = !!d.lead;
+                    roomLeadName = d.leadName || '';
+                    roomStudentLang = d.studentLang || '';
+                }
+                // второму педагогу — выбор ведущего перевода, его сохранённое не трогаем
+                if (secondTeacher() && roomStudentLang) studentSel.value = roomStudentLang;
                 // Язык педагога студент видит, но не меняет: иначе непонятно,
                 // на какой язык его переводят.
                 if (!iAmPresenter && Array.isArray(d.peers)) {
@@ -1932,6 +1966,8 @@ const MontemeetTranslate = (() => {
                     panel.dataset.live = d.on ? '1' : '0';
                     if (d.lang) mySel().value = d.lang;
                     note.textContent = d.on ? 'перевод включил ведущий' : 'перевод выключил ведущий';
+                } else if (secondTeacher() && roomLeadName) {
+                    note.textContent = 'перевод ведёт ' + roomLeadName;
                 } else if (Array.isArray(d.peers)) {
                     const other = d.peers.filter((p) => p.lang && p.lang !== myLang).length;
                     note.textContent = other
