@@ -1513,7 +1513,8 @@ const MontemeetTranslate = (() => {
             '<div class="mmTrRow"><label for="mmTrSubsOn">Субтитры</label>' +
             '<span class="mmTrSwitch"><input type="checkbox" id="mmTrSubsOn" checked><i></i></span></div>' +
             '<div class="mmTrRow"><label for="mmTrVol">Громкость перевода</label>' +
-            '<input type="range" id="mmTrVol" min="20" max="100" step="5" value="50"></div>' +
+            // шаг 10 % — как в мобе (решение Ивана 27.11)
+            '<input type="range" id="mmTrVol" min="20" max="100" step="10" value="50"></div>' +
             '<div id="mmTrWho" style="font-size:12px;opacity:.6;margin-top:6px"></div>';
 
         const subs = document.createElement('div');
@@ -1602,7 +1603,8 @@ const MontemeetTranslate = (() => {
             }
             const st = localStorage.getItem(SAVED_STUDENT);
             if (st && LANGS.some(([x]) => x === st) && iAmPresenter) studentSel.value = st;
-            const g = Number(localStorage.getItem(SAVED_GAIN));
+            // сохранённое при прежнем шаге 5 % приводим к ближайшему десятку
+            const g = Math.round(Number(localStorage.getItem(SAVED_GAIN)) / 10) * 10;
             if (g >= 20 && g <= 100) {
                 volEl.value = String(g);
                 voiceGain = g / 100;
