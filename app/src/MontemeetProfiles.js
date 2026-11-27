@@ -237,7 +237,21 @@ function isPresenterEmail(roomId, email) {
     const known = Object.prototype.hasOwnProperty.call(rooms, roomId);
     if (known && admins.some((a) => String(a).toLowerCase() === who)) return true;
     const expected = presenterEmails[roomId];
-    return !!expected && expected.toLowerCase() === who;
+    if (expected && expected.toLowerCase() === who) return true;
+    // Любой педагог школы — ведущий в любой комнате-уроке (решение Ивана
+    // 27.11). Педагоги подменяют коллег по чужой ссылке, отмечать замену никто
+    // не будет, одноразовых ссылок на урок нет. «Педагог» — тот, за кем в
+    // реестре числится своя комната. Только уроки: в концерте ведущий один —
+    // «Зал», и педагог, вошедший зрителем под своим аккаунтом, вторым «залом»
+    // стать не должен. Последствия Иван принял как норму: проходит без стука
+    // мимо зала ожидания и замка, получает права ведущего, журнал пишет его
+    // педагогом, «завершить для всех» работает у него тоже.
+    if (known && isLessonRoom(roomId)) {
+        for (const e of Object.values(presenterEmails)) {
+            if (String(e).toLowerCase() === who) return true;
+        }
+    }
+    return false;
 }
 
 // Есть ли у комнаты SSO-владелец. Если есть, имя перестаёт быть пропуском в
@@ -295,7 +309,14 @@ function emailFromGrant(cookieHeader, roomId) {
     } catch (e) {
         return null;
     }
-    if (!payload || payload.r !== roomId || !(payload.x > Date.now())) return null;
+    if (!payload || !(payload.x > Date.now())) return null;
+    // Пропуск бывает на несколько комнат сразу (27.11): с тех пор как ведущим
+    // стал любой педагог в любом уроке, педагог открывает и чужие комнаты, а
+    // кука одна на сайт — пропуск на одну комнату переписывался последней
+    // открытой, и в своей он при переподключении становился участником.
+    // Старый вид — одна комната строкой — читается как раньше.
+    const rooms = Array.isArray(payload.r) ? payload.r : [payload.r];
+    if (!rooms.includes(roomId)) return null;
     return payload.e || null;
 }
 
