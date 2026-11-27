@@ -514,7 +514,11 @@ async function runConcertScenario() {
     const from = samples.findIndex((s) => s.zalSees === 'guest1');
     const to = samples.findLastIndex((s) => s.zalSees === 'guest1');
     const before = from > 0 ? samples.slice(0, from) : [];
-    const after = to >= 0 ? samples.slice(to + 1) : [];
+    // Первый замер после выступления не берём: зал и гость замечают тишину
+    // каждый своим таймером, и гость бывает на один замер (2 с) позже зала —
+    // сценарий падал на этом два раза из трёх, в том числе со старой
+    // раскладкой (разбор регрессии 27.11). Вернулся ли вид — решают остальные.
+    const after = to >= 0 ? samples.slice(to + 2) : [];
     const defaults = (s) => s.zalSees === null && s.guest2Sees === 'zal';
     return {
         scenario: 'concert',
