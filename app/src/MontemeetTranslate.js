@@ -489,9 +489,22 @@ function stateOf(roomId) {
             sessions: new Map(),
             sec: 0,
             voices: { teacher: 'clone', student: 'female' },
+            // Ведущий перевода — тот ведущий, кто его включил (записка моба
+            // ВЕБУ-27.11 §4, решение Ивана: второй педагог получает выбор
+            // первого, а правки в своей панели — только себе). Его выбор языков
+            // помним, чтобы раздать его и тем, кто войдёт позже.
+            lead: null, // socket.id
+            leadName: '',
+            teacherLang: '',
+            studentLang: '',
         });
     }
     return roomsState.get(roomId);
+}
+
+// Перевод в комнате ведёт кто-то другой, и он ещё в переводе.
+function leadOther(st, socketId) {
+    return !!st.lead && st.lead !== socketId && st.peers.has(st.lead);
 }
 
 // Что можно выбрать каждой стороне. «Голос говорящего» студенту не предлагаем
@@ -540,6 +553,12 @@ function broadcastState(io, roomId) {
             voices: { ...st.voices },
             spentSec: Math.round(st.sec),
             presenter: !!st.peers.get(id).presenter,
+            // кто ведёт перевод и что он выбрал — панель второго педагога
+            // показывает это, а не своё сохранённое
+            lead: id === st.lead,
+            leadName: st.leadName,
+            teacherLang: st.teacherLang,
+            studentLang: st.studentLang,
         });
     }
 }
@@ -577,6 +596,21 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom,
         });
     } catch (e) {
         /* сокет уже ушёл — ничего страшного */
+    }
+
+    // Перевод в комнате уже идёт — вошедшего включаем сразу, с выбором ведущего
+    // перевода: педагогу — язык педагога, остальным — язык студента. Второй
+    // педагог «при подключении получает выбор первого» (решение Ивана 27.11).
+    // Раньше вошедший позже включения сидел без перевода, пока ведущий что-нибудь
+    // не поменял в своей панели.
+    try {
+        const st = roomsState.get(roomId);
+        if (st && st.lead && st.peers.has(st.lead) && !st.peers.has(socket.id)) {
+            const lang = isPresenter?.() ? st.teacherLang : st.studentLang;
+            if (lang && langs().has(lang)) socket.emit('translateTurnOn', { lang });
+        }
+    } catch (e) {
+        /* сокет уже ушёл */
     }
 
     socket.on('translateJoin', ({ lang } = {}, cb) => {
@@ -709,6 +743,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom,
         const want = String(voice || '').trim();
         if (!VOICE_CHOICES[which].includes(want)) return cb?.({ error: 'нет такого голоса' });
         const st = stateOf(roomId);
+        if (leadOther(st, socket.id)) return cb?.({ error: `перевод ведёт ${st.leadName}`, leadName: st.leadName });
         if (st.voices[which] === want) return cb?.({ ok: true, side: which, voice: want });
         st.voices[which] = want;
         // Сессии переоткроются с новым голосом: сменить его на ходу поставщик
@@ -732,6 +767,13 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom,
             return cb?.({ error: 'только ведущий' });
         }
         const st = stateOf(roomId);
+        // Перевод уже ведёт другой ведущий — его выбор не переписываем: раньше
+        // панель второго педагога слала это на каждую правку и затирала выбор
+        // первого (записка §4). Выключенный перевод включает любой ведущий.
+        if (leadOther(st, socket.id)) {
+            log?.info('[Translate] перевод ведёт другой ведущий', { room: roomId, peer: peerName, lead: st.leadName });
+            return cb?.({ error: `перевод ведёт ${st.leadName}`, leadName: st.leadName });
+        }
         if (voice && typeof voice === 'object') {
             for (const which of ['teacher', 'student']) {
                 if (VOICE_CHOICES[which].includes(voice[which])) st.voices[which] = voice[which];
@@ -747,6 +789,8 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom,
             const ids = [...st.peers.keys()];
             st.peers.clear();
             for (const id of ids) io.to(id).emit('translateState', { on: false, reason: 'ведущий выключил' });
+            st.lead = null;
+            st.leadName = '';
             log?.info('[Translate] ведущий выключил перевод за всех', { room: roomId });
             return cb?.({ ok: true, on: false });
         }
@@ -754,11 +798,18 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom,
         // Языки раздаём по списку комнаты, а не по тому, что прислал браузер:
         // на момент нажатия он ещё никого не знает — состояние перевода
         // приходит позже, и команда уходила одному себе (заход 24.11).
+        st.lead = socket.id;
+        st.leadName = peerName;
+        if (langs().has(me)) st.teacherLang = me;
+        if (langs().has(others)) st.studentLang = others;
+        // Ведущим — язык педагога, остальным — язык студента. Раньше язык
+        // педагога получал только включивший, и второй педагог слышал перевод
+        // на язык студента (записка §4).
         const room = peersInRoom?.() || [];
         const plan = new Map();
         for (const p of room) {
-            const lang = p.id === socket.id ? me : others;
-            if (lang && langs().has(lang)) plan.set(p.id, { lang, name: p.name });
+            const lang = p.id === socket.id || p.presenter ? me : others;
+            if (lang && langs().has(lang)) plan.set(p.id, { lang, name: p.name, presenter: !!p.presenter });
         }
         // то, что браузер прислал поимённо, имеет приоритет
         for (const [id, lang] of Object.entries(known)) {
@@ -766,9 +817,9 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom,
         }
 
         let set = 0;
-        for (const [id, { lang, name }] of plan) {
+        for (const [id, { lang, name, presenter }] of plan) {
             const was = st.peers.get(id);
-            st.peers.set(id, { lang, name: was?.name || name || '', presenter: !!was?.presenter });
+            st.peers.set(id, { lang, name: was?.name || name || '', presenter: !!(was?.presenter || presenter) });
             if (id !== socket.id) io.to(id).emit('translateTurnOn', { lang });
             set++;
         }
@@ -786,6 +837,15 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom,
                 s.stop();
                 st.sessions.delete(k);
             }
+        }
+        if (st.lead === socket.id) {
+            // Ведущий перевода ушёл — ведёт другой ведущий из участников
+            // перевода; ведущих не осталось — никто, и первый, кто пришлёт
+            // «включить за всех», станет им (записка §4).
+            const next = [...st.peers.entries()].find(([, p]) => p.presenter);
+            st.lead = next ? next[0] : null;
+            st.leadName = next ? next[1].name : '';
+            log?.info('[Translate] ведение перевода перешло', { room: roomId, от: peerName, к: st.leadName || 'никому' });
         }
         if (st.peers.size === 0) roomsState.delete(roomId);
         else broadcastState(io, roomId);
