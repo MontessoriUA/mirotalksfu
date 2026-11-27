@@ -1902,7 +1902,12 @@ const MontemeetTranslate = (() => {
                     if (teacher) teachSel.value = teacher.lang;
                 }
                 if (d.voices) {
-                    if (d.voices.teacher) setVoice('teacher', d.voices.teacher);
+                    // «Голос говорящего» у комнаты с 27.11 значит «у каждого
+                    // педагога свой: записанный, а у кого его нет — по полу».
+                    // У меня записанного нет — кнопки нет, показываю свой пол.
+                    let t = d.voices.teacher;
+                    if (t === 'clone' && !lastOwnVoice) t = lastServerVoice || 'female';
+                    if (t) setVoice('teacher', t);
                     if (d.voices.student) setVoice('student', d.voices.student);
                 }
                 if (whoEl && Array.isArray(d.peers)) {

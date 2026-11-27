@@ -254,6 +254,18 @@ function isPresenterEmail(roomId, email) {
     return false;
 }
 
+// Какой комнатой владеет почта — её голос и пол и есть голос этого педагога,
+// в какой бы комнате он ни вёл (27.11). Нет такой — null.
+function roomOfEmail(email) {
+    if (!email) return null;
+    const { presenterEmails = {} } = load() || {};
+    const who = String(email).trim().toLowerCase();
+    for (const [room, e] of Object.entries(presenterEmails)) {
+        if (String(e).toLowerCase() === who) return room;
+    }
+    return null;
+}
+
 // Есть ли у комнаты SSO-владелец. Если есть, имя перестаёт быть пропуском в
 // педагоги: вход по логину и по ссылке из кабинета никуда не делись, а
 // назваться чужим именем больше не значит получить права.
@@ -321,6 +333,7 @@ function emailFromGrant(cookieHeader, roomId) {
 }
 
 module.exports = {
+    roomOfEmail,
     forRoom,
     presenterVoice,
     presenterVoiceId,

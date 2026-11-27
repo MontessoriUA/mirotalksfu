@@ -473,33 +473,43 @@ const roomsState = new Map(); // roomId -> { peers: Map(socketId -> {lang, name}
 
 function stateOf(roomId) {
     if (!roomsState.has(roomId)) {
-        // Голос педагога по умолчанию — по его полу из справочника школы; нет
-        // записи (служебная комната, концерт) — женский, он нейтральнее на слух.
-        const byGender = montemeetProfiles.presenterVoice(roomId) || 'female';
-
         // Голос держим отдельно для речи педагога и для речи студента: это разные
         // люди, и одинаковый голос на обе стороны путает — слушателю не понятно,
-        // кого ему сейчас переводят (Иван, 24.11). 'clone' — голос самого
-        // говорящего, его поставщик снимает перед каждым ответом.
-        // Если голос педагога создан заранее и под ту же модель, что в сессии,
-        // умолчание — он: причина предпочитать готовый голос отпала, потому что
-        // снимать образец на уроке больше не нужно (замер 26.11: 5,5 с до
-        // первого звука против 5,4 с у готового). Без заранее созданного голоса
-        // умолчание прежнее — готовый: клон со снятием образца на ходу стоит
-        // почти двух лишних секунд на первой фразе, и нить разговора теряется
-        // (Иван, 24.11). В обоих случаях это только умолчание, педагог меняет
-        // голос значком в панели.
-        const ready = montemeetProfiles.presenterVoiceId(roomId);
-        const teacherVoice = ready && ready.id && ready.model === model() ? 'clone' : byGender;
-
+        // кого ему сейчас переводят (Иван, 24.11).
+        //
+        // Умолчание для педагога — 'clone', и с 27.11 оно значит «у каждого
+        // педагога свой голос»: записанный заранее, если есть, иначе готовый по
+        // его полу (voiceFor ниже). Голос — по аккаунту, а не по комнате (записка
+        // моба ВЕБУ-27.11 §2): педагог в чужой комнате звучит собой, а при двух
+        // педагогах у каждого свой. Клона со снятием образца на ходу здесь нет —
+        // он стоит почти двух лишних секунд на первой фразе (24.11, 26.11).
+        // Явный выбор ведущим женского или мужского — для всех педагогов.
         roomsState.set(roomId, {
             peers: new Map(),
             sessions: new Map(),
             sec: 0,
-            voices: { teacher: teacherVoice, student: 'female' },
+            voices: { teacher: 'clone', student: 'female' },
         });
     }
     return roomsState.get(roomId);
+}
+
+// Что можно выбрать каждой стороне. «Голос говорящего» студенту не предлагаем
+// (Иван, 26.11): его образца заранее никто не записывал, и поставщик снимал бы
+// его на уроке — задержка на каждой фразе. Панели его уже не показывают, а
+// сервер не принимает — на случай старого клиента.
+const VOICE_CHOICES = { teacher: ['clone', 'female', 'male'], student: ['female', 'male'] };
+
+// Голос педагога-говорящего: его комната — по почте входа, нет почты — комната,
+// где идёт урок (как раньше). Записанный голос годится, только если он под ту
+// же модель, что в сессии.
+function voiceFor(email, roomId) {
+    const own = montemeetProfiles.roomOfEmail(email) || roomId;
+    const ready = montemeetProfiles.presenterVoiceId(own);
+    return {
+        ready: ready && ready.id && ready.model === model() ? ready : null,
+        gender: montemeetProfiles.presenterVoice(own) || 'female',
+    };
 }
 
 // Кому нужен перевод речи этого участника: всем, у кого язык другой.
@@ -534,7 +544,7 @@ function broadcastState(io, roomId) {
     }
 }
 
-function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom }) {
+function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom, email }) {
     if (!enabled() || !allowedRoom(roomId)) return;
 
     // Сразу говорим устройству, что перевод в этой комнате есть, — чтобы оно не
@@ -553,12 +563,17 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
             // включения перевода о выборе сервера не знает — свой голос она шлёт
             // сама, из значков, — так что умолчание ей нужно сказать заранее,
             // иначе серверное останется неиспользованным.
-            ownVoice: stateOf(roomId).voices.teacher === 'clone',
+            ownVoice: !!voiceFor(email?.(), roomId).ready,
             // Какой голос считает умолчанием сам сервер. Нужен панели, когда
             // своего голоса нет: кнопку «голос говорящего» она тогда прячет, а
             // если в памяти браузера остался прежний выбор «как говорящий» —
             // ставит вместо него этот (Иван, 26.11).
-            voice: stateOf(roomId).voices.teacher,
+            voice: (() => {
+                const chosen = stateOf(roomId).voices.teacher;
+                if (chosen !== 'clone') return chosen;
+                const v = voiceFor(email?.(), roomId);
+                return v.ready ? 'clone' : v.gender;
+            })(),
         });
     } catch (e) {
         /* сокет уже ушёл — ничего страшного */
@@ -604,6 +619,14 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
             const sessionKey = `${socket.id}->${target}`;
             let session = st.sessions.get(sessionKey);
             if (!session) {
+                // Голос этого педагога: «свой» — записанный заранее или по его
+                // полу; явный выбор ведущим женского или мужского — для всех.
+                const teacherVoice = (() => {
+                    const chosen = st.voices.teacher;
+                    if (chosen !== 'clone') return { voice: chosen, ready: null };
+                    const v = voiceFor(email?.(), roomId);
+                    return v.ready ? { voice: 'clone', ready: v.ready } : { voice: v.gender, ready: null };
+                })();
                 // Пишем, с каким языком и голосом открываем сессию: при
                 // переключении языков педагог слышал английский вместо
                 // выбранного (Иван, 24.11), а поставщик языки принимает —
@@ -612,7 +635,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     room: roomId,
                     from: peerName,
                     'на язык': target,
-                    голос: isPresenter?.() ? st.voices.teacher : st.voices.student,
+                    голос: isPresenter?.() ? teacherVoice.voice : st.voices.student,
                     ход: TURN(),
                     скорость: SPEECH_RATE(),
                 });
@@ -628,8 +651,8 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
                     direction: montemeetProfiles.forRoom(roomId)?.name || null,
                     // готовый голос берём только для речи педагога: он его и
                     // записывал
-                    readyVoice: isPresenter?.() ? montemeetProfiles.presenterVoiceId(roomId) : null,
-                    voice: isPresenter?.() ? st.voices.teacher : st.voices.student,
+                    readyVoice: isPresenter?.() ? teacherVoice.ready : null,
+                    voice: isPresenter?.() ? teacherVoice.voice : st.voices.student,
                     log,
                     onText: (kind, text) => {
                         for (const [id, p] of st.peers) {
@@ -684,7 +707,7 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
         if (!isPresenter?.()) return cb?.({ error: 'только ведущий' });
         const which = side === 'student' ? 'student' : 'teacher';
         const want = String(voice || '').trim();
-        if (!['clone', 'female', 'male'].includes(want)) return cb?.({ error: 'нет такого голоса' });
+        if (!VOICE_CHOICES[which].includes(want)) return cb?.({ error: 'нет такого голоса' });
         const st = stateOf(roomId);
         if (st.voices[which] === want) return cb?.({ ok: true, side: which, voice: want });
         st.voices[which] = want;
@@ -711,9 +734,9 @@ function register({ io, socket, roomId, peerName, log, isPresenter, peersInRoom 
         const st = stateOf(roomId);
         if (voice && typeof voice === 'object') {
             for (const which of ['teacher', 'student']) {
-                if (['clone', 'female', 'male'].includes(voice[which])) st.voices[which] = voice[which];
+                if (VOICE_CHOICES[which].includes(voice[which])) st.voices[which] = voice[which];
             }
-        } else if (['clone', 'female', 'male'].includes(voice)) {
+        } else if (VOICE_CHOICES.student.includes(voice)) {
             st.voices.teacher = st.voices.student = voice; // прежний вид запроса
         }
         const known = wanted && typeof wanted === 'object' ? wanted : {};
