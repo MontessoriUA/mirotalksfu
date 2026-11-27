@@ -2716,6 +2716,16 @@ function startServer() {
                 room.removePeer(socket.id);
             }
 
+            // Montemeet: метка аккаунта (записка моба ВЕБУ-27.11 §5) — по ней
+            // стороны различают два входа одного педагога и полных тёзок. Почта —
+            // тем же путём, что и роль ведущего; свою метку клиент подложить не
+            // может — перезаписываем всегда.
+            if (data?.peer_info && typeof data.peer_info === 'object') {
+                const h = socket.handshake?.headers || {};
+                const mmAccountEmail = h['x-forwarded-email'] || montemeetProfiles.emailFromGrant(h.cookie, socket.room_id);
+                data.peer_info.peer_account = montemeetProfiles.accountTag(mmAccountEmail);
+            }
+
             room.addPeer(new Peer(socket.id, data));
 
             const activeRooms = getActiveRooms();

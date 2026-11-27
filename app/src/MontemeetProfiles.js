@@ -254,6 +254,17 @@ function isPresenterEmail(roomId, email) {
     return false;
 }
 
+// Метка аккаунта участника (записка моба ВЕБУ-27.11 §5): веб и приложение
+// узнавали «два входа одного педагога» по имени без « (2)», и полные тёзки
+// сливались в одного. Не почта, а короткая подпись почты секретом сервера: по
+// ней почту не узнать, а одна и та же почта даёт одну и ту же метку. Нет почты
+// или секрета — null, и стороны сравнивают по имени, как раньше.
+function accountTag(email) {
+    const secret = grantSecret();
+    if (!email || !secret) return null;
+    return crypto.createHmac('sha256', secret).update('account:' + String(email).trim().toLowerCase()).digest('base64url').slice(0, 12);
+}
+
 // Какой комнатой владеет почта — её голос и пол и есть голос этого педагога,
 // в какой бы комнате он ни вёл (27.11). Нет такой — null.
 function roomOfEmail(email) {
@@ -333,6 +344,7 @@ function emailFromGrant(cookieHeader, roomId) {
 }
 
 module.exports = {
+    accountTag,
     roomOfEmail,
     forRoom,
     presenterVoice,

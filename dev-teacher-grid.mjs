@@ -64,7 +64,7 @@ async function look(p) {
             selfPip: !!document.querySelector('.montemeet-self-pip'),
             hiddenTwins: document.querySelectorAll('[data-mm-twin-hidden]').length,
             all: tiles.map((c) => name(c) + (visible(c) ? '' : ' [скрыта]')),
-            peers: typeof rc !== 'undefined' && rc?.peers ? [...rc.peers.values()].map((x) => x.peer_info?.peer_name + (x.peer_info?.peer_presenter ? '*' : '')) : [],
+            peers: typeof rc !== 'undefined' && rc?.peers ? [...rc.peers.values()].map((x) => x.peer_info?.peer_name + (x.peer_info?.peer_presenter ? '*' : '') + (x.peer_info?.peer_account ? ' #' + x.peer_info.peer_account.slice(0, 4) : '')) : [],
         };
     });
 }
@@ -74,6 +74,19 @@ const show = async (title, ...ps) => {
 };
 
 try {
+    if (process.env.TWINS === '1') {
+        // Полные тёзки: два РАЗНЫХ педагога под одним именем (записка §5). Сервер
+        // добавит второму « (2)», по имени они слились бы в одного — различает
+        // метка аккаунта.
+        const st = await enter('Студент Проба', null);
+        await delay(4000);
+        const a = await enter('Тёзка Проба', GRANTS['ivan-nochovkin']);
+        await delay(6000);
+        const b = await enter('Тёзка Проба', GRANTS['serhii-nochovkin']);
+        await delay(12000);
+        await show('два педагога-тёзки — у студента две плитки', st, a, b);
+        process.exit(0);
+    }
     const student = await enter('Студент Проба', null);
     await delay(4000);
     const t1 = await enter('Иван Проба', GRANTS['ivan-nochovkin']);

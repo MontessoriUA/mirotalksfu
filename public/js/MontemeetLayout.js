@@ -153,9 +153,14 @@ const MontemeetLayout = (() => {
         // тёзкой педагога (а на испытаниях Иван и сам заходит студентом под
         // своим же именем, и его переставали слышать раскладке, 2026-08-14).
         if (!isHost()) return false;
+        const peer = rc.peers?.get(peerId);
+        // Метка аккаунта от сервера (записка моба ВЕБУ-27.11 §5) надёжнее имени:
+        // полные тёзки по имени сливались в одного. Есть у обоих — решает она.
+        const myAcc = rc.peers?.get(selfId())?.peer_info?.peer_account;
+        const acc = peer?.peer_info?.peer_account;
+        if (myAcc && acc) return acc === myAcc && !!peer.peer_info.peer_presenter;
         const mine = nameBase(rc.peer_name);
         if (!mine) return false;
-        const peer = rc.peers?.get(peerId);
         const label = String(
             peer?.peer_info?.peer_name || document.getElementById(peerId + '__name')?.innerText || ''
         ).replace(/^⭐️\s*/, '');
@@ -212,7 +217,8 @@ const MontemeetLayout = (() => {
             const info = rc.peers.get(id)?.peer_info;
             if (!info) return null; // карта ещё не подтянулась — не решаем наугад
             if (!info.peer_presenter) return null; // есть другой ученик — это группа
-            const who = nameBase(info.peer_name);
+            // один педагог — один аккаунт; нет метки — по имени, как раньше
+            const who = info.peer_account ? 'acc:' + info.peer_account : nameBase(info.peer_name);
             if (!who) continue;
             const was = best.get(who);
             if (!was) {
