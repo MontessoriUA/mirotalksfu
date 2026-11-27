@@ -803,6 +803,28 @@ const MontemeetTranslate = (() => {
 @media (min-width: 900px) { #mmTrToast { top: 18px; } }
 #mmTrSubs { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 #mmTrBtn[hidden] { display: none; }
+/* Быстрый тумблер рядом с кнопкой — как в мобе (27.11): у педагога после
+   первого включения перевода и до конца сессии, чтобы выключить и включить
+   снова, не открывая панель. Стоит со стороны центра экрана, на тёмной
+   подложке — виден и поверх светлого видео. Дорожку видно и выключенной. */
+#mmTrQuick {
+    position: fixed; z-index: 2147483000;
+    top: calc(env(safe-area-inset-top, 0px) + 19px); right: 74px;
+    padding: 4px; border: 0; border-radius: 19px; cursor: pointer;
+    background: rgba(0,0,0,.5); display: block;
+}
+#mmTrQuick[hidden] { display: none; }
+#mmTrQuick .mmTrTrack {
+    display: block; box-sizing: border-box; width: 56px; height: 30px; padding: 2px; border-radius: 15px;
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.55); transition: background .15s;
+}
+#mmTrQuick .mmTrKnob {
+    display: block; width: 24px; height: 24px; border-radius: 12px;
+    background: rgba(255,255,255,.85); transition: transform .15s;
+}
+#mmTrQuick[aria-checked="true"] .mmTrTrack { background: #2f6df6; border-color: #2f6df6; }
+#mmTrQuick[aria-checked="true"] .mmTrKnob { transform: translateX(26px); background: #fff; }
+#mmTrQuick[aria-disabled="true"] { opacity: .6; cursor: default; }
 #mmTrBtn {
     position: fixed; z-index: 2147483000;
     top: calc(env(safe-area-inset-top, 0px) + 12px); right: 12px;
@@ -866,15 +888,25 @@ const MontemeetTranslate = (() => {
 #mmTrNote:empty { display: none; } /* пустая строка состояния места не занимает */
 #mmTrPanel .mmTrSep { height: 1px; background: rgba(255,255,255,.12); margin: 14px 0 10px; }
 #mmTrPanel optgroup { background: #31313a; }
+/* Субтитры — как на YouTube и как в мобе (27.11): неподвижная полоса в две
+   строки постоянной ширины, текст слева, прижат к низу и растёт вверх — верх
+   обрезается. Раньше полоса была по центру и меняла ширину с каждым словом, а
+   длинный монолог переставал помещаться. */
 #mmTrSubs {
     position: fixed; z-index: 2147482000; left: 50%; transform: translateX(-50%);
     bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
-    max-width: min(900px, calc(100vw - 32px));
-    padding: 10px 18px; border-radius: 12px;
-    background: rgba(0,0,0,.66); color: #fff;
-    font-size: clamp(17px, 2.4vw, 23px); line-height: 1.35; text-align: center;
-    text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    width: min(760px, calc(100vw - 32px));
+    font-size: clamp(17px, 2.2vw, 22px); line-height: 1.4;
     pointer-events: none; opacity: 0; transition: opacity .18s;
+}
+#mmTrSubs .mmTrSubsBox { padding: 6px 14px; border-radius: 10px; background: rgba(0,0,0,.66); }
+/* Окно ровно в две строки: обрезаем по границе строки, а не по краю полосы —
+   иначе в верхнем поле торчали хвостики букв ушедшей строки (стенд 27.11). */
+#mmTrSubs .mmTrSubsWin { position: relative; height: 2.8em; overflow: hidden; }
+#mmTrSubs .mmTrSubsText {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    color: #fff; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere;
+    text-shadow: 0 1px 2px rgba(0,0,0,.6);
 }
 /* Первый уровень панели — пара языков, как в переводчиках: слева тот, кого
    переводят, справа тот, для кого. Голос свой у каждой стороны: педагог и
@@ -937,17 +969,144 @@ const MontemeetTranslate = (() => {
 #mmTrPanel h4 { display: flex; align-items: center; justify-content: space-between; }
 #mmTrOff { font-size: 12.5px; line-height: 1.4; opacity: .7; margin: 10px 0 2px; }
 #mmTrSubs[data-show="1"] { opacity: 1; }
-#mmTrSubs .mmTrWho { display: block; font-size: 12px; opacity: .65; margin-bottom: 2px; }
+#mmTrSubs .mmTrWho {
+    display: inline-block; margin-bottom: 4px; padding: 1px 8px; border-radius: 6px;
+    background: rgba(0,0,0,.5); color: rgba(255,255,255,.85);
+    font-size: 12px; font-weight: 700; line-height: 1.5;
+}
+#mmTrSubs .mmTrWho:empty { display: none; }
 @media (min-width: 900px) {
     /* Справа внизу стоит своё окно камеры — кнопка его перекрывала (заход 24.11).
        Слева внизу свободно. */
     #mmTrBtn { top: auto; bottom: 24px; right: auto; left: 18px; }
+    #mmTrQuick { top: auto; bottom: 31px; right: auto; left: 80px; }
     #mmTrPanel { top: auto; bottom: 88px; right: auto; left: 18px; }
     #mmTrSubs { bottom: calc(env(safe-area-inset-bottom, 0px) + 112px); }
 }
 `;
 
     let ui = null;
+
+    // ---------- субтитры: подача текста ----------
+    //
+    // Перенос из моба (montemeet-app meet/src/net/subtitles.ts, 27.11), правила
+    // те же, чтобы урок выглядел одинаково на телефоне и за компьютером. Образец
+    // — субтитры YouTube (замечание Ивана: на длинном монологе текст «уходил за
+    // три точки», а каждое слово перекладывало все строки).
+    //
+    // Поставщик отдаёт перевод кусками — то словом, то сразу длинной фразой, и
+    // раньше голоса. Здесь:
+    //  - текст дописывается ПО СЛОВАМ в темпе чтения (SUB_BASE_CPS знаков в
+    //    секунду — норма субтитров 17–20); накопилось много — темп растёт так,
+    //    чтобы отставание ушло за SUB_CATCHUP_MS, но не быстрее SUB_MAX_CPS;
+    //  - экран — неподвижная полоса в две строки, заполненная строка уходит
+    //    вверх; ушедшее из вида экран сообщает сюда (trim), и оно убирается
+    //    ЦЕЛЫМИ строками — оставшиеся от этого не перекладываются;
+    //  - новая мысль — с чистой строки: прошлое предложение закончено и была
+    //    пауза SUB_NEW_BLOCK_MS; сменился говорящий — тоже;
+    //  - после SUB_HIDE_MS тишины субтитры гаснут.
+    const SUB_BASE_CPS = 18;
+    const SUB_MAX_CPS = 60;
+    const SUB_CATCHUP_MS = 2500;
+    const SUB_TICK_MS = 60;
+    const SUB_NEW_BLOCK_MS = 1500;
+    const SUB_HIDE_MS = 5000;
+    // Слово длиннее этого (китайский, японский, тайский — без пробелов) подаём знаками.
+    const SUB_LONG_WORD = 14;
+
+    class Subtitles {
+        constructor(emit, now = () => Date.now()) {
+            this.emit = emit;
+            this.now = now;
+            this.from = '';
+            this.shown = '';
+            this.pending = '';
+            this.budget = 0;
+            this.lastShownAt = 0;
+            this.tick = null;
+            this.hide = null;
+        }
+
+        // Новый кусок перевода от говорящего from.
+        push(from, delta) {
+            if (!delta) return;
+            if (from !== this.from && (this.shown || this.pending)) {
+                this.shown = '';
+                this.pending = '';
+                this.budget = 0;
+            }
+            this.from = from;
+            this.pending += delta;
+            if (this.hide) {
+                clearTimeout(this.hide);
+                this.hide = null;
+            }
+            if (!this.tick) {
+                // Первое слово — сразу: субтитры не должны ждать такт.
+                this.budget = Math.max(this.budget, this.nextWord().length);
+                this.step();
+            }
+        }
+
+        // Экран убрал из вида первые chars знаков показанного (целые строки).
+        trim(chars) {
+            if (chars <= 0 || chars >= this.shown.length) return;
+            this.shown = this.shown.slice(chars);
+            this.emit({ from: this.from, text: this.shown });
+        }
+
+        clear() {
+            clearTimeout(this.tick);
+            clearTimeout(this.hide);
+            this.tick = this.hide = null;
+            const had = !!this.shown;
+            this.from = this.shown = this.pending = '';
+            this.budget = 0;
+            if (had) this.emit(null);
+        }
+
+        nextWord() {
+            const m = /^\s*\S+\s*/.exec(this.pending);
+            if (!m) return this.pending; // одни пробелы
+            const word = m[0];
+            return word.trim().length > SUB_LONG_WORD ? word.slice(0, Math.max(1, word.search(/\S/) + 2)) : word;
+        }
+
+        step() {
+            this.tick = null;
+            let changed = false;
+            while (this.pending) {
+                const word = this.nextWord();
+                if (this.budget < word.length) break;
+                this.budget -= word.length;
+                this.pending = this.pending.slice(word.length);
+                // Новая мысль после паузы — с чистой строки.
+                if (
+                    this.shown &&
+                    /[.!?…。！？]["»”)]?\s*$/.test(this.shown) &&
+                    this.now() - this.lastShownAt >= SUB_NEW_BLOCK_MS
+                ) {
+                    this.shown = '';
+                }
+                this.shown += this.shown ? word : word.replace(/^\s+/, '');
+                this.lastShownAt = this.now();
+                changed = true;
+            }
+            if (changed) this.emit({ from: this.from, text: this.shown });
+            if (this.pending) {
+                const cps = Math.min(SUB_MAX_CPS, Math.max(SUB_BASE_CPS, (this.pending.length * 1000) / SUB_CATCHUP_MS));
+                this.budget += (cps * SUB_TICK_MS) / 1000;
+                this.tick = setTimeout(() => this.step(), SUB_TICK_MS);
+            } else {
+                this.budget = 0;
+                this.hide = setTimeout(() => {
+                    this.hide = null;
+                    this.shown = '';
+                    this.emit(null);
+                }, SUB_HIDE_MS);
+            }
+        }
+    }
     let lastPeers = [];
     let lastStream = null; // как добыть микрофон — нужно, когда перевод включает ведущий
     const nameOfLang = (code) => labelOf(code);
@@ -1051,12 +1210,25 @@ const MontemeetTranslate = (() => {
 
         const subs = document.createElement('div');
         subs.id = 'mmTrSubs';
+        subs.innerHTML =
+            '<span class="mmTrWho"></span>' +
+            '<div class="mmTrSubsBox"><div class="mmTrSubsWin"><div class="mmTrSubsText"></div></div></div>';
 
         const toast = document.createElement('div');
         toast.id = 'mmTrToast';
 
-        document.body.append(btn, panel, subs, toast);
-        ui = { btn, panel, subs, toast };
+        const quick = document.createElement('button');
+        quick.type = 'button';
+        quick.id = 'mmTrQuick';
+        quick.hidden = true;
+        quick.setAttribute('role', 'switch');
+        quick.setAttribute('aria-checked', 'false');
+        quick.title = 'Перевод: включить или выключить';
+        quick.setAttribute('aria-label', quick.title);
+        quick.innerHTML = '<span class="mmTrTrack"><span class="mmTrKnob"></span></span>';
+
+        document.body.append(btn, quick, panel, subs, toast);
+        ui = { btn, quick, panel, subs, toast };
         if (allowed) btn.hidden = false;
         watchOverlays();
 
@@ -1087,6 +1259,7 @@ const MontemeetTranslate = (() => {
 
         function applyRole() {
             relabel();
+            ui?.syncQuick?.();
             teachSel.disabled = !iAmPresenter; // студенту язык педагога — только показ
             voiceBox.teacher.hidden = !iAmPresenter;
             voiceBox.student.hidden = !iAmPresenter;
@@ -1237,6 +1410,31 @@ const MontemeetTranslate = (() => {
             note.textContent = 'перевод идёт';
         };
 
+        // Быстрый тумблер повторяет главный и жмёт его же: правила включения
+        // одни, расходиться им негде. Включённым он показывается и пока перевод
+        // поднимается («включаю…») — как в мобе, чтобы не мигал.
+        let everOn = false;
+        const syncQuick = () => {
+            const onNow = btn.dataset.on === '1';
+            if (onNow && iAmPresenter) everOn = true;
+            quick.hidden = !(iAmPresenter && everOn);
+            quick.setAttribute('aria-checked', String(onNow || onSw.disabled));
+            quick.setAttribute('aria-disabled', String(!!onSw.disabled));
+        };
+        ui.syncQuick = syncQuick;
+        quick.onclick = () => {
+            if (onSw.disabled || !iAmPresenter) return;
+            // От того, что видит человек: горит кнопка — значит выключаем.
+            // Переключать сам главный тумблер нельзя — разойдись он хоть раз с
+            // кнопкой, быстрый стал бы жать наоборот (стенд 27.11).
+            onSw.checked = btn.dataset.on !== '1';
+            onSw.onchange();
+        };
+        const quickWatch = new MutationObserver(syncQuick);
+        quickWatch.observe(btn, { attributes: true, attributeFilter: ['data-on'] });
+        quickWatch.observe(onSw, { attributes: true, attributeFilter: ['disabled'] });
+        syncQuick();
+
         // Громкость перевода — самый дешёвый рычаг против эха: тише на 6 дБ
         // значит и эха на 6 дБ меньше (совет мобильной сессии).
         volEl.oninput = () => {
@@ -1330,22 +1528,64 @@ const MontemeetTranslate = (() => {
             } catch {
                 /* не сохранилось — не беда */
             }
-            if (!subsSw.checked) subs.dataset.show = '0';
+            if (!subsSw.checked) {
+                // выключили — гасим сразу и забываем недоказанное, чтобы при
+                // включении не вылезла старая фраза
+                subtitles.clear();
+                subs.dataset.show = '0';
+            }
         };
 
         // ---------- то, что приходит с сервера ----------
 
-        let line = '';
-        let hideTimer = null;
+        const subsWho = subs.querySelector('.mmTrWho');
+        const subsText = subs.querySelector('.mmTrSubsText');
+        // Видно две строки; в тексте держим четыре — видимые и запас над ними.
+        // Лишнее сверху убираем целыми строками, когда накопилось больше: тогда
+        // оставшиеся строки не перекладываются (так же в мобе).
+        const SUB_KEEP_LINES = 4;
 
-        const showSubs = (who, text) => {
-            if (!subsSw.checked) return;
-            subs.innerHTML = `<span class="mmTrWho">${who}</span>`;
-            subs.append(text);
-            subs.dataset.show = '1';
-            clearTimeout(hideTimer);
-            hideTimer = setTimeout(() => (subs.dataset.show = '0'), 5000);
+        // Сколько знаков в начале текста занимают строки, ушедшие выше запаса.
+        // Строку узнаём по вертикали знака: ищем первый знак, стоящий на нужной
+        // строке, — двоичным поиском, вертикаль по тексту только растёт.
+        const subsOverflow = () => {
+            const node = subsText.firstChild;
+            if (!node || node.nodeType !== 3) return 0;
+            const lh = parseFloat(getComputedStyle(subsText).lineHeight) || 0;
+            if (!lh) return 0;
+            const lines = Math.round(subsText.offsetHeight / lh);
+            if (lines <= SUB_KEEP_LINES) return 0;
+            const top0 = subsText.getBoundingClientRect().top;
+            const want = (lines - SUB_KEEP_LINES) * lh - lh / 2;
+            const range = document.createRange();
+            const topOf = (i) => {
+                range.setStart(node, i);
+                range.setEnd(node, i + 1);
+                const r = range.getClientRects()[0] || range.getBoundingClientRect();
+                return r.top - top0;
+            };
+            let lo = 0;
+            let hi = node.length - 1;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (topOf(mid) >= want) hi = mid;
+                else lo = mid + 1;
+            }
+            return lo;
         };
+
+        const subtitles = new Subtitles((view) => {
+            if (!view) {
+                subs.dataset.show = '0';
+                return;
+            }
+            if (!subsSw.checked) return;
+            subsWho.textContent = view.from || '';
+            subsText.textContent = view.text;
+            subs.dataset.show = '1';
+            const drop = subsOverflow();
+            if (drop > 0) subtitles.trim(drop);
+        });
 
         onText.push((d) => {
             if (d.kind === 'lang') {
@@ -1402,10 +1642,7 @@ const MontemeetTranslate = (() => {
             // сервера оно по-прежнему пишется.
             if (d.kind === 'heard') return;
             if (d.kind === 'translated') {
-                line = (line + String(d.text)).slice(-220);
-                showSubs(d.from || '', line);
-                clearTimeout(mountUi._reset);
-                mountUi._reset = setTimeout(() => (line = ''), 5000);
+                if (subsSw.checked) subtitles.push(d.from || '', String(d.text || ''));
             }
         });
     }
@@ -1478,6 +1715,7 @@ const MontemeetTranslate = (() => {
             if (!ui) return;
             const busy = overlayOpen();
             ui.btn.style.display = busy ? 'none' : '';
+            ui.quick.style.display = busy ? 'none' : '';
             if (busy) {
                 ui.panel.hidden = true;
                 ui.btn.dataset.open = '0';
