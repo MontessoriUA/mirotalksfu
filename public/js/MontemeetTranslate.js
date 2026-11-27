@@ -264,6 +264,49 @@ const MontemeetTranslate = (() => {
         return outputReady;
     }
 
+    // ---------- ужимание пауз в голосе перевода ----------
+    //
+    // Главная растрата времени в переводе — паузы, а не речь: на монологе 42 с
+    // у голоса перевода 17,7 с пауз против 8,5 с у оригинала, сама речь почти
+    // равна (замер 27.11). Куски играем встык, так что паузы целиком ложатся в
+    // отставание, и к концу монолога студент ждёт. Когда перевод уже отстаёт,
+    // режем длинные паузы до SQUEEZE_KEEP_S — тон и тембр не меняются, режется
+    // только тишина (Иван, 27.11: «рычаг хороший»). Пока отставания нет, паузы
+    // не трогаем: это естественные паузы речи.
+    const SQUEEZE_LAG_S = 0.6; // отставание, с которого ужимаем
+    const SQUEEZE_KEEP_S = 0.3; // длиннее паузу не оставляем
+    const SQUEEZE_QUIET = 0.0056; // ≈ −45 дБ: ниже — тишина
+    const SQUEEZE_WIN = 240; // 10 мс при 24 кГц
+    let quietTail = 0; // тишина в конце уже поставленного, сэмплов: пауза может идти через стык кусков
+    let squeezedS = 0; // сколько секунд пауз выкинули за это включение
+
+    function squeezeGaps(f32, lagging) {
+        const keep = Math.round(SQUEEZE_KEEP_S * OUT_RATE);
+        const out = lagging ? new Float32Array(f32.length) : null;
+        let o = 0;
+        let run = quietTail;
+        for (let i = 0; i < f32.length; i += SQUEEZE_WIN) {
+            const end = Math.min(i + SQUEEZE_WIN, f32.length);
+            let e = 0;
+            for (let j = i; j < end; j++) e += f32[j] * f32[j];
+            if (Math.sqrt(e / (end - i)) < SQUEEZE_QUIET) {
+                const drop = lagging && run >= keep;
+                run += end - i;
+                if (drop) continue;
+            } else {
+                run = 0;
+            }
+            if (out) {
+                out.set(f32.subarray(i, end), o);
+                o += end - i;
+            }
+        }
+        quietTail = run;
+        if (!out || o === f32.length) return f32;
+        squeezedS += (f32.length - o) / OUT_RATE;
+        return out.subarray(0, o);
+    }
+
     function playPcm16(b64) {
         try {
             if (!playCtx || !playDest) {
@@ -277,15 +320,20 @@ const MontemeetTranslate = (() => {
             const raw = atob(b64);
             const n = raw.length >> 1;
             if (!n) return;
-            const buf = playCtx.createBuffer(1, n, OUT_RATE);
-            const ch = buf.getChannelData(0);
+            const f32 = new Float32Array(n);
             for (let i = 0; i < n; i++) {
                 const lo = raw.charCodeAt(i * 2);
                 const hi = raw.charCodeAt(i * 2 + 1);
                 let v = (hi << 8) | lo;
                 if (v >= 0x8000) v -= 0x10000;
-                ch[i] = v / 0x8000;
+                f32[i] = v / 0x8000;
             }
+            // очередь пуста — паузе не с чем стыковаться
+            if (playAt < playCtx.currentTime + 0.05) quietTail = 0;
+            const pcm = squeezeGaps(f32, playAt - playCtx.currentTime > SQUEEZE_LAG_S);
+            if (!pcm.length) return; // кусок был целиком лишней тишиной
+            const buf = playCtx.createBuffer(1, pcm.length, OUT_RATE);
+            buf.copyToChannel(pcm, 0);
 
             const src = playCtx.createBufferSource();
             src.buffer = buf;
@@ -569,6 +617,10 @@ const MontemeetTranslate = (() => {
     function stop() {
         if (!on) return;
         on = false;
+        // сводка в консоль: сколько пауз выкинули — видно, работает ли догон
+        if (squeezedS > 0) log('за включение ужато пауз: ' + squeezedS.toFixed(1) + ' с');
+        squeezedS = 0;
+        quietTail = 0;
         roomOn = false;
         myLang = '';
         try {
