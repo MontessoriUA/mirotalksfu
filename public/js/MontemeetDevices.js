@@ -39,10 +39,13 @@ const MM_APPLE_TOUCH = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || MM_
 // Поправка стокового определения: Room.js спрашивает UAParser один раз, при
 // разборе файла, поэтому подменяем сам разборщик — до того, как тот выполнится.
 (() => {
-    if (!MM_TOUCH_TABLET || typeof UAParser !== 'function' || UAParser._mm) return;
+    // Подменяем на всех устройствах: имя системы надо приводить к одному виду и
+    // на обычном Mac (ua-parser 1.x зовёт его «Mac OS», журнал с 2.x — «macOS»),
+    // а поправка устройства по-прежнему только для сенсорных планшетов.
+    if (typeof UAParser !== 'function' || UAParser._mm) return;
     const Stock = UAParser;
     const patch = (d) => {
-        if (d && !d.type) {
+        if (MM_TOUCH_TABLET && d && !d.type) {
             d.type = 'tablet';
             if (MM_TOUCH_TABLET === 'ipad') {
                 d.model = 'iPad';
