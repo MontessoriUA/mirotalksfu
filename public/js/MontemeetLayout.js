@@ -170,6 +170,10 @@ const MontemeetLayout = (() => {
 
     function anchorPeerId() {
         if (typeof rc === 'undefined' || !rc?.peers) return null;
+        // Якорь — правило для студентов. Для ведущего другой ведущий — обычный
+        // участник: в сетке, в «говорящем крупно» и в кружках говорящих
+        // (записка моба ВЕБУ-27.11 §3.2) — иначе коллегин кружок не всплывал.
+        if (isHost()) return null;
         const live = livePeerIds();
         const me = selfId();
         const candidates = [];
@@ -184,6 +188,92 @@ const MontemeetLayout = (() => {
             (a, b) => anchorScore(b) - anchorScore(a) || (lastSpokeAt.get(b) || 0) - (lastSpokeAt.get(a) || 0)
         );
         return candidates[0];
+    }
+
+    // Урок один на один, а педагогов несколько — замена или коллега пришёл
+    // помочь (Иван, 27.11; записка моба ВЕБУ-27.11 §3.1): студент видит СЕТКУ
+    // ПЕДАГОГОВ — по плитке на каждого, сколько бы их ни было, — а себя, как в
+    // обычном уроке один на один, в окошке в углу. Крупно стоял бы один якорь,
+    // и остальных студент не видел бы вовсе, пока те молчат. В группе (есть
+    // другие ученики) остаётся якорь: там прыжок между педагогами — норма.
+    //
+    // Два входа одного педагога («Іван» и «Іван (2)») — один педагог и одна
+    // плитка: его активный вход, в том же порядке, что у якоря. Педагогов
+    // различаем по имени на плитке: полных тёзок раскладка примет за одного —
+    // развести их может только сервер, меткой аккаунта (записка §5).
+    //
+    // null — правило не про эту комнату; иначе — кого показывать.
+    function teacherGridIds() {
+        if (isHost() || concertRoom || typeof rc === 'undefined' || !rc?.peers) return null;
+        const me = selfId();
+        const best = new Map(); // имя педагога -> активный вход
+        for (const id of livePeerIds()) {
+            if (id === me) continue;
+            const info = rc.peers.get(id)?.peer_info;
+            if (!info) return null; // карта ещё не подтянулась — не решаем наугад
+            if (!info.peer_presenter) return null; // есть другой ученик — это группа
+            const who = nameBase(info.peer_name);
+            if (!who) continue;
+            const was = best.get(who);
+            if (!was) {
+                best.set(who, id);
+                continue;
+            }
+            const d = anchorScore(id) - anchorScore(was);
+            if (d > 0 || (d === 0 && (lastSpokeAt.get(id) || 0) > (lastSpokeAt.get(was) || 0))) best.set(who, id);
+        }
+        return best.size >= 2 ? [...best.values()] : null;
+    }
+
+    // Плитки участника: камера, показ экрана, аватарка без камеры.
+    function tilesOfPeer(peerId) {
+        const out = [];
+        for (const v of document.querySelectorAll('video[name]')) {
+            if (v.getAttribute('name') === peerId) out.push(container(v.id));
+        }
+        for (const v of document.querySelectorAll('video[volumeBar]:not([name])')) {
+            if ((v.getAttribute('volumeBar') || '').replace(/___pVolume$/, '') === peerId) out.push(container(v.id));
+        }
+        out.push(document.getElementById(peerId + '__videoOff'));
+        return out.filter(Boolean);
+    }
+
+    let teacherGridOn = false;
+
+    function applyTeacherGrid(ids) {
+        teacherGridOn = true;
+        unpin();
+        focusOff(); // крупного нет
+        const keep = new Set(ids);
+        // прежде спрятанные, которые теперь активные, — вернуть
+        for (const t of document.querySelectorAll('[data-mm-twin-hidden]')) {
+            if (keep.has(t.dataset.mmTwinHidden)) {
+                t.style.display = '';
+                delete t.dataset.mmTwinHidden;
+            }
+        }
+        // неактивные входы того же педагога — спрятать
+        for (const id of livePeerIds()) {
+            if (id === selfId() || keep.has(id)) continue;
+            for (const t of tilesOfPeer(id)) {
+                if (t.style.display === 'none') continue;
+                t.style.display = 'none';
+                t.dataset.mmTwinHidden = id;
+            }
+        }
+        markSelfPip(); // себя — в угол, как в один на один
+        regrid();
+    }
+
+    function leaveTeacherGrid() {
+        if (!teacherGridOn) return;
+        teacherGridOn = false;
+        for (const t of document.querySelectorAll('[data-mm-twin-hidden]')) {
+            t.style.display = '';
+            delete t.dataset.mmTwinHidden;
+        }
+        clearSelfPip();
+        regrid();
     }
 
     function anchorVideoId() {
@@ -256,10 +346,20 @@ const MontemeetLayout = (() => {
         // собой всю концертную логику, и афиша не появлялась вовсе
         // (Иван, 2026-08-14).
         if (concertRoom) syncConcertSplash();
-        if (soloActive) return;
+        if (soloActive) {
+            leaveTeacherGrid();
+            return;
+        }
         if (concertRoom) applyConcert();
         else if (auto) auto.apply();
-        else ensureDefault();
+        else {
+            const grid = teacherGridIds();
+            if (grid) applyTeacherGrid(grid);
+            else {
+                leaveTeacherGrid();
+                ensureDefault();
+            }
+        }
         syncMobilePips();
     }
 
@@ -987,6 +1087,7 @@ const MontemeetLayout = (() => {
     // обычной сеткой, как и на большом экране.
     function syncMobilePips() {
         if (typeof rc === 'undefined' || !rc?.isMobileDevice || concertRoom) return;
+        if (teacherGridOn) return; // сетка педагогов сама держит своё окошко в углу
         const bigId = current();
         const big = bigId ? document.getElementById(bigId) : null;
         if (!big) {
@@ -1118,8 +1219,14 @@ const MontemeetLayout = (() => {
                 focusOff();
             } else if (anchorView === 'pin' && !rc.isMobileDevice) {
                 focusOff();
-                // педагог возвращается в свой режим, остальные — к якорю
-                isHost() ? restoreSpeakerView() : ensureDefault();
+                // педагог возвращается в свой режим, остальные — к якорю, а
+                // если пришёл второй педагог — сразу к сетке педагогов, без
+                // мигания через крупного
+                if (isHost()) restoreSpeakerView();
+                else {
+                    const grid = teacherGridIds();
+                    grid ? applyTeacherGrid(grid) : ensureDefault();
+                }
             }
             // focus view keeps an existing focus (companion/anchor or the new speaker)
         }

@@ -47,8 +47,15 @@ function resizeVideoMedia() {
 
     let Margin = 5;
     let videoMediaContainer = document.getElementById('videoMediaContainer');
-    // Montemeet: lay out only the visible tiles (concert rooms hide the own tile)
-    let Cameras = [...document.getElementsByClassName('Camera')].filter((c) => c.style.display !== 'none');
+    // Montemeet: lay out only the visible tiles (concert rooms hide the own tile).
+    // Окошки в углу (своя картинка, лицо автора показа) стоят вне сетки — их не
+    // считаем, иначе в сетке педагогов у студента оставалось пустое место (27.11).
+    let Cameras = [...document.getElementsByClassName('Camera')].filter(
+        (c) =>
+            c.style.display !== 'none' &&
+            !c.classList.contains('montemeet-self-pip') &&
+            !c.classList.contains('montemeet-peer-pip')
+    );
     let Width = videoMediaContainer.offsetWidth - Margin * 2;
     let Height = videoMediaContainer.offsetHeight - Margin * 2;
     let max = 0;
