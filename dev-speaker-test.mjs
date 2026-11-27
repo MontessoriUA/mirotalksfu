@@ -177,6 +177,15 @@ async function readEvents(room) {
     });
 }
 
+const SWAP = (() => {
+    const dir = process.env.MM_TEST_SWAP_DIR;
+    if (!dir) return null;
+    const out = {};
+    for (const f of fs.readdirSync(dir)) if (f.endsWith('.js')) out[f] = fs.readFileSync(path.join(dir, f));
+    console.error('подмена файлов страницы:', Object.keys(out).join(', '));
+    return out;
+})();
+
 async function launchPeer(
     name,
     audioFile,
@@ -222,6 +231,18 @@ async function launchPeer(
     });
     const page = await browser.newPage();
     await page.setUserAgent(ua || (phone ? PHONE_UA : UA));
+    // MM_TEST_SWAP_DIR — папка с файлами, которые подменят одноимённые /js/*.js
+    // страницы: проверить правку до выкладки или сравнить со старой версией,
+    // не трогая боевую статику (27.11, разбор провала сценария concert).
+    if (SWAP) {
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            const m = /\/js\/([A-Za-z0-9_.-]+\.js)$/.exec(new URL(req.url()).pathname);
+            const body = m && SWAP[m[1]];
+            if (body) req.respond({ status: 200, contentType: 'application/javascript', body });
+            else req.continue();
+        });
+    }
     if (touch) await emulateTouch(page);
     if (noScreenShare)
         await page.evaluateOnNewDocument(() => {

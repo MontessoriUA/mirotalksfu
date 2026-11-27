@@ -54,6 +54,11 @@ const MM_APPLE_TOUCH = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || MM_
     // и система — чтобы в журнале событий iPad не значился «macOS 10.15.7»
     const patchOs = (o) => {
         if (!o) return o;
+        // ua-parser 1.x называет систему «Mac OS», 2.x — «macOS». С 25.11 библиотека
+        // лежит у нас и закреплена на 1.0.37 (до того тянулась последняя, 2.x), и
+        // переименование в iPadOS перестало срабатывать: iPad писался в журнал как
+        // «Mac OS» (поймано регрессией 27.11, сценарий tablet). Приводим к одному.
+        if (o.name === 'Mac OS') o.name = 'macOS';
         if (MM_TOUCH_TABLET === 'ipad' && o.name === 'macOS') {
             o.name = 'iPadOS';
             o.version = undefined; // строка «полной версии» настоящую не сообщает
