@@ -70,6 +70,13 @@ const MontemeetTranslate = (() => {
     let duckUntil = 0;
     let duckTimer = null;
     let muteSendUntil = 0; // до какого момента не отправляем свой звук переводчику
+    // Ворота по замеру (см. «измеритель утечки» ниже): пока доверия нет, они
+    // стоят, как раньше; доверие ставит и снимает gateStep раз в секунду.
+    let meter = null;
+    let gateTrusted = false;
+    let gateTimer = null;
+    let gatedMs = 0; // своего звука пришлось на время звучания перевода
+    let passedMs = 0; // из него ушло переводчику — ворота были сняты
     let voiceGain = 0.5; // громкость перевода: тише оригинала, заодно вдвое меньше эха
 
     let on = false;
@@ -264,6 +271,176 @@ const MontemeetTranslate = (() => {
         return outputReady;
     }
 
+    // ---------- измеритель утечки перевода в микрофон ----------
+    //
+    // Ворота — «пока звучит перевод, свой микрофон переводчику не шлём» — стоят
+    // затем, чтобы переводчик не услышал собственный перевод из динамика: на
+    // живом уроке 24.11 переводчики заговорили между собой. Но они же съедают
+    // начала фраз: у моба 72 с своего звука из 383 (заход 27.11). Моб снял их
+    // по замеру — их отвод идёт после эхоподавителя, и измеритель показал, что
+    // эхо в эфир не течёт. У нас отвод тоже после эхоподавителя браузера, а
+    // перевод идёт ему опорой через петлю, но эхоподавитель браузера — чёрный
+    // ящик, и 24.11 он однажды не справился. Поэтому так же, как в мобе, —
+    // не наугад, а по замеру (правило GateTrust моба, montemeet_translate.h):
+    //  - ворота стоят, пока замер не покажет, что за 30 с звучащего перевода
+    //    его эхо в микрофоне не слышно;
+    //  - возвращаются, если за 10 с услышали;
+    //  - данных мало — как было, то есть ворота стоят.
+    //
+    // Как узнаём эхо. Эхо — это то, что мы играем, только позже и тише. Сравниваем
+    // огибающую того, что играем, с огибающей микрофона, сдвигая на возможную
+    // задержку (до 0,9 с): совпадают — значит в микрофоне наш перевод. Своя речь
+    // человека с переводом не совпадает, сколько бы он ни говорил поверх, и
+    // ворота из-за неё не возвращаются. «Слышно» — когда совпадение есть, а в
+    // микрофоне, пока перевод громкий, выше −45 дБ (тот же порог, что у моба).
+    const LEAK_WIN_MS = 20; // шаг огибающей
+    const LEAK_KEEP = 4000; // окон в памяти — 80 с
+    const LEAK_FLOOR_DB = -70; // ниже — тишина, не различаем
+    const LEAK_LOUD_DB = -40; // перевод «звучит громко» в этом окне
+    const LEAK_HEAR_DB = -45; // эхо в микрофоне слышно выше этого
+    // «Чисто» — только с запасом в 5 дБ: между −50 и −45 — «неизвестно», ворота
+    // стоят. Порог −45 взят у моба, но у них эхоподавитель свой и измеренный,
+    // а у нас браузерный; ошибиться в сторону «снять ворота» дороже — 24.11
+    // переводчики заговорили между собой.
+    const LEAK_CLEAN_DB = -50;
+    const LEAK_CORR = 0.35; // совпадение огибающих, с которого считаем эхом
+    const LEAK_LAG_MIN = -5; // сдвиги, окон: −0,1…0,9 с
+    const LEAK_LAG_MAX = 45;
+    // Сколько громкого перевода нужно, чтобы судить: снимать ворота — после
+    // 20 с громкого (с паузами это около 30 с звучания, как у моба), а
+    // возвращать — уже после 3 с: ошибиться в сторону «снять» дороже.
+    const LEAK_TRUST_PLAYING_MS = 20000;
+    const LEAK_DOUBT_PLAYING_MS = 3000;
+
+    class LeakMeter {
+        constructor() {
+            this.out = new Float32Array(LEAK_KEEP).fill(NaN);
+            this.inp = new Float32Array(LEAK_KEEP).fill(NaN);
+            this.outAt = new Float64Array(LEAK_KEEP).fill(-1); // какое окно лежит в ячейке
+            this.inAt = new Float64Array(LEAK_KEEP).fill(-1);
+        }
+        static db(energy) {
+            return Math.max(LEAK_FLOOR_DB, 10 * Math.log10(energy + 1e-12));
+        }
+        put(arr, at, tMs, energy) {
+            const k = Math.floor(tMs / LEAK_WIN_MS);
+            const i = ((k % LEAK_KEEP) + LEAK_KEEP) % LEAK_KEEP;
+            arr[i] = LeakMeter.db(energy);
+            at[i] = k;
+        }
+        // что сыграем (мс — по часам performance.now) и что слышит микрофон
+        addOut(tMs, energy) {
+            this.put(this.out, this.outAt, tMs, energy);
+        }
+        addIn(tMs, energy) {
+            this.put(this.inp, this.inAt, tMs, energy);
+        }
+        get(arr, at, k) {
+            const i = ((k % LEAK_KEEP) + LEAK_KEEP) % LEAK_KEEP;
+            return at[i] === k ? arr[i] : NaN;
+        }
+        // Слышна ли утечка за последние spanMs: превышение над порогом в дБ,
+        // 0 — не слышна, −1 — данных мало.
+        verdict(nowMs, spanMs, minPlayingMs) {
+            const last = Math.floor((nowMs - 1000) / LEAK_WIN_MS); // последняя секунда ещё неполная
+            const first = last - Math.floor(spanMs / LEAK_WIN_MS);
+            let playing = 0;
+            for (let k = first; k <= last; k++) if (this.get(this.out, this.outAt, k) > LEAK_LOUD_DB) playing++;
+            if (playing * LEAK_WIN_MS < minPlayingMs) return { excess: -1, corr: 0, lagMs: 0, hearDb: null };
+            let best = { corr: -1, lag: 0 };
+            for (let d = LEAK_LAG_MIN; d <= LEAK_LAG_MAX; d++) {
+                let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+                for (let k = first; k <= last; k++) {
+                    const x = this.get(this.out, this.outAt, k);
+                    const y = this.get(this.inp, this.inAt, k + d);
+                    if (Number.isNaN(x) || Number.isNaN(y)) continue;
+                    n++; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+                }
+                if (n < 50) continue;
+                const vx = sxx - (sx * sx) / n;
+                const vy = syy - (sy * sy) / n;
+                if (vx <= 0 || vy <= 0) continue;
+                const c = (sxy - (sx * sy) / n) / Math.sqrt(vx * vy);
+                if (c > best.corr) best = { corr: c, lag: d };
+            }
+            // Дальше — только окна, где перевод громкий, на найденном сдвиге.
+            // Своя речь человека звучит лишь часть времени, поэтому смотрим на
+            // нижнюю часть: уровень микрофона — по нижней трети окон, совпадение —
+            // по окнам не громче медианы. Эхо есть во ВСЕХ окнах громкого
+            // перевода и поднимает и низ; речь — только в своих и низ не трогает.
+            const pairs = [];
+            for (let k = first; k <= last; k++) {
+                const x = this.get(this.out, this.outAt, k);
+                if (!(x > LEAK_LOUD_DB)) continue;
+                const y = this.get(this.inp, this.inAt, k + best.lag);
+                if (!Number.isNaN(y)) pairs.push([x, y]);
+            }
+            if (pairs.length * LEAK_WIN_MS < minPlayingMs / 2) {
+                return { excess: -1, corr: best.corr, lagMs: best.lag * LEAK_WIN_MS, hearDb: null };
+            }
+            const ys = pairs.map((p) => p[1]).sort((u, v) => u - v);
+            const hearDb = ys[Math.floor(ys.length / 3)];
+            const median = ys[Math.floor(ys.length / 2)];
+            const quiet = pairs.filter((p) => p[1] <= median);
+            let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+            for (const [x, y] of quiet) {
+                n++; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+            }
+            const vx = sxx - (sx * sx) / n;
+            const vy = syy - (sy * sy) / n;
+            const corr = n > 20 && vx > 0 && vy > 0 ? (sxy - (sx * sy) / n) / Math.sqrt(vx * vy) : 0;
+            const lagMs = best.lag * LEAK_WIN_MS;
+            // Микрофон тих, пока перевод громкий, — эха нет (или оно неслышно).
+            if (hearDb <= LEAK_CLEAN_DB) return { excess: 0, corr, lagMs, hearDb };
+            if (hearDb <= LEAK_HEAR_DB) return { excess: -1, corr, lagMs, hearDb }; // на грани
+            // Громко и повторяет перевод — эхо слышно.
+            if (corr >= LEAK_CORR || best.corr >= LEAK_CORR) return { excess: hearDb - LEAK_HEAR_DB, corr, lagMs, hearDb };
+            // Громко, но не повторяет: человек говорит или шумно — доказать, что
+            // эха нет, нельзя. Не «чисто», а «неизвестно» — ворота стоят.
+            return { excess: -1, corr, lagMs, hearDb };
+        }
+    }
+
+    // Правило моба (GateTrust): «слышна» за 10 с — ворота стоят; «чисто» за
+    // 30 с — сняты; «неизвестно» — без перемен, а в начале это значит «стоят».
+    function gateStep() {
+        if (!meter) {
+            gateTrusted = false; // замера нет — ворота стоят
+            return;
+        }
+        const now = performance.now();
+        let v10;
+        const was = gateTrusted;
+        try {
+            v10 = meter.verdict(now, 10000, LEAK_DOUBT_PLAYING_MS);
+            if (v10.excess > 0) gateTrusted = false;
+            else if (meter.verdict(now, 60000, LEAK_TRUST_PLAYING_MS).excess === 0) gateTrusted = true;
+        } catch (err) {
+            meter = null;
+            gateTrusted = false;
+            log('измеритель утечки отключён:', err.message);
+            return;
+        }
+        if (gateTrusted === was) return;
+        const info = {
+            trusted: gateTrusted ? 1 : 0,
+            corr: Math.round(v10.corr * 100) / 100,
+            lagMs: v10.lagMs,
+            micDb: v10.hearDb === null ? -99 : Math.round(v10.hearDb * 10) / 10,
+        };
+        log(
+            gateTrusted
+                ? 'ворота сняты — эхо перевода в микрофоне не слышно'
+                : 'ворота возвращены — эхо перевода в микрофоне слышно',
+            info
+        );
+        try {
+            if (typeof MontemeetDiag !== 'undefined') MontemeetDiag.report('translate-gate', info);
+        } catch {
+            /* журнал — не главное */
+        }
+    }
+
     // ---------- ужимание пауз в голосе перевода ----------
     //
     // Главная растрата времени в переводе — паузы, а не речь: на монологе 42 с
@@ -372,6 +549,28 @@ const MontemeetTranslate = (() => {
                 log('перевод отстал больше ' + MAX_QUEUE_S + ' с — остаток отброшен');
             }
             src.start(playAt);
+            if (meter) try {
+                // Когда этот кусок выйдет из динамика — по часам performance.now,
+                // в которых меряется и микрофон. Задержку петли и вывода точно не
+                // знаем, и не надо: измеритель ищет сдвиг сам.
+                let at = performance.now() + (playAt - playCtx.currentTime) * 1000;
+                try {
+                    const ts = playCtx.getOutputTimestamp?.();
+                    if (ts && ts.performanceTime > 0) at = ts.performanceTime + (playAt - ts.contextTime) * 1000;
+                } catch {
+                    /* часов вывода нет — берём грубую оценку */
+                }
+                const w = Math.round((OUT_RATE * LEAK_WIN_MS) / 1000);
+                for (let i = 0, k = 0; i + w <= pcm.length; i += w, k++) {
+                    let e = 0;
+                    for (let j = i; j < i + w; j++) e += pcm[j] * pcm[j];
+                    meter.addOut(at + k * LEAK_WIN_MS, (e / w) * voiceGain * voiceGain);
+                }
+            } catch (err) {
+                // измеритель не должен трогать звук: без замера ворота просто стоят
+                meter = null;
+                log('измеритель утечки отключён:', err.message);
+            }
             playAt += buf.duration;
 
             const endsInMs = (playAt - now) * 1000;
@@ -414,18 +613,39 @@ const MontemeetTranslate = (() => {
         });
         tap.port.onmessage = (e) => {
             if (!on || !socket) return;
+            const pcm = e.data;
+            const samples = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2);
+            // Огибающая микрофона для измерителя утечки — всегда, и под воротами
+            // особенно: эхо ищем именно там. Кадр — 100 мс, пришёл только что.
+            const w = (16000 * LEAK_WIN_MS) / 1000;
+            const t0 = performance.now() - (samples.length / 16000) * 1000;
+            let sum = 0;
+            for (let i = 0, k = 0; i < samples.length; i += w, k++) {
+                let part = 0;
+                const end = Math.min(i + w, samples.length);
+                for (let j = i; j < end; j++) {
+                    const v = samples[j] / 32768;
+                    part += v * v;
+                }
+                sum += part;
+                if (meter) {
+                    try {
+                        meter.addIn(t0 + k * LEAK_WIN_MS, part / (end - i));
+                    } catch (err) {
+                        meter = null; // без замера ворота стоят — как раньше
+                        log('измеритель утечки отключён:', err.message);
+                    }
+                }
+            }
             // Пока звучит перевод, свой звук переводчику не шлём. Иначе он
             // слышит из динамика собственный перевод, переводит его снова, и
-            // урок превращается в эхо с заиканием (заход 24.11). Наушники
-            // снимают вопрос совсем, но рассчитывать на них нельзя.
-            if (Date.now() < muteSendUntil) return;
-            const pcm = e.data;
-            // уровень своей речи: кадр уже здесь, считать его почти ничего не стоит
-            let sum = 0;
-            const samples = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2);
-            for (let i = 0; i < samples.length; i++) {
-                const v = samples[i] / 32768;
-                sum += v * v;
+            // урок превращается в эхо с заиканием (заход 24.11). Но ворота же
+            // съедают начала фраз — поэтому стоят они, только пока замер не
+            // показал, что эхо перевода в микрофон не течёт (gateStep).
+            if (Date.now() < muteSendUntil) {
+                gatedMs += (samples.length / 16000) * 1000;
+                if (!gateTrusted) return;
+                passedMs += (samples.length / 16000) * 1000;
             }
             if (samples.length && Math.sqrt(sum / samples.length) > SELF_LEVEL) {
                 selfUntil = Date.now() + SELF_HOLD_MS;
@@ -610,6 +830,11 @@ const MontemeetTranslate = (() => {
         }
         on = true;
         myLang = lang;
+        meter = new LeakMeter();
+        gateTrusted = false;
+        gatedMs = passedMs = 0;
+        clearInterval(gateTimer);
+        gateTimer = setInterval(gateStep, 1000);
         log('включён, язык:', lang);
         return { ok: true, lang };
     }
@@ -619,6 +844,28 @@ const MontemeetTranslate = (() => {
         on = false;
         // сводка в консоль: сколько пауз выкинули — видно, работает ли догон
         if (squeezedS > 0) log('за включение ужато пауз: ' + squeezedS.toFixed(1) + ' с');
+        clearInterval(gateTimer);
+        gateTimer = null;
+        if (gatedMs > 0) {
+            // Сводка за включение — та же мера, что у моба («под воротами 72 с из
+            // 383»): сколько своего звука пришлось на время перевода и сколько
+            // из него всё-таки дошло до переводчика.
+            const sum = {
+                summary: 1,
+                gatedS: Math.round(gatedMs / 100) / 10,
+                passedS: Math.round(passedMs / 100) / 10,
+                squeezedS: Math.round(squeezedS * 10) / 10,
+                trusted: gateTrusted ? 1 : 0,
+            };
+            log('ворота за включение', sum);
+            try {
+                if (typeof MontemeetDiag !== 'undefined') MontemeetDiag.report('translate-gate', sum);
+            } catch {
+                /* журнал — не главное */
+            }
+        }
+        meter = null;
+        gateTrusted = false;
         squeezedS = 0;
         quietTail = 0;
         roomOn = false;
