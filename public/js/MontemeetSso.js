@@ -54,7 +54,11 @@
             /* хранилища нет — хватит куки-метки */
         }
 
-        location.replace('/mm/sso?room=' + encodeURIComponent(room));
+        // Возвращаться — на этот же адрес целиком: параметры ссылки (имя,
+        // «?notify=0» из расписания) иначе терялись — проба уводила на чистый
+        // адрес комнаты (поймано тестом 27.11).
+        const back = String(location.pathname || '') + String(location.search || '');
+        location.replace('/mm/sso?room=' + encodeURIComponent(room) + '&back=' + encodeURIComponent(back));
     } catch (e) {
         /* что бы ни случилось — человек просто остаётся на странице урока */
     }
