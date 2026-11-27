@@ -679,7 +679,7 @@ const MontemeetTranslate = (() => {
     const ENDONYM = {
         ru: 'русский',
         en: 'English',
-        de: 'Deutsche',
+        de: 'Deutsch',
         fr: 'français',
         es: 'español',
         zh: '中文',
@@ -707,13 +707,76 @@ const MontemeetTranslate = (() => {
         fil: 'Filipino',
         fa: 'فارسی',
     };
+    // Названия на языке интерфейса — для педагога: он выбирает язык студента
+    // и должен прочесть название сам. Студенту — на самих языках (ENDONYM): так
+    // он узнаёт свой, на каком бы языке ни был интерфейс (Иван, 27.11; в мобе
+    // уже так — montemeet-app meet/src/room/translateLangs.ts, таблицы те же).
+    const IN_UI = {
+        ru: {
+            de: 'немецкий', fr: 'французский', zh: 'китайский', ru: 'русский', es: 'испанский', en: 'английский',
+            ar: 'арабский', pt: 'португальский', id: 'индонезийский', it: 'итальянский', ko: 'корейский',
+            th: 'тайский', vi: 'вьетнамский', ja: 'японский', tr: 'турецкий', hi: 'хинди', ms: 'малайский',
+            nl: 'нидерландский', ur: 'урду', nb: 'норвежский', sv: 'шведский', da: 'датский', he: 'иврит',
+            fi: 'финский', pl: 'польский', is: 'исландский', cs: 'чешский', fil: 'филиппинский', fa: 'персидский',
+            uk: 'украинский',
+        },
+        uk: {
+            de: 'німецька', fr: 'французька', zh: 'китайська', ru: 'російська', es: 'іспанська', en: 'англійська',
+            ar: 'арабська', pt: 'португальська', id: 'індонезійська', it: 'італійська', ko: 'корейська',
+            th: 'тайська', vi: 'в’єтнамська', ja: 'японська', tr: 'турецька', hi: 'гінді', ms: 'малайська',
+            nl: 'нідерландська', ur: 'урду', nb: 'норвезька', sv: 'шведська', da: 'данська', he: 'іврит',
+            fi: 'фінська', pl: 'польська', is: 'ісландська', cs: 'чеська', fil: 'філіппінська', fa: 'перська',
+            uk: 'українська',
+        },
+        en: {
+            de: 'German', fr: 'French', zh: 'Chinese', ru: 'Russian', es: 'Spanish', en: 'English',
+            ar: 'Arabic', pt: 'Portuguese', id: 'Indonesian', it: 'Italian', ko: 'Korean', th: 'Thai',
+            vi: 'Vietnamese', ja: 'Japanese', tr: 'Turkish', hi: 'Hindi', ms: 'Malay', nl: 'Dutch',
+            ur: 'Urdu', nb: 'Norwegian', sv: 'Swedish', da: 'Danish', he: 'Hebrew', fi: 'Finnish', pl: 'Polish',
+            is: 'Icelandic', cs: 'Czech', fil: 'Filipino', fa: 'Persian', uk: 'Ukrainian',
+        },
+    };
+    const GROUP = {
+        ru: ['основные', 'остальные'],
+        uk: ['основні', 'інші'],
+        en: ['main', 'more'],
+    };
+    const uiLang = () => {
+        const l = window.MontemeetI18n?.lang;
+        return IN_UI[l] ? l : 'uk';
+    };
+    // Как назвать язык в этой панели: педагогу — на языке интерфейса, всем
+    // остальным — на самом этом языке. Роль может выясниться позже сборки
+    // панели, поэтому подписи перерисовываются (relabel), а не только строятся.
+    const labelOf = (code) => {
+        if (iAmPresenter) return IN_UI[uiLang()][code] || IN_UI.en[code] || ENDONYM[code] || code;
+        return ENDONYM[code] || IN_UI.en[code] || code;
+    };
     const noticeFor = (lang) => {
         const name = ENDONYM[lang] || lang;
         return (NOTICE[lang] || NOTICE.en)(name);
     };
-    const langOptions = (sel) =>
-        `<optgroup label="основные">${MAIN_LANGS.map(([v, t]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${t}</option>`).join('')}</optgroup>` +
-        `<optgroup label="остальные">${MORE_LANGS.map(([v, t]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${t}</option>`).join('')}</optgroup>`;
+    const langOptions = (sel) => {
+        const [main, more] = GROUP[uiLang()];
+        const opt = ([v]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${labelOf(v)}</option>`;
+        return (
+            `<optgroup label="${main}">${MAIN_LANGS.map(opt).join('')}</optgroup>` +
+            `<optgroup label="${more}">${MORE_LANGS.map(opt).join('')}</optgroup>`
+        );
+    };
+    // Перерисовать подписи в уже построенных списках: роль приходит от сервера
+    // позже сборки, а язык интерфейса можно сменить на лету.
+    function relabel() {
+        if (!ui) return;
+        const [main, more] = GROUP[uiLang()];
+        for (const sel of [ui.panel.querySelector('#mmTrLangTeacher'), ui.panel.querySelector('#mmTrLangStudent')]) {
+            if (!sel) continue;
+            const groups = sel.querySelectorAll('optgroup');
+            if (groups[0]) groups[0].label = main;
+            if (groups[1]) groups[1].label = more;
+            for (const o of sel.options) o.textContent = labelOf(o.value);
+        }
+    }
     const SAVED_LANG = 'mmTranslateLang';
     const SAVED_SUBS = 'mmTranslateSubs';
     const SAVED_GAIN = 'mmTranslateGain';
@@ -771,6 +834,12 @@ const MontemeetTranslate = (() => {
     box-shadow: 0 10px 34px rgba(0,0,0,.5); backdrop-filter: blur(10px);
 }
 #mmTrPanel[hidden] { display: none; }
+/* Всё скрытое внутри панели — скрыто, что бы ни говорил наш display. На
+   странице урока это делал bootstrap ([hidden] { display: none !important }),
+   но он грузится с внешнего CDN: при упавшем канале студент увидел бы строку
+   «Включить перевод», а педагог без образца — кнопку своего голоса (стенд
+   27.11). Своё правило не зависит ни от чего. */
+#mmTrPanel [hidden] { display: none !important; }
 #mmTrPanel h4 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
 #mmTrPanel .mmTrRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; }
 #mmTrPanel label { opacity: .9; }
@@ -881,7 +950,7 @@ const MontemeetTranslate = (() => {
     let ui = null;
     let lastPeers = [];
     let lastStream = null; // как добыть микрофон — нужно, когда перевод включает ведущий
-    const nameOfLang = (code) => (LANGS.find(([v]) => v === code) || [, code])[1];
+    const nameOfLang = (code) => labelOf(code);
     const myId = () => (socket && socket.id) || '';
 
     function mountUi({ getStream } = {}) {
@@ -1017,6 +1086,7 @@ const MontemeetTranslate = (() => {
         const mySel = () => (iAmPresenter ? teachSel : studentSel);
 
         function applyRole() {
+            relabel();
             teachSel.disabled = !iAmPresenter; // студенту язык педагога — только показ
             voiceBox.teacher.hidden = !iAmPresenter;
             voiceBox.student.hidden = !iAmPresenter;
@@ -1059,6 +1129,8 @@ const MontemeetTranslate = (() => {
         btn.onclick = () => {
             panel.hidden = !panel.hidden;
             btn.dataset.open = panel.hidden ? '0' : '1';
+            // язык интерфейса могли сменить в настройках — подписи по нему
+            if (!panel.hidden) relabel();
         };
 
         // Знак между языками меняет их местами — как в переводчиках (Иван,
